@@ -332,8 +332,10 @@ function testBinDiagnostics() {
   Logger.log('[4] Parsing response...');
   var rawText = resp.getContentText();
   Logger.log('    Raw length: ' + rawText.length + ' chars');
-  Logger.log('    Raw body (first 800 chars):');
-  Logger.log('    ' + rawText.substring(0, 800));
+  Logger.log('    Raw body (chars 0-400):');
+  Logger.log('    ' + rawText.substring(0, 400));
+  Logger.log('    Raw body (chars 400-800):');
+  Logger.log('    ' + rawText.substring(400, 800));
 
   var body;
   try {
@@ -435,8 +437,8 @@ function testBinDiagnostics() {
     Logger.log('    FIX: Increase nBins or widen lowEdge/highEdge range');
   } else {
     Logger.log('    DIAGNOSIS: Bins OK — parseHistogram_ should succeed');
-    Logger.log('    If still seeing synthetic: ensure code_gs is using the latest version (BE1.0.3)');
-    Logger.log('    Check: Logger.log at top of code_gs should say "BE1.0.3"');
+    Logger.log('    If still seeing synthetic: ensure code_gs is using the latest version (BE1.0.4)');
+    Logger.log('    Check: Logger.log at top of code_gs should say "BE1.0.4"');
   }
   Logger.log('====================================');
   Logger.log('BIN DIAGNOSTICS DONE');
