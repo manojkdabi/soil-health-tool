@@ -249,6 +249,194 @@ function testFullPipeline() {
   Logger.log('Confirmed    : ' + result.validation.confirmed);
 }
 
+// ── Bin Diagnostics ───────────────────────────────────────────
+// Run this function to diagnose "Synthetic fallback — API not
+// returning bins".  It replays the Track A request, dumps the
+// raw response, then walks every step of parseHistogram_ with
+// detailed per-step logging so you can see exactly where bins
+// are lost.
+function testBinDiagnostics() {
+  Logger.log('====================================');
+  Logger.log('BIN DIAGNOSTICS');
+  Logger.log(new Date().toISOString());
+  Logger.log('====================================');
+
+  // ── Step 1: token ──────────────────────────────────────────
+  Logger.log('[1] Fetching token...');
+  var token;
+  try {
+    token = getToken_();
+    Logger.log('    OK - length: ' + token.length);
+  } catch(e) {
+    Logger.log('    FAIL: ' + e.message);
+    Logger.log('    STOP: cannot proceed without a token');
+    return;
+  }
+
+  // ── Step 2: build payload ──────────────────────────────────
+  var bbox = [74.5, 18.8, 75.2, 19.3];
+  var payload = {
+    input: {
+      bounds: {
+        bbox: bbox,
+        properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' }
+      },
+      data: [{
+        dataFilter: { timeRange: { from: '2021-01-01T00:00:00Z', to: '2023-12-31T23:59:59Z' } },
+        type: 'sentinel-2-l2a'
+      }]
+    },
+    aggregation: {
+      timeRange:           { from: '2021-01-01T00:00:00Z', to: '2023-12-31T23:59:59Z' },
+      aggregationInterval: { of: 'P3M' },
+      evalscript:          EVALSCRIPT_STATS_A,
+      resx:                0.01,
+      resy:                0.01
+    },
+    calculations: {
+      shpi: {
+        histograms: { default: { nBins: 10, lowEdge: -0.5, highEdge: 1.5 } }
+      }
+    }
+  };
+
+  var payloadJson = JSON.stringify(payload);
+  Logger.log('[2] Payload JSON (first 600 chars):');
+  Logger.log('    ' + payloadJson.substring(0, 600));
+  Logger.log('    lowEdge serialised as: ' + (payloadJson.indexOf('"lowEdge":-0.5') >= 0 ? '-0.5 (float OK)' : 'UNEXPECTED - check serialisation'));
+  Logger.log('    highEdge serialised as: ' + (payloadJson.indexOf('"highEdge":1.5') >= 0 ? '1.5 (float OK)' : 'UNEXPECTED - check serialisation'));
+  Logger.log('    calculations key: ' + (payloadJson.indexOf('"shpi"') >= 0 ? 'shpi (correct)' : 'MISSING shpi key'));
+
+  // ── Step 3: HTTP call ──────────────────────────────────────
+  Logger.log('[3] Calling Statistical API...');
+  var resp = UrlFetchApp.fetch('https://sh.dataspace.copernicus.eu/api/v1/statistics', {
+    method:             'post',
+    contentType:        'application/json',
+    payload:            payloadJson,
+    headers:            { Authorization: 'Bearer ' + token },
+    muteHttpExceptions: true
+  });
+
+  var code = resp.getResponseCode();
+  Logger.log('    HTTP status: ' + code);
+
+  if (code !== 200) {
+    Logger.log('    ERROR body: ' + resp.getContentText().substring(0, 500));
+    Logger.log('    STOP: API returned non-200');
+    return;
+  }
+
+  // ── Step 4: parse body ─────────────────────────────────────
+  Logger.log('[4] Parsing response...');
+  var rawText = resp.getContentText();
+  Logger.log('    Raw length: ' + rawText.length + ' chars');
+  Logger.log('    Raw body (first 800 chars):');
+  Logger.log('    ' + rawText.substring(0, 800));
+
+  var body;
+  try {
+    body = JSON.parse(rawText);
+  } catch(e) {
+    Logger.log('    FAIL JSON.parse: ' + e.message);
+    return;
+  }
+
+  Logger.log('    Top-level keys: ' + Object.keys(body).join(', '));
+
+  // ── Step 5: data array ─────────────────────────────────────
+  Logger.log('[5] body.data check...');
+  if (!body.data) {
+    Logger.log('    FAIL: body.data is missing');
+    Logger.log('    FIX : Check the evalscript is producing output named "shpi"');
+    return;
+  }
+  Logger.log('    body.data length: ' + body.data.length);
+  if (body.data.length === 0) {
+    Logger.log('    FAIL: body.data is empty (0 periods)');
+    Logger.log('    FIX : The timeRange/aggregationInterval may produce no cloud-free composites');
+    return;
+  }
+
+  // ── Step 6: walk every period ──────────────────────────────
+  Logger.log('[6] Walking periods...');
+  var totalBins = 0;
+  var totalNonEmpty = 0;
+  body.data.forEach(function(period, pi) {
+    Logger.log('  Period ' + pi + ':');
+    Logger.log('    interval: ' + JSON.stringify(period.interval || '(none)'));
+
+    if (!period.outputs) {
+      Logger.log('    FAIL: period.outputs missing');
+      return;
+    }
+    var outputKeys = Object.keys(period.outputs);
+    Logger.log('    output keys: ' + outputKeys.join(', '));
+
+    var out = period.outputs['shpi'];
+    if (!out) {
+      Logger.log('    WARN: no "shpi" key — using first output "' + outputKeys[0] + '"');
+      out = period.outputs[outputKeys[0]];
+    }
+
+    var bandKeys = Object.keys(out);
+    Logger.log('    band keys: ' + bandKeys.join(', '));
+
+    var band = out['B0'] || out[bandKeys[0]];
+    Logger.log('    selected band: ' + (out['B0'] ? 'B0' : bandKeys[0]));
+    Logger.log('    band stat keys: ' + Object.keys(band).join(', '));
+
+    if (!band.histogram) {
+      Logger.log('    FAIL: band.histogram missing');
+      Logger.log('    FIX : Statistics API "calculations" key may not match evalscript output id');
+      return;
+    }
+    if (!band.histogram.bins) {
+      Logger.log('    FAIL: band.histogram.bins missing');
+      Logger.log('    histogram keys: ' + Object.keys(band.histogram).join(', '));
+      return;
+    }
+
+    var bins = band.histogram.bins;
+    var nonEmpty = bins.filter(function(b) { return b.count > 0; });
+    totalBins     += bins.length;
+    totalNonEmpty += nonEmpty.length;
+    Logger.log('    bins total: ' + bins.length + '  non-empty (count>0): ' + nonEmpty.length);
+
+    if (bins.length > 0) {
+      Logger.log('    First bin fields: ' + Object.keys(bins[0]).join(', '));
+      Logger.log('    First bin data  : ' + JSON.stringify(bins[0]));
+      Logger.log('    b.mean present  : ' + (bins[0].mean !== undefined ? 'YES (' + bins[0].mean + ')' : 'NO — midpoint will be used'));
+    }
+    nonEmpty.forEach(function(b) {
+      var mid = b.mean !== undefined ? b.mean : (b.lowEdge + b.highEdge) / 2;
+      Logger.log('    bin [' + b.lowEdge + ',' + b.highEdge + '] count=' + b.count + ' mean=' + mid.toFixed(4));
+    });
+  });
+
+  // ── Step 7: summary ───────────────────────────────────────
+  Logger.log('[7] Summary:');
+  Logger.log('    Total bins across all periods : ' + totalBins);
+  Logger.log('    Non-empty bins (count > 0)    : ' + totalNonEmpty);
+
+  if (totalNonEmpty === 0) {
+    Logger.log('    DIAGNOSIS: All bins are empty (count=0)');
+    Logger.log('    LIKELY CAUSE 1: bbox has no valid Sentinel-2 pixels (cloud-only or nodata)');
+    Logger.log('    LIKELY CAUSE 2: evalscript returns dataMask=0 for all pixels');
+    Logger.log('    LIKELY CAUSE 3: lowEdge/highEdge does not cover evalscript output range');
+    Logger.log('    LIKELY CAUSE 4: resx/resy too coarse for the bbox, producing 0 pixels');
+  } else if (totalNonEmpty < 3) {
+    Logger.log('    DIAGNOSIS: Too few non-empty bins (' + totalNonEmpty + ' < 3 required)');
+    Logger.log('    FIX: Increase nBins or widen lowEdge/highEdge range');
+  } else {
+    Logger.log('    DIAGNOSIS: Bins OK — parseHistogram_ should succeed');
+    Logger.log('    If still seeing synthetic: ensure code_gs is using the latest version (BE1.0.3)');
+    Logger.log('    Check: Logger.log at top of code_gs should say "BE1.0.3"');
+  }
+  Logger.log('====================================');
+  Logger.log('BIN DIAGNOSTICS DONE');
+  Logger.log('====================================');
+}
+
 function runAllTests() {
   Logger.log('====================================');
   Logger.log('WIRING TESTS v3.0');
