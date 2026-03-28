@@ -57,7 +57,7 @@ function testTrackA() {
       },
       calculations: {
         shpi: {
-          histograms: { default: { nBins: 10, lowEdge: 0.0, highEdge: 1.0 } }
+          histograms: { default: { nBins: 10, lowEdge: -0.5, highEdge: 1.5 } }
         }
       }
     };
@@ -152,7 +152,7 @@ function testTrackB() {
       },
       calculations: {
         ndvi: {
-          histograms: { default: { nBins: 10, lowEdge: 0.0, highEdge: 1.0 } }
+          histograms: { default: { nBins: 10, lowEdge: -0.5, highEdge: 1.5 } }
         }
       }
     };

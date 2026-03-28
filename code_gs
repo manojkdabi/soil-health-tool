@@ -1,5 +1,5 @@
 // ============================================================
-// Soil Health Stratification Tool — Apps Script Backend BE1.0.1
+// Soil Health Stratification Tool — Apps Script Backend BE1.0.2
 // Treeconomy Soil Intelligence Division
 // All strings use single quotes and + concatenation. No backticks.
 // ============================================================
@@ -236,7 +236,7 @@ function fetchBandStats_(bbox, yearStart, yearEnd, token) {
     calculations: {
       shpi: {
         histograms: {
-          default: { nBins: 10, lowEdge: 0.0, highEdge: 1.0 }
+          default: { nBins: 10, lowEdge: -0.5, highEdge: 1.5 }
         }
       }
     }
@@ -264,7 +264,7 @@ function fetchBandStats_(bbox, yearStart, yearEnd, token) {
     calculations: {
       ndvi: {
         histograms: {
-          default: { nBins: 10, lowEdge: 0.0, highEdge: 1.0 }
+          default: { nBins: 10, lowEdge: -0.5, highEdge: 1.5 }
         }
       }
     }
