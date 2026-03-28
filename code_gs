@@ -1,5 +1,5 @@
 // ============================================================
-// Soil Health Stratification Tool — Apps Script Backend BE1.0.5
+// Soil Health Stratification Tool — Apps Script Backend BE1.0.6
 // Treeconomy Soil Intelligence Division
 // All strings use single quotes and + concatenation. No backticks.
 // ============================================================
@@ -343,6 +343,8 @@ function buildZoneStats_(aBins, bBins) {
   var shpiMeans  = [0.15, 0.30, 0.45, 0.60, 0.75];
   var cpiMeans   = [0.19, 0.28, 0.37, 0.46, 0.57];
   var dataSource = 'synthetic';
+  var shpiPixels = null; // actual per-zone pixel counts from SHPI histogram
+  var cpiPixels  = null; // actual per-zone pixel counts from NDVI histogram
 
   // Split bins into 5 zones by pixel-count quantile (each zone = 20% of total pixels).
   // Sorting by bin midpoint and dividing by bin count gives identical means when all
@@ -358,7 +360,7 @@ function buildZoneStats_(aBins, bBins) {
                '  totalPixels=' + totalCount +
                '  min_mean='  + (sorted.length ? sorted[0].mean.toFixed(4) : 'n/a') +
                '  max_mean='  + (sorted.length ? sorted[sorted.length - 1].mean.toFixed(4) : 'n/a'));
-    if (totalCount === 0) return [0.10, 0.25, 0.40, 0.55, 0.70];
+    if (totalCount === 0) return { means: [0.10, 0.25, 0.40, 0.55, 0.70], pixelCounts: [0, 0, 0, 0, 0] };
 
     // Assign bins to 5 equal pixel-count quantile buckets
     var target  = totalCount / 5;
@@ -382,14 +384,19 @@ function buildZoneStats_(aBins, bBins) {
       Logger.log('  Zone ' + (idx + 1) + ': bins=' + slice.length + '  pixels=' + cnt + '  mean=' + m);
       return m;
     });
+    var pixelCounts = buckets.map(function(slice) {
+      return slice.reduce(function(s, b) { return s + b.count; }, 0);
+    });
     Logger.log(label + ' zone means: ' + JSON.stringify(means));
-    return means;
+    return { means: means, pixelCounts: pixelCounts };
   }
 
   if (aBins && aBins.length >= 3) {
     Logger.log('SHPI allBins count: ' + aBins.length);
-    shpiMeans  = binsToZoneMeans('SHPI', aBins);
-    dataSource = 'real';
+    var aResult = binsToZoneMeans('SHPI', aBins);
+    shpiMeans   = aResult.means;
+    shpiPixels  = aResult.pixelCounts;
+    dataSource  = 'real';
     Logger.log('REAL SHPI means: ' + JSON.stringify(shpiMeans));
   } else {
     Logger.log('Using synthetic SHPI means (aBins=' + (aBins ? aBins.length : 'null') + ')');
@@ -397,8 +404,10 @@ function buildZoneStats_(aBins, bBins) {
 
   if (bBins && bBins.length >= 3) {
     Logger.log('NDVI allBins count: ' + bBins.length);
-    cpiMeans   = binsToZoneMeans('NDVI', bBins).map(function(v) { return Math.min(1, Math.max(0, v)); });
-    dataSource = 'real';
+    var bResult = binsToZoneMeans('NDVI', bBins);
+    cpiMeans    = bResult.means.map(function(v) { return Math.min(1, Math.max(0, v)); });
+    cpiPixels   = bResult.pixelCounts;
+    dataSource  = 'real';
     Logger.log('REAL CPI means: ' + JSON.stringify(cpiMeans));
   } else {
     Logger.log('Using synthetic CPI means (bBins=' + (bBins ? bBins.length : 'null') + ')');
@@ -408,11 +417,14 @@ function buildZoneStats_(aBins, bBins) {
   Logger.log('Final shpiMeans: ' + JSON.stringify(shpiMeans));
   Logger.log('Final cpiMeans:  ' + JSON.stringify(cpiMeans));
 
+  // Use actual per-zone pixel counts when available; fall back to a flat placeholder otherwise
+  var zonePixels = shpiPixels || cpiPixels || [44000, 44000, 44000, 44000, 44000];
+
   var zoneStats = [1,2,3,4,5].map(function(z, i) {
     return {
       zone:        z,
       label:       'Zone ' + z,
-      pixel_count: 44000 + Math.round(Math.random() * 4000),
+      pixel_count: zonePixels[i],
       mean_shpi:   shpiMeans[i],
       std_shpi:    Math.round((0.04 + Math.random() * 0.02) * 1000) / 1000,
       mean_cpi:    cpiMeans[i],
