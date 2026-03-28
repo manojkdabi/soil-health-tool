@@ -56,7 +56,7 @@ function testTrackA() {
         resy:                0.01
       },
       calculations: {
-        default: {
+        shpi: {
           histograms: { default: { nBins: 10, lowEdge: 0.0, highEdge: 1.0 } }
         }
       }
@@ -151,7 +151,7 @@ function testTrackB() {
         resy:                0.01
       },
       calculations: {
-        default: {
+        ndvi: {
           histograms: { default: { nBins: 10, lowEdge: 0.0, highEdge: 1.0 } }
         }
       }
