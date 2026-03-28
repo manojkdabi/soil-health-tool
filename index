@@ -110,7 +110,7 @@ canvas{display:block}
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
     <span class="ver-pill ver-pill-be">BE1.0.6</span>
-    <span class="ver-pill ver-pill-fe">FE1.0.6</span>
+    <span class="ver-pill ver-pill-fe">FE1.0.7</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -174,6 +174,9 @@ canvas{display:block}
         <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
         <tbody id="zoneTbody"></tbody>
       </table>
+      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:6px">SHPI vs CPI correlation</h3>
+      <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
+      <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
       <div id="results-map"></div>
       <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
       <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
@@ -209,9 +212,14 @@ canvas{display:block}
 // ── State ─────────────────────────────────────────────────────
 let roi        = null
 let lastResult = null
-let chart      = null
+let chart        = null
+let scatterChart = null
 let resultsMap = null
 const ZONE_COLORS = ['#d73027','#fc8d59','#fee08b','#91cf60','#1a9850']
+
+function formatPixelCount(px) {
+  return px >= 1000 ? (px / 1000).toFixed(1) + 'k' : String(Math.round(px))
+}
 
 // ── Map init ──────────────────────────────────────────────────
 const map = L.map('map', { center: [20.5, 78.9], zoom: 5 })
@@ -484,7 +492,7 @@ function renderResults(data) {
     tdZone.appendChild(document.createTextNode('Zone ' + zs.zone))
 
     const tdPx = document.createElement('td')
-    tdPx.textContent = (zs.pixel_count / 1000).toFixed(1) + 'k'
+    tdPx.textContent = formatPixelCount(zs.pixel_count)
 
     const tdShpi = document.createElement('td')
     tdShpi.textContent = zs.mean_shpi
@@ -499,6 +507,72 @@ function renderResults(data) {
     tr.appendChild(tdShpi)
     tr.appendChild(tdCpi)
     tbody.appendChild(tr)
+  })
+
+  // ── SHPI vs CPI scatter plot with linear regression ──────────
+  const shpiX = z.map(zs => zs.mean_shpi)
+  const cpiY  = z.map(zs => zs.mean_cpi)
+  const n = shpiX.length
+  const sx = shpiX.reduce((a, b) => a + b, 0)
+  const sy = cpiY.reduce((a, b) => a + b, 0)
+  const sxy = shpiX.reduce((a, x, i) => a + x * cpiY[i], 0)
+  const sxx = shpiX.reduce((a, x) => a + x * x, 0)
+  const denom = n * sxx - sx * sx
+  const slope = Math.abs(denom) > 1e-10 ? (n * sxy - sx * sy) / denom : 0
+  const intercept = (sy - slope * sx) / n
+  const yMean = sy / n
+  const ssTot = cpiY.reduce((a, y) => a + (y - yMean) ** 2, 0)
+  const ssRes = shpiX.reduce((a, x, i) => a + (cpiY[i] - (slope * x + intercept)) ** 2, 0)
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0
+  const xMin = Math.min(...shpiX), xMax = Math.max(...shpiX)
+  const lineData = [{ x: xMin, y: slope * xMin + intercept }, { x: xMax, y: slope * xMax + intercept }]
+  const intSign = intercept >= 0 ? ' + ' : ' - '
+  document.getElementById('scatterEq').textContent =
+    'y = ' + slope.toFixed(3) + 'x' + intSign + Math.abs(intercept).toFixed(3) +
+    '   R² = ' + r2.toFixed(3)
+
+  if (scatterChart) scatterChart.destroy()
+  const sctx = document.getElementById('shpiCpiScatter').getContext('2d')
+  scatterChart = new Chart(sctx, {
+    data: {
+      datasets: [
+        {
+          type: 'scatter',
+          label: 'Zones',
+          data: shpiX.map((x, i) => ({ x, y: cpiY[i] })),
+          backgroundColor: ZONE_COLORS,
+          pointRadius: 7,
+          pointHoverRadius: 9,
+        },
+        {
+          type: 'line',
+          label: 'Fit',
+          data: lineData,
+          borderColor: '#F5A623',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 9 } },
+          ticks: { color: '#9FE1CB', font: { size: 9 } },
+          grid: { color: '#1e3d30' }
+        },
+        y: {
+          title: { display: true, text: 'CPI', color: '#9FE1CB', font: { size: 9 } },
+          ticks: { color: '#9FE1CB', font: { size: 9 } },
+          grid: { color: '#1e3d30' }
+        }
+      }
+    }
   })
 
   document.getElementById('results').classList.add('show')
