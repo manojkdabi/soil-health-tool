@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Soil Health Stratification Tool · Treeconomy</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#0f1a17;color:#e8f4ee;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px}
+
+/* Header */
+.hdr{background:#1A3C34;padding:10px 18px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #2E6B4F;flex-shrink:0}
+.hdr-logo{width:28px;height:28px;background:#F5A623;border-radius:4px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#3A1800}
+.hdr h1{font-size:14px;font-weight:600;color:#fff}
+.hdr p{font-size:11px;color:#9FE1CB;margin-left:auto}
+
+/* Layout */
+.main{display:flex;flex:1;overflow:hidden}
+.sidebar{width:320px;background:#13241e;border-right:1px solid #1e3d30;display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0}
+#map{flex:1;background:#e8e0d8;position:relative}
+
+/* Sidebar sections */
+.sb{padding:14px 16px;border-bottom:1px solid #1e3d30}
+.sb h3{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-bottom:10px}
+.sb p.hint{font-size:11px;color:#9FE1CB;opacity:.6;line-height:1.5;margin-bottom:10px}
+label.field{font-size:11px;color:#9FE1CB;opacity:.7;display:block;margin-bottom:3px;margin-top:8px}
+label.field:first-child{margin-top:0}
+input,select{width:100%;background:#1e3d30;border:1px solid #2E6B4F;border-radius:5px;padding:6px 9px;color:#e8f4ee;font-size:12px;outline:none}
+input:focus,select:focus{border-color:#F5A623}
+
+/* ROI status */
+.roi-ok{background:#1a3d1a;color:#7FE07F;border:1px solid #3a6d3a;border-radius:5px;padding:6px 9px;font-size:11px;margin-bottom:8px;display:none}
+.roi-ok.show{display:block}
+
+/* Upload zone */
+.upload{border:1.5px dashed #2E6B4F;border-radius:6px;padding:10px;text-align:center;cursor:pointer;font-size:11.5px;color:#5a8a6a;transition:.15s;margin-bottom:6px}
+.upload:hover{border-color:#F5A623;color:#F5A623}
+
+/* Buttons */
+.btn{width:100%;padding:10px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;margin-top:4px}
+.btn-run{background:#F5A623;color:#3A1800}
+.btn-run:hover{background:#ffb93d}
+.btn-run:disabled{background:#5a4010;color:#9a7030;cursor:not-allowed}
+.btn-sec{background:#1e3d30;border:1px solid #2E6B4F;color:#9FE1CB;font-size:12px}
+.btn-sec:hover{background:#2E6B4F}
+
+/* Progress */
+.progress{margin-top:8px;display:none}
+.progress.show{display:block}
+.prog-bar{height:3px;background:#2E6B4F;border-radius:2px;overflow:hidden;margin-top:6px}
+.prog-fill{height:100%;background:#F5A623;border-radius:2px;width:0%;transition:width .4s}
+.prog-msg{font-size:11px;color:#9FE1CB;opacity:.7;margin-top:4px}
+
+/* Results */
+.results{display:none;padding:14px 16px;flex-direction:column;gap:10px}
+.results.show{display:flex}
+.banner{border-radius:6px;padding:9px 12px;font-size:12px;font-weight:600;text-align:center}
+.banner-yes{background:#1a3d1a;color:#7FE07F;border:1px solid #3a6d3a}
+.banner-no{background:#3d2a1a;color:#f0a070;border:1px solid #6d4a2a}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.stat-card{background:#1a3d30;border:1px solid #2E6B4F;border-radius:6px;padding:8px 10px;text-align:center}
+.stat-val{font-size:16px;font-weight:700;color:#F5A623}
+.stat-lbl{font-size:10px;color:#5a8a6a;margin-top:2px}
+.ztbl{width:100%;border-collapse:collapse;font-size:11px}
+.ztbl th{padding:5px 6px;background:#1a3d30;color:#9FE1CB;text-align:left;font-weight:600}
+.ztbl td{padding:5px 6px;border-bottom:1px solid #1a3020}
+.zdot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
+
+/* Zone legend */
+.legend{position:absolute;bottom:28px;right:10px;background:#13241e;border:1px solid #1e3d30;border-radius:8px;padding:10px;z-index:500}
+.legend p{font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.leg-row{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.leg-swatch{width:14px;height:10px;border-radius:2px;flex-shrink:0}
+.leg-lbl{font-size:10px;color:#9FE1CB}
+
+/* Loading overlay */
+.overlay{position:absolute;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:12px}
+.overlay.show{display:flex}
+.spinner{width:40px;height:40px;border:3px solid #2E6B4F;border-top-color:#F5A623;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ov-msg{color:#9FE1CB;font-size:13px;font-weight:500;text-align:center;max-width:240px;line-height:1.5}
+
+/* Leaflet overrides */
+.leaflet-container{background:#e8e0d8!important}
+.leaflet-draw-toolbar a{background-color:#1A3C34!important;border-color:#2E6B4F!important}
+.leaflet-draw-toolbar a:hover{background-color:#2E6B4F!important}
+.leaflet-control-layers{background:#13241e!important;border:1px solid #2E6B4F!important;color:#9FE1CB!important;font-size:11px}
+.leaflet-control-layers label{color:#9FE1CB!important}
+.leaflet-control-layers-separator{border-color:#2E6B4F!important}
+.leaflet-bar a,.leaflet-bar a:hover{background-color:#ffffff!important;color:#1A3C34!important;border-color:#ccc!important}
+
+/* Chart */
+.chart-wrap{height:120px;margin-top:4px}
+canvas{display:block}
+
+/* Footer */
+.footer{background:#0d1e18;border-top:1px solid #1e3d30;padding:4px 16px;font-size:10px;color:#3a6a4a;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-logo">SH</div>
+  <div>
+    <h1>Soil Health Stratification Tool</h1>
+  </div>
+  <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
+</div>
+
+<div class="main">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Step 1: ROI -->
+    <div class="sb">
+      <h3>Step 1 · Study Area</h3>
+      <p class="hint">Draw a polygon on the map or upload a GeoJSON file. Keep area under ~5,000 km².</p>
+      <div id="roiStatus" class="roi-ok"></div>
+      <label class="upload" onclick="document.getElementById('gjInput').click()">
+        <input type="file" id="gjInput" accept=".geojson,.json" style="display:none">
+        📁 Upload GeoJSON file
+      </label>
+      <div style="text-align:center;font-size:10px;color:#3a6a4a;margin:4px 0">— or draw on map —</div>
+      <button class="btn btn-sec" onclick="clearROI()">✕ Clear ROI</button>
+    </div>
+
+    <!-- Step 2: Config -->
+    <div class="sb">
+      <h3>Step 2 · Configure Analysis</h3>
+      <label class="field">Year range start</label>
+      <input type="number" id="yearStart" value="2021" min="2017" max="2024">
+      <label class="field">Year range end</label>
+      <input type="number" id="yearEnd" value="2023" min="2018" max="2024">
+      <label class="field">Spatial resolution (metres)</label>
+      <select id="resolution">
+        <option value="100">100 m — fastest, large areas</option>
+        <option value="60" selected>60 m — recommended for POC</option>
+        <option value="30">30 m — precise, slower</option>
+      </select>
+      <label class="field">Kharif months (comma-separated)</label>
+      <input type="text" id="kharifMonths" value="7,8,9,10">
+      <label class="field">Rabi months (comma-separated)</label>
+      <input type="text" id="rabiMonths" value="12,1,2,3">
+    </div>
+
+    <!-- Step 3: Run -->
+    <div class="sb">
+      <button class="btn btn-run" id="runBtn" onclick="runAnalysis()" disabled>
+        ▶ Run Phase 1 Analysis
+      </button>
+      <div class="progress" id="progress">
+        <div class="prog-msg" id="progMsg">Initialising...</div>
+        <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="results" id="results">
+      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623">Results</h3>
+      <div class="banner" id="banner"></div>
+      <div id="dataSourceBadge" style="text-align:center;font-size:10px;padding:3px 8px;border-radius:4px;display:none"></div>
+      <div class="stat-grid" id="statGrid"></div>
+      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:4px">Mean CPI per zone</h3>
+      <div class="chart-wrap"><canvas id="cpiChart"></canvas></div>
+      <table class="ztbl">
+        <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
+        <tbody id="zoneTbody"></tbody>
+      </table>
+      <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
+      <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
+    </div>
+
+  </div>
+
+  <!-- MAP -->
+  <div id="map">
+    <div class="overlay" id="overlay">
+      <div class="spinner"></div>
+      <div class="ov-msg" id="ovMsg">Connecting to Sentinel Hub...</div>
+    </div>
+    <div class="legend">
+      <p>Soil Health</p>
+      <div class="leg-row"><span class="leg-swatch" style="background:#d73027"></span><span class="leg-lbl">Zone 1 — Low</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#fc8d59"></span><span class="leg-lbl">Zone 2</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#fee08b"></span><span class="leg-lbl">Zone 3 — Mid</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#91cf60"></span><span class="leg-lbl">Zone 4</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#1a9850"></span><span class="leg-lbl">Zone 5 — High</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Treeconomy Soil Intelligence Division · Satellite-Based Soil Health Stratification POC · Sentinel-2 SR · Confidential
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// ── State ─────────────────────────────────────────────────────
+let roi        = null
+let lastResult = null
+let chart      = null
+const ZONE_COLORS = ['#d73027','#fc8d59','#fee08b','#91cf60','#1a9850']
+
+// ── Map init ──────────────────────────────────────────────────
+const map = L.map('map', { center: [20.5, 78.9], zoom: 5 })
+// Base layers
+const esriSatellite = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics',
+  maxZoom: 19
+})
+
+const esriTopo = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles © Esri — Source: Esri, DeLorme, HERE, USGS',
+  maxZoom: 19
+})
+
+const esriStreet = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles © Esri — Source: Esri, HERE, DeLorme, OpenStreetMap',
+  maxZoom: 19
+})
+
+const osmStandard = L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+  maxZoom: 19
+})
+
+// Satellite label overlay
+const esriLabels = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Labels © Esri',
+  maxZoom: 19,
+  opacity: 0.9
+})
+
+// Start with satellite + labels
+esriSatellite.addTo(map)
+esriLabels.addTo(map)
+
+// Layer control
+L.control.layers(
+  {
+    '🛰 Satellite (ESRI)': esriSatellite,
+    '🗺 Topographic (ESRI)': esriTopo,
+    '🏙 Street Map (ESRI)': esriStreet,
+    '🌍 OpenStreetMap': osmStandard,
+  },
+  { '🏷 Place Labels': esriLabels },
+  { position: 'topright', collapsed: false }
+).addTo(map)
+
+window.L = L  // make available for leaflet-draw
+
+const drawn = new L.FeatureGroup().addTo(map)
+const drawCtrl = new L.Control.Draw({
+  draw: {
+    polygon:  { shapeOptions: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } },
+    rectangle:{ shapeOptions: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } },
+    circle: false, marker: false, polyline: false, circlemarker: false,
+  },
+  edit: { featureGroup: drawn }
+})
+map.addControl(drawCtrl)
+
+map.on(L.Draw.Event.CREATED, e => {
+  drawn.clearLayers()
+  drawn.addLayer(e.layer)
+  roi = e.layer.toGeoJSON().geometry
+  setROIStatus('✓ ROI set from drawn shape')
+  document.getElementById('runBtn').disabled = false
+})
+
+// ── GeoJSON upload ────────────────────────────────────────────
+document.getElementById('gjInput').addEventListener('change', e => {
+  const file = e.target.files[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = ev => {
+    try {
+      const gj = JSON.parse(ev.target.result)
+      drawn.clearLayers()
+      const layer = L.geoJSON(gj, {
+        style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 }
+      }).addTo(drawn)
+      map.fitBounds(layer.getBounds())
+      if (gj.type === 'FeatureCollection') roi = gj.features[0].geometry
+      else if (gj.type === 'Feature') roi = gj.geometry
+      else roi = gj
+      setROIStatus('✓ GeoJSON loaded: ' + file.name)
+      document.getElementById('runBtn').disabled = false
+    } catch(err) { alert('Invalid GeoJSON: ' + err.message) }
+  }
+  reader.readAsText(file)
+  e.target.value = ''
+})
+
+function clearROI() {
+  drawn.clearLayers()
+  roi = null
+  document.getElementById('runBtn').disabled = true
+  document.getElementById('roiStatus').classList.remove('show')
+  document.getElementById('results').classList.remove('show')
+}
+
+function setROIStatus(msg) {
+  const el = document.getElementById('roiStatus')
+  el.textContent = msg
+  el.classList.add('show')
+}
+
+// ── Run analysis ──────────────────────────────────────────────
+function runAnalysis() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+
+  const yearStart    = parseInt(document.getElementById('yearStart').value)
+  const yearEnd      = parseInt(document.getElementById('yearEnd').value)
+  const resolution   = parseInt(document.getElementById('resolution').value)
+  const kharifMonths = document.getElementById('kharifMonths').value.split(',').map(Number).filter(Boolean)
+  const rabiMonths   = document.getElementById('rabiMonths').value.split(',').map(Number).filter(Boolean)
+
+  if (yearEnd <= yearStart) { alert('Year end must be after year start.'); return }
+
+  showOverlay(true, 'Connecting to Sentinel Hub...')
+  setProgress(true, 10, 'Fetching dry season composite (Track A)...')
+  document.getElementById('runBtn').disabled = true
+  document.getElementById('results').classList.remove('show')
+
+  const params = { geojson: roi, yearStart, yearEnd, resolution, kharifMonths, rabiMonths }
+
+  // Progress animation
+  let pct = 10
+  const timer = setInterval(() => {
+    pct = Math.min(pct + 4, 88)
+    const msgs = [
+      'Fetching dry season composite (Track A)...',
+      'Fetching Kharif NDVI (Track B)...',
+      'Fetching Rabi NDVI (Track B)...',
+      'Computing SHPI & CPI...',
+      'Classifying zones...',
+      'Running validation...',
+    ]
+    const idx = Math.min(Math.floor((pct - 10) / 13), msgs.length - 1)
+    setProgress(true, pct, msgs[idx])
+    showOverlay(true, msgs[idx])
+  }, 3000)
+
+  // Call Apps Script server function
+  google.script.run
+    .withSuccessHandler(data => {
+      clearInterval(timer)
+      setProgress(true, 100, 'Complete!')
+      showOverlay(false)
+      document.getElementById('runBtn').disabled = false
+      if (data.success) {
+        lastResult = data
+        renderResults(data)
+      } else {
+        alert('Analysis failed: ' + data.error)
+      }
+    })
+    .withFailureHandler(err => {
+      clearInterval(timer)
+      showOverlay(false)
+      setProgress(false)
+      document.getElementById('runBtn').disabled = false
+      alert('Error: ' + err.message)
+    })
+    .runAnalysis(params)
+}
+
+// ── Render results ────────────────────────────────────────────
+function renderResults(data) {
+  const v = data.validation
+  const z = data.zone_stats
+
+  // Banner
+  const banner = document.getElementById('banner')
+  if (v.confirmed) {
+    banner.textContent = '✓ Hypothesis confirmed — CPI increases Zone 1→5'
+    banner.className   = 'banner banner-yes'
+  } else {
+    banner.textContent = '⚠ Hypothesis not confirmed — check data coverage'
+    banner.className   = 'banner banner-no'
+  }
+
+  // Data source badge
+  var badge = document.getElementById('dataSourceBadge')
+  if (v.data_source === 'real') {
+    badge.textContent = '✓ Real Sentinel-2 data'
+    badge.style.background = '#1a3d1a'
+    badge.style.color = '#7FE07F'
+    badge.style.border = '1px solid #3a6d3a'
+  } else {
+    badge.textContent = '⚠ Synthetic fallback data — API not returning bins'
+    badge.style.background = '#3d2a1a'
+    badge.style.color = '#f0a070'
+    badge.style.border = '1px solid #6d4a2a'
+  }
+  badge.style.display = 'block'
+
+  // Stat cards
+  const statGrid = document.getElementById('statGrid')
+  statGrid.innerHTML = ''
+  const stats = [
+    { val: v.spearman_rho,  lbl: 'Spearman ρ' },
+    { val: v.spearman_p <= 0.001 ? '<0.001' : v.spearman_p, lbl: 'p-value' },
+    { val: v.cpi_ratio ? v.cpi_ratio + '×' : '—', lbl: 'CPI Z5/Z1 ratio' },
+    { val: v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
+  ]
+  stats.forEach(s => {
+    statGrid.innerHTML += `
+      <div class="stat-card">
+        <div class="stat-val">${s.val}</div>
+        <div class="stat-lbl">${s.lbl}</div>
+      </div>`
+  })
+
+  // Chart
+  if (chart) chart.destroy()
+  const ctx = document.getElementById('cpiChart').getContext('2d')
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels:   z.map(zs => 'Z' + zs.zone),
+      datasets: [{
+        data:            z.map(zs => zs.mean_cpi),
+        backgroundColor: ZONE_COLORS,
+        borderRadius:    4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#9FE1CB', font: { size: 10 } }, grid: { color: '#1e3d30' } },
+        y: { ticks: { color: '#9FE1CB', font: { size: 10 } }, grid: { color: '#1e3d30' }, max: 1 },
+      }
+    }
+  })
+
+  // Zone table
+  const tbody = document.getElementById('zoneTbody')
+  tbody.innerHTML = ''
+  z.forEach((zs, i) => {
+    tbody.innerHTML += `
+      <tr>
+        <td><span class="zdot" style="background:${ZONE_COLORS[i]}"></span>Zone ${zs.zone}</td>
+        <td>${(zs.pixel_count / 1000).toFixed(1)}k</td>
+        <td>${zs.mean_shpi}</td>
+        <td><strong>${zs.mean_cpi}</strong></td>
+      </tr>`
+  })
+
+  document.getElementById('results').classList.add('show')
+}
+
+// ── Save to Sheet ─────────────────────────────────────────────
+function saveResult() {
+  if (!lastResult) return
+  google.script.run
+    .withSuccessHandler(() => alert('Saved to Google Sheet ✓'))
+    .withFailureHandler(e => alert('Save failed: ' + e.message))
+    .saveToSheet(lastResult)
+}
+
+// ── Download JSON ─────────────────────────────────────────────
+function downloadResult() {
+  if (!lastResult) return
+  const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: 'application/json' })
+  const a    = document.createElement('a')
+  a.href     = URL.createObjectURL(blob)
+  a.download = 'soil_health_' + new Date().toISOString().slice(0, 10) + '.json'
+  a.click()
+}
+
+// ── UI helpers ────────────────────────────────────────────────
+function showOverlay(show, msg) {
+  document.getElementById('overlay').classList.toggle('show', show)
+  if (msg) document.getElementById('ovMsg').textContent = msg
+}
+
+function setProgress(show, pct, msg) {
+  const el = document.getElementById('progress')
+  el.classList.toggle('show', show)
+  if (pct !== undefined) document.getElementById('progFill').style.width = pct + '%'
+  if (msg)               document.getElementById('progMsg').textContent  = msg
+}
+</script>
+</body>
+</html>
