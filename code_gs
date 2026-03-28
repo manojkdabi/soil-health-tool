@@ -1,5 +1,5 @@
 // ============================================================
-// Soil Health Stratification Tool — Apps Script Backend BE1.0.6
+// Soil Health Stratification Tool — Apps Script Backend BE1.0.7
 // Treeconomy Soil Intelligence Division
 // All strings use single quotes and + concatenation. No backticks.
 // ============================================================
@@ -151,21 +151,15 @@ function getBbox_(geometry) {
   ];
 }
 
-// ── Spearman rank correlation ─────────────────────────────────
-function spearman_(xs, ys) {
-  var n = xs.length;
-  function rank(arr) {
-    var sorted = arr.slice().sort(function(a,b) { return a-b; });
-    return arr.map(function(v) {
-      // Average rank for ties (first + last index, 1-based)
-      var first = sorted.indexOf(v);
-      var last  = sorted.lastIndexOf(v);
-      return (first + last) / 2 + 1;
-    });
-  }
-  var rx = rank(xs), ry = rank(ys);
-  var d2 = rx.reduce(function(s,r,i) { return s + Math.pow(r - ry[i], 2); }, 0);
-  return 1 - (6 * d2) / (n * (n*n - 1));
+// ── Pearson correlation coefficient ───────────────────────────
+function pearson_(xs, ys) {
+  var n  = xs.length;
+  var mx = xs.reduce(function(s,v) { return s+v; }, 0) / n;
+  var my = ys.reduce(function(s,v) { return s+v; }, 0) / n;
+  var cov = xs.reduce(function(s,v,i) { return s + (v-mx)*(ys[i]-my); }, 0);
+  var sdx = Math.sqrt(xs.reduce(function(s,v) { return s+(v-mx)*(v-mx); }, 0));
+  var sdy = Math.sqrt(ys.reduce(function(s,v) { return s+(v-my)*(v-my); }, 0));
+  return (sdx > 0 && sdy > 0) ? cov / (sdx * sdy) : 0;
 }
 
 // ── Main: called from HTML client ────────────────────────────
@@ -433,20 +427,22 @@ function buildZoneStats_(aBins, bBins) {
     };
   });
 
-  var zones    = [1,2,3,4,5];
   var cpiVals  = zoneStats.map(function(z) { return z.mean_cpi; });
-  var rho      = spearman_(zones, cpiVals);
+  var shpiVals = zoneStats.map(function(z) { return z.mean_shpi; });
   var mono     = cpiVals.every(function(v,i) { return i === 0 || v >= cpiVals[i-1]; });
   var ratio    = cpiVals[0] > 0.01 ? Math.round(cpiVals[4] / cpiVals[0] * 100) / 100 : null;
+  var pr       = pearson_(shpiVals, cpiVals);
+  var r2       = Math.round(pr * pr * 1000) / 1000;
+  pr           = Math.round(pr * 1000) / 1000;
 
   return {
     zoneStats: zoneStats,
     validation: {
-      spearman_rho: Math.round(rho * 1000) / 1000,
-      spearman_p:   rho > 0.80 ? 0.001 : rho > 0.60 ? 0.032 : 0.180,
+      pearson_r:    pr,
+      r_squared:    r2,
       is_monotonic: mono,
       cpi_ratio:    ratio,
-      confirmed:    rho > 0.60 && mono,
+      confirmed:    pr > 0.60 && mono,
       n_zones:      5,
       data_source:  dataSource
     }
@@ -462,7 +458,7 @@ function saveToSheet(data) {
       sheet.appendRow([
         'Timestamp','Year Range','Resolution (m)','Data Source',
         'Z1 CPI','Z2 CPI','Z3 CPI','Z4 CPI','Z5 CPI',
-        'Spearman rho','p-value','Confirmed','CPI Ratio'
+        'Pearson r','R2','Confirmed','CPI Ratio'
       ]);
     }
     var v = data.validation;
@@ -473,7 +469,7 @@ function saveToSheet(data) {
       data.meta.resolution_m,
       v.data_source || 'unknown',
       z[0].mean_cpi, z[1].mean_cpi, z[2].mean_cpi, z[3].mean_cpi, z[4].mean_cpi,
-      v.spearman_rho, v.spearman_p,
+      v.pearson_r, v.r_squared,
       v.confirmed ? 'YES' : 'NO',
       v.cpi_ratio
     ]);

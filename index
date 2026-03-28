@@ -109,8 +109,8 @@ canvas{display:block}
   <div class="hdr-logo">SH</div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
-    <span class="ver-pill ver-pill-be">BE1.0.6</span>
-    <span class="ver-pill ver-pill-fe">FE1.0.7</span>
+    <span class="ver-pill ver-pill-be">BE1.0.7</span>
+    <span class="ver-pill ver-pill-fe">FE1.0.8</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -435,8 +435,8 @@ function renderResults(data) {
   const statGrid = document.getElementById('statGrid')
   statGrid.innerHTML = ''
   const stats = [
-    { val: v.spearman_rho,  lbl: 'Spearman ρ' },
-    { val: v.spearman_p <= 0.001 ? '<0.001' : v.spearman_p, lbl: 'p-value' },
+    { val: v.pearson_r,  lbl: 'Pearson r' },
+    { val: v.r_squared,  lbl: 'R²' },
     { val: v.cpi_ratio ? v.cpi_ratio + '×' : '—', lbl: 'CPI Z5/Z1 ratio' },
     { val: v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
   ]
@@ -492,7 +492,8 @@ function renderResults(data) {
     tdZone.appendChild(document.createTextNode('Zone ' + zs.zone))
 
     const tdPx = document.createElement('td')
-    tdPx.textContent = formatPixelCount(zs.pixel_count)
+    tdPx.textContent = zs.pixel_count === 0 ? '—' : formatPixelCount(zs.pixel_count)
+    if (zs.pixel_count === 0) tdPx.title = 'No bare-soil pixels — fallback SHPI value used'
 
     const tdShpi = document.createElement('td')
     tdShpi.textContent = zs.mean_shpi
