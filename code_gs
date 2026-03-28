@@ -1,5 +1,5 @@
 // ============================================================
-// Soil Health Stratification Tool — Apps Script Backend v3.0
+// Soil Health Stratification Tool — Apps Script Backend BE1.0.0
 // Treeconomy Soil Intelligence Division
 // All strings use single quotes and + concatenation. No backticks.
 // ============================================================
@@ -18,7 +18,7 @@ var EVALSCRIPT_STATS_A =
   '  return {\n' +
   '    input: [{ bands: ["B02","B03","B04","B08","B11","B12","SCL"] }],\n' +
   '    output: [\n' +
- '      { id: "shpi",     bands: 1, sampleType: "AUTO" },\n' +
+ '      { id: "shpi",     bands: 1, sampleType: "FLOAT32" },\n' +
   '      { id: "dataMask", bands: 1, sampleType: "UINT8"   }\n' +
   '    ],\n' +
   '    mosaicking: "ORBIT"\n' +
@@ -68,7 +68,7 @@ var EVALSCRIPT_STATS_B =
   '  return {\n' +
   '    input: [{ bands: ["B04","B08","SCL"] }],\n' +
   '    output: [\n' +
-  '      { id: "ndvi",     bands: 1, sampleType: "AUTO" },\n' +
+  '      { id: "ndvi",     bands: 1, sampleType: "FLOAT32" },\n' +
   '      { id: "dataMask", bands: 1, sampleType: "UINT8"   }\n' +
   '    ],\n' +
   '    mosaicking: "ORBIT"\n' +
