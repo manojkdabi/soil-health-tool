@@ -57,7 +57,7 @@ function testTrackA() {
       },
       calculations: {
         shpi: {
-          histograms: { default: { nBins: 10, lowEdge: -0.5, highEdge: 1.5 } }
+          histograms: { default: { nBins: 100, lowEdge: -0.5, highEdge: 1.5 } }
         }
       }
     };
@@ -154,7 +154,7 @@ function testTrackB() {
       },
       calculations: {
         ndvi: {
-          histograms: { default: { nBins: 10, lowEdge: -0.5, highEdge: 1.5 } }
+          histograms: { default: { nBins: 100, lowEdge: -0.5, highEdge: 1.5 } }
         }
       }
     };
@@ -297,7 +297,7 @@ function testBinDiagnostics() {
     },
     calculations: {
       shpi: {
-        histograms: { default: { nBins: 10, lowEdge: -0.5, highEdge: 1.5 } }
+        histograms: { default: { nBins: 100, lowEdge: -0.5, highEdge: 1.5 } }
       }
     }
   };
@@ -365,6 +365,7 @@ function testBinDiagnostics() {
   Logger.log('[6] Walking periods...');
   var totalBins = 0;
   var totalNonEmpty = 0;
+  var allBinsCollected = [];
   body.data.forEach(function(period, pi) {
     Logger.log('  Period ' + pi + ':');
     Logger.log('    interval: ' + JSON.stringify(period.interval || '(none)'));
@@ -417,7 +418,9 @@ function testBinDiagnostics() {
     }
     nonEmpty.forEach(function(b) {
       var mid = b.mean !== undefined ? b.mean : (b.lowEdge + b.highEdge) / 2;
+      if (b.mean === undefined) b.mean = mid;
       Logger.log('    bin [' + b.lowEdge + ',' + b.highEdge + '] count=' + b.count + ' mean=' + mid.toFixed(4));
+      allBinsCollected.push(b);
     });
   });
 
@@ -437,9 +440,39 @@ function testBinDiagnostics() {
     Logger.log('    FIX: Increase nBins or widen lowEdge/highEdge range');
   } else {
     Logger.log('    DIAGNOSIS: Bins OK — parseHistogram_ should succeed');
-    Logger.log('    If still seeing synthetic: ensure code_gs is using the latest version (BE1.0.4)');
-    Logger.log('    Check: Logger.log at top of code_gs should say "BE1.0.4"');
+    Logger.log('    If still seeing synthetic: ensure code_gs is using the latest version (BE1.0.5)');
+    Logger.log('    Check: Logger.log at top of code_gs should say "BE1.0.5"');
   }
+
+  // ── Step 8: simulate quantile zone split ──────────────────
+  Logger.log('[8] Quantile zone split simulation:');
+  if (allBinsCollected.length >= 3) {
+    var sorted8 = allBinsCollected.slice().sort(function(a, b) { return a.mean - b.mean; });
+    var totalPx = sorted8.reduce(function(s, b) { return s + b.count; }, 0);
+    Logger.log('    Total collected bins: ' + sorted8.length + '  totalPixels: ' + totalPx);
+    Logger.log('    min_mean: ' + sorted8[0].mean.toFixed(4) + '  max_mean: ' + sorted8[sorted8.length-1].mean.toFixed(4));
+    var target8 = totalPx / 5;
+    var buckets8 = [[], [], [], [], []];
+    var cumPx8 = 0, zi8 = 0;
+    sorted8.forEach(function(b) {
+      buckets8[zi8].push(b);
+      cumPx8 += b.count;
+      if (zi8 < 4 && cumPx8 >= target8 * (zi8 + 1)) { zi8++; }
+    });
+    buckets8.forEach(function(slice, idx) {
+      if (!slice.length) {
+        Logger.log('    Zone ' + (idx+1) + ': EMPTY — fallback mean=' + (0.10 + idx*0.15).toFixed(2));
+        return;
+      }
+      var wSum = slice.reduce(function(s, b) { return s + b.mean * b.count; }, 0);
+      var cnt  = slice.reduce(function(s, b) { return s + b.count; }, 0);
+      var m    = cnt > 0 ? Math.round(wSum / cnt * 1000) / 1000 : 0.10 + idx * 0.15;
+      Logger.log('    Zone ' + (idx+1) + ': bins=' + slice.length + '  pixels=' + cnt + '  mean_shpi=' + m);
+    });
+  } else {
+    Logger.log('    Skipped — fewer than 3 valid bins collected');
+  }
+
   Logger.log('====================================');
   Logger.log('BIN DIAGNOSTICS DONE');
   Logger.log('====================================');
