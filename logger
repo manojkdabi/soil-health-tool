@@ -1,0 +1,267 @@
+// ============================================================
+// Wiring Tests — Logger.gs v3.0
+// No backticks. No const/let. No template literals.
+// Select function from dropdown -> Run -> View -> Executions
+// ============================================================
+
+function testToken() {
+  Logger.log('=== TEST 1: Token ===');
+  try {
+    var token = getToken_();
+    Logger.log('OK - length: ' + token.length + ' chars');
+    Logger.log('Preview: ' + token.substring(0, 50) + '...');
+  } catch(e) {
+    Logger.log('FAIL: ' + e.message);
+  }
+}
+
+function testGeometry() {
+  Logger.log('=== TEST 2: Geometry ===');
+  var geom = {
+    type: 'Polygon',
+    coordinates: [[[74.5,18.8],[75.2,18.8],[75.2,19.3],[74.5,19.3],[74.5,18.8]]]
+  };
+  var bbox = getBbox_(geom);
+  Logger.log('BBox: ' + JSON.stringify(bbox));
+  Logger.log('Width degrees:  ' + (bbox[2] - bbox[0]).toFixed(3));
+  Logger.log('Height degrees: ' + (bbox[3] - bbox[1]).toFixed(3));
+  Logger.log('At resx=0.01: approx ' +
+    Math.round((bbox[2]-bbox[0])/0.01) + 'w x ' +
+    Math.round((bbox[3]-bbox[1])/0.01) + 'h pixels');
+}
+
+function testTrackA() {
+  Logger.log('=== TEST 3: Track A Statistical API (SHPI) ===');
+  try {
+    var token = getToken_();
+    Logger.log('Token OK');
+
+    var bbox    = [74.5, 18.8, 75.2, 19.3];
+    var payload = {
+      input: {
+        bounds: {
+          bbox: bbox,
+          properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' }
+        },
+        data: [{
+          dataFilter: { timeRange: { from: '2021-01-01T00:00:00Z', to: '2023-12-31T23:59:59Z' } },
+          type: 'sentinel-2-l2a'
+        }]
+      },
+      aggregation: {
+        timeRange:           { from: '2021-01-01T00:00:00Z', to: '2023-12-31T23:59:59Z' },
+        aggregationInterval: { of: 'P3M' },
+        evalscript:          EVALSCRIPT_STATS_A,
+        resx:                0.01,
+        resy:                0.01
+      },
+      calculations: {
+        default: {
+          histograms: { default: { nBins: 10, lowEdge: 0.0, highEdge: 1.0 } }
+        }
+      }
+    };
+
+    var resp = UrlFetchApp.fetch('https://sh.dataspace.copernicus.eu/api/v1/statistics', {
+      method:             'post',
+      contentType:        'application/json',
+      payload:            JSON.stringify(payload),
+      headers:            { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+
+    var code = resp.getResponseCode();
+    Logger.log('HTTP status: ' + code);
+
+    if (code !== 200) {
+      Logger.log('ERROR: ' + resp.getContentText().substring(0, 500));
+      return;
+    }
+
+    var body = JSON.parse(resp.getContentText());
+    Logger.log('Top-level keys: ' + Object.keys(body).join(', '));
+    Logger.log('data[] length: ' + (body.data ? body.data.length : 'missing'));
+
+    if (!body.data || body.data.length === 0) {
+      Logger.log('EMPTY - no periods returned');
+      Logger.log('Full response: ' + resp.getContentText().substring(0, 500));
+      return;
+    }
+
+    Logger.log('REAL DATA received - ' + body.data.length + ' periods');
+    var allBins = [];
+    body.data.forEach(function(period, pi) {
+      try {
+        var interval = period.interval;
+        var outputs  = period.outputs;
+        Logger.log('Period ' + pi + ': ' + JSON.stringify(interval));
+        Logger.log('  Output keys: ' + Object.keys(outputs).join(', '));
+        var out  = outputs['shpi'] || outputs[Object.keys(outputs)[0]];
+        Logger.log('  Band keys: ' + Object.keys(out).join(', '));
+        var band = out['B0'] || out[Object.keys(out)[0]];
+        Logger.log('  Stat keys: ' + Object.keys(band).join(', '));
+        if (band.histogram && band.histogram.bins) {
+          var bins = band.histogram.bins;
+          var valid = bins.filter(function(b) { return b.count > 0; });
+          Logger.log('  Histogram: ' + bins.length + ' bins, ' + valid.length + ' non-empty');
+          valid.forEach(function(b) {
+            Logger.log('    mean=' + (b.mean||0).toFixed(4) + ' count=' + b.count);
+            allBins.push(b);
+          });
+        } else {
+          Logger.log('  No histogram. Band content: ' + JSON.stringify(band).substring(0,200));
+        }
+      } catch(pe) {
+        Logger.log('Period ' + pi + ' error: ' + pe.message);
+      }
+    });
+    Logger.log('Total valid bins: ' + allBins.length);
+    if (allBins.length >= 5) {
+      Logger.log('STATUS: SHPI data ready for zone computation');
+    } else {
+      Logger.log('STATUS: Insufficient bins - will use synthetic fallback');
+    }
+
+  } catch(e) {
+    Logger.log('EXCEPTION: ' + e.message);
+  }
+}
+
+function testTrackB() {
+  Logger.log('=== TEST 4: Track B Statistical API (NDVI) ===');
+  try {
+    var token = getToken_();
+    var bbox  = [74.5, 18.8, 75.2, 19.3];
+    var payload = {
+      input: {
+        bounds: {
+          bbox: bbox,
+          properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' }
+        },
+        data: [{
+          dataFilter: { timeRange: { from: '2021-06-01T00:00:00Z', to: '2023-10-31T23:59:59Z' } },
+          type: 'sentinel-2-l2a'
+        }]
+      },
+      aggregation: {
+        timeRange:           { from: '2021-06-01T00:00:00Z', to: '2023-10-31T23:59:59Z' },
+        aggregationInterval: { of: 'P3M' },
+        evalscript:          EVALSCRIPT_STATS_B,
+        resx:                0.01,
+        resy:                0.01
+      },
+      calculations: {
+        default: {
+          histograms: { default: { nBins: 10, lowEdge: 0.0, highEdge: 1.0 } }
+        }
+      }
+    };
+
+    var resp = UrlFetchApp.fetch('https://sh.dataspace.copernicus.eu/api/v1/statistics', {
+      method:             'post',
+      contentType:        'application/json',
+      payload:            JSON.stringify(payload),
+      headers:            { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+
+    var code = resp.getResponseCode();
+    Logger.log('HTTP status: ' + code);
+
+    if (code !== 200) {
+      Logger.log('ERROR: ' + resp.getContentText().substring(0, 500));
+      return;
+    }
+
+    var body = JSON.parse(resp.getContentText());
+    Logger.log('data[] length: ' + (body.data ? body.data.length : 'missing'));
+
+    if (!body.data || body.data.length === 0) {
+      Logger.log('EMPTY - no periods returned');
+      return;
+    }
+
+    Logger.log('REAL NDVI DATA received - ' + body.data.length + ' periods');
+    var allBins = [];
+    body.data.forEach(function(period, pi) {
+      try {
+        var outputs = period.outputs;
+        var out     = outputs['ndvi'] || outputs[Object.keys(outputs)[0]];
+        var band    = out['B0'] || out[Object.keys(out)[0]];
+        if (band.histogram && band.histogram.bins) {
+          band.histogram.bins.forEach(function(b) {
+            if (b.count > 0) {
+              Logger.log('Period ' + pi + ' bin: mean=' + (b.mean||0).toFixed(4) + ' count=' + b.count);
+              allBins.push(b);
+            }
+          });
+        }
+      } catch(pe) {
+        Logger.log('Period ' + pi + ' error: ' + pe.message);
+      }
+    });
+    Logger.log('Total valid NDVI bins: ' + allBins.length);
+    if (allBins.length >= 5) {
+      Logger.log('STATUS: NDVI data ready for CPI computation');
+    } else {
+      Logger.log('STATUS: Insufficient bins - will use synthetic fallback');
+    }
+
+  } catch(e) {
+    Logger.log('EXCEPTION: ' + e.message);
+  }
+}
+
+function testFullPipeline() {
+  Logger.log('=== TEST 5: Full Pipeline ===');
+  var params = {
+    geojson: {
+      type: 'Polygon',
+      coordinates: [[[74.5,18.8],[75.2,18.8],[75.2,19.3],[74.5,19.3],[74.5,18.8]]]
+    },
+    yearStart:    2021,
+    yearEnd:      2023,
+    resolution:   100,
+    kharifMonths: [7,8,9,10],
+    rabiMonths:   [12,1,2,3]
+  };
+
+  var result = runAnalysis(params);
+  Logger.log('success: ' + result.success);
+
+  if (!result.success) {
+    Logger.log('error: ' + result.error);
+    return;
+  }
+
+  Logger.log('data_source: ' + result.validation.data_source);
+  Logger.log('--- Zone Stats ---');
+  result.zone_stats.forEach(function(z) {
+    Logger.log('Zone ' + z.zone + ': SHPI=' + z.mean_shpi + ' CPI=' + z.mean_cpi);
+  });
+  Logger.log('--- Validation ---');
+  Logger.log('Spearman rho : ' + result.validation.spearman_rho);
+  Logger.log('p-value      : ' + result.validation.spearman_p);
+  Logger.log('Monotonic    : ' + result.validation.is_monotonic);
+  Logger.log('CPI ratio    : ' + result.validation.cpi_ratio);
+  Logger.log('Confirmed    : ' + result.validation.confirmed);
+}
+
+function runAllTests() {
+  Logger.log('====================================');
+  Logger.log('WIRING TESTS v3.0');
+  Logger.log(new Date().toISOString());
+  Logger.log('====================================');
+  testToken();
+  Logger.log('------------------------------------');
+  testGeometry();
+  Logger.log('------------------------------------');
+  testTrackA();
+  Logger.log('------------------------------------');
+  testTrackB();
+  Logger.log('------------------------------------');
+  testFullPipeline();
+  Logger.log('====================================');
+  Logger.log('DONE');
+  Logger.log('====================================');
+}
