@@ -290,7 +290,10 @@ document.getElementById('gjInput').addEventListener('change', e => {
         style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 }
       }).addTo(drawn)
       map.fitBounds(layer.getBounds())
-      if (gj.type === 'FeatureCollection') roi = gj.features[0].geometry
+      if (gj.type === 'FeatureCollection') {
+        if (!gj.features || gj.features.length === 0) throw new Error('FeatureCollection has no features')
+        roi = gj.features[0].geometry
+      }
       else if (gj.type === 'Feature') roi = gj.geometry
       else roi = gj
       setROIStatus('✓ GeoJSON loaded: ' + file.name)
@@ -319,13 +322,20 @@ function setROIStatus(msg) {
 function runAnalysis() {
   if (!roi) { alert('Draw or upload an ROI first.'); return }
 
-  const yearStart    = parseInt(document.getElementById('yearStart').value)
-  const yearEnd      = parseInt(document.getElementById('yearEnd').value)
-  const resolution   = parseInt(document.getElementById('resolution').value)
+  const yearStart    = parseInt(document.getElementById('yearStart').value, 10)
+  const yearEnd      = parseInt(document.getElementById('yearEnd').value, 10)
+  const resolution   = parseInt(document.getElementById('resolution').value, 10)
   const kharifMonths = document.getElementById('kharifMonths').value.split(',').map(Number).filter(Boolean)
   const rabiMonths   = document.getElementById('rabiMonths').value.split(',').map(Number).filter(Boolean)
 
+  const currentYear = new Date().getFullYear()
+  if (isNaN(yearStart) || isNaN(yearEnd)) { alert('Year start and end must be valid numbers.'); return }
+  if (yearStart < 2015 || yearEnd > currentYear) { alert('Years must be between 2015 and ' + currentYear + '.'); return }
   if (yearEnd <= yearStart) { alert('Year end must be after year start.'); return }
+  if (isNaN(resolution) || resolution < 10 || resolution > 1000) { alert('Resolution must be between 10 and 1000 metres.'); return }
+  const validMonth = m => Number.isInteger(m) && m >= 1 && m <= 12
+  if (!kharifMonths.every(validMonth)) { alert('Kharif months must be integers between 1 and 12.'); return }
+  if (!rabiMonths.every(validMonth)) { alert('Rabi months must be integers between 1 and 12.'); return }
 
   showOverlay(true, 'Connecting to Sentinel Hub...')
   setProgress(true, 10, 'Fetching dry season composite (Track A)...')
@@ -415,11 +425,17 @@ function renderResults(data) {
     { val: v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
   ]
   stats.forEach(s => {
-    statGrid.innerHTML += `
-      <div class="stat-card">
-        <div class="stat-val">${s.val}</div>
-        <div class="stat-lbl">${s.lbl}</div>
-      </div>`
+    const card = document.createElement('div')
+    card.className = 'stat-card'
+    const val = document.createElement('div')
+    val.className = 'stat-val'
+    val.textContent = s.val
+    const lbl = document.createElement('div')
+    lbl.className = 'stat-lbl'
+    lbl.textContent = s.lbl
+    card.appendChild(val)
+    card.appendChild(lbl)
+    statGrid.appendChild(card)
   })
 
   // Chart
@@ -450,13 +466,31 @@ function renderResults(data) {
   const tbody = document.getElementById('zoneTbody')
   tbody.innerHTML = ''
   z.forEach((zs, i) => {
-    tbody.innerHTML += `
-      <tr>
-        <td><span class="zdot" style="background:${ZONE_COLORS[i]}"></span>Zone ${zs.zone}</td>
-        <td>${(zs.pixel_count / 1000).toFixed(1)}k</td>
-        <td>${zs.mean_shpi}</td>
-        <td><strong>${zs.mean_cpi}</strong></td>
-      </tr>`
+    const tr = document.createElement('tr')
+
+    const tdZone = document.createElement('td')
+    const zdot = document.createElement('span')
+    zdot.className = 'zdot'
+    zdot.style.background = ZONE_COLORS[i]
+    tdZone.appendChild(zdot)
+    tdZone.appendChild(document.createTextNode('Zone ' + zs.zone))
+
+    const tdPx = document.createElement('td')
+    tdPx.textContent = (zs.pixel_count / 1000).toFixed(1) + 'k'
+
+    const tdShpi = document.createElement('td')
+    tdShpi.textContent = zs.mean_shpi
+
+    const tdCpi = document.createElement('td')
+    const strong = document.createElement('strong')
+    strong.textContent = zs.mean_cpi
+    tdCpi.appendChild(strong)
+
+    tr.appendChild(tdZone)
+    tr.appendChild(tdPx)
+    tr.appendChild(tdShpi)
+    tr.appendChild(tdCpi)
+    tbody.appendChild(tr)
   })
 
   document.getElementById('results').classList.add('show')
