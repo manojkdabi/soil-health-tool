@@ -105,7 +105,8 @@ function testTrackA() {
           var valid = bins.filter(function(b) { return b.count > 0; });
           Logger.log('  Histogram: ' + bins.length + ' bins, ' + valid.length + ' non-empty');
           valid.forEach(function(b) {
-            Logger.log('    mean=' + (b.mean||0).toFixed(4) + ' count=' + b.count);
+            if (b.mean === undefined) b.mean = (b.lowEdge + b.highEdge) / 2;
+            Logger.log('    mean=' + b.mean.toFixed(4) + ' count=' + b.count);
             allBins.push(b);
           });
         } else {
@@ -191,7 +192,8 @@ function testTrackB() {
         if (band.histogram && band.histogram.bins) {
           band.histogram.bins.forEach(function(b) {
             if (b.count > 0) {
-              Logger.log('Period ' + pi + ' bin: mean=' + (b.mean||0).toFixed(4) + ' count=' + b.count);
+              if (b.mean === undefined) b.mean = (b.lowEdge + b.highEdge) / 2;
+              Logger.log('Period ' + pi + ' bin: mean=' + b.mean.toFixed(4) + ' count=' + b.count);
               allBins.push(b);
             }
           });
