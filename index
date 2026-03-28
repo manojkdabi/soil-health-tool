@@ -69,6 +69,7 @@ input:focus,select:focus{border-color:#F5A623}
 .ztbl{width:100%;border-collapse:collapse;font-size:11px}
 .ztbl th{padding:5px 6px;background:#1a3d30;color:#9FE1CB;text-align:left;font-weight:600}
 .ztbl td{padding:5px 6px;border-bottom:1px solid #1a3020}
+#results-map{height:220px;border-radius:6px;overflow:hidden;border:1px solid #2E6B4F;margin-top:2px}
 .zdot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
 
 /* Zone legend */
@@ -173,6 +174,7 @@ canvas{display:block}
         <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
         <tbody id="zoneTbody"></tbody>
       </table>
+      <div id="results-map"></div>
       <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
       <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
     </div>
@@ -208,6 +210,7 @@ canvas{display:block}
 let roi        = null
 let lastResult = null
 let chart      = null
+let resultsMap = null
 const ZONE_COLORS = ['#d73027','#fc8d59','#fee08b','#91cf60','#1a9850']
 
 // ── Map init ──────────────────────────────────────────────────
@@ -499,6 +502,74 @@ function renderResults(data) {
   })
 
   document.getElementById('results').classList.add('show')
+
+  // Zone map — rendered after 'show' so the container has layout
+  setTimeout(function() { renderResultsMap_(data.zone_stats) }, 50)
+}
+
+// ── Results Map ───────────────────────────────────────────────
+function geomBbox_(geom) {
+  var coords = geom.type === 'MultiPolygon'
+    ? geom.coordinates.reduce(function(a, poly) { return a.concat(poly[0]) }, [])
+    : geom.coordinates[0]
+  return coords.reduce(function(b, c) {
+    return [Math.min(b[0], c[0]), Math.min(b[1], c[1]), Math.max(b[2], c[0]), Math.max(b[3], c[1])]
+  }, [Infinity, Infinity, -Infinity, -Infinity])
+}
+
+function renderResultsMap_(zoneStat) {
+  if (!roi) return
+  var container = document.getElementById('results-map')
+
+  if (!resultsMap) {
+    resultsMap = L.map(container, { zoomControl: true, attributionControl: false })
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19
+    }).addTo(resultsMap)
+  } else {
+    resultsMap.eachLayer(function(lyr) {
+      if (!(lyr instanceof L.TileLayer)) resultsMap.removeLayer(lyr)
+    })
+  }
+
+  // Build 5 latitudinal band polygons from ROI bbox
+  var bb     = geomBbox_(roi)
+  var minLng = bb[0], minLat = bb[1], maxLng = bb[2], maxLat = bb[3]
+  var latStep = (maxLat - minLat) / 5
+
+  var bandFC = {
+    type: 'FeatureCollection',
+    features: zoneStat.map(function(zs, i) {
+      var s = minLat + i * latStep
+      var n = minLat + (i + 1) * latStep
+      return {
+        type: 'Feature',
+        properties: { zoneIdx: i, zone: zs.zone, cpi: zs.mean_cpi },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[minLng, s], [maxLng, s], [maxLng, n], [minLng, n], [minLng, s]]]
+        }
+      }
+    })
+  }
+  L.geoJSON(bandFC, {
+    style: function(f) {
+      var c = ZONE_COLORS[f.properties.zoneIdx]
+      return { color: c, weight: 0.5, fillColor: c, fillOpacity: 0.4 }
+    },
+    onEachFeature: function(f, lyr) {
+      lyr.bindTooltip('Zone ' + f.properties.zone + ' · CPI ' + f.properties.cpi,
+                      { sticky: true })
+    }
+  }).addTo(resultsMap)
+
+  // ROI outline
+  L.geoJSON(roi, {
+    style: { color: '#F5A623', weight: 2, fillOpacity: 0, dashArray: '4 3' }
+  }).addTo(resultsMap)
+
+  // Fit to ROI
+  resultsMap.fitBounds([[minLat, minLng], [maxLat, maxLng]], { padding: [6, 6] })
 }
 
 // ── Save to Sheet ─────────────────────────────────────────────
