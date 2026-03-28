@@ -441,7 +441,7 @@ function testBinDiagnostics() {
   } else {
     Logger.log('    DIAGNOSIS: Bins OK — parseHistogram_ should succeed');
     Logger.log('    If still seeing synthetic: ensure code_gs is using the latest version (BE1.0.5)');
-    Logger.log('    Check: Logger.log at top of code_gs should say "BE1.0.5"');
+    Logger.log('    Check: comment at top of code_gs should say "BE1.0.5"');
   }
 
   // ── Step 8: simulate quantile zone split ──────────────────

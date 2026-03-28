@@ -348,6 +348,9 @@ function buildZoneStats_(aBins, bBins) {
   // Sorting by bin midpoint and dividing by bin count gives identical means when all
   // pixels fall in a narrow SHPI range.  Dividing by cumulative pixel count ensures
   // the 5 zones always span the actual distribution of measured pixels.
+  // @param {string} label - log prefix ('SHPI' or 'NDVI')
+  // @param {Array}  bins  - array of {mean, count} objects from parseHistogram_
+  // @returns {Array} 5-element array of weighted mean values, one per zone
   function binsToZoneMeans(label, bins) {
     var sorted = bins.slice().sort(function(a, b) { return a.mean - b.mean; });
     var totalCount = sorted.reduce(function(s, b) { return s + b.count; }, 0);
@@ -371,10 +374,11 @@ function buildZoneStats_(aBins, bBins) {
     }
 
     var means = buckets.map(function(slice, idx) {
-      if (!slice.length) { var fallback = 0.10 + idx * 0.15; return fallback; }
+      var fallback = Math.round((0.10 + idx * 0.15) * 1000) / 1000;
+      if (!slice.length) { return fallback; }
       var wSum = slice.reduce(function(s, b) { return s + b.mean * b.count; }, 0);
       var cnt  = slice.reduce(function(s, b) { return s + b.count; }, 0);
-      var m    = cnt > 0 ? Math.round(wSum / cnt * 1000) / 1000 : 0.10 + idx * 0.15;
+      var m    = cnt > 0 ? Math.round(wSum / cnt * 1000) / 1000 : fallback;
       Logger.log('  Zone ' + (idx + 1) + ': bins=' + slice.length + '  pixels=' + cnt + '  mean=' + m);
       return m;
     });
