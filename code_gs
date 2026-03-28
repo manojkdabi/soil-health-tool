@@ -314,7 +314,8 @@ function parseHistogram_(resp, outputId) {
       try {
         var outputs = period.outputs;
         var out     = outputs[outputId] || outputs[Object.keys(outputs)[0]];
-        var band    = out.B0 || out[Object.keys(out)[0]];
+        var bands   = out.bands || out;
+        var band    = bands.B0 || bands[Object.keys(bands)[0]];
         if (band && band.histogram && band.histogram.bins) {
           band.histogram.bins.forEach(function(b) {
             if (b.count > 0) {

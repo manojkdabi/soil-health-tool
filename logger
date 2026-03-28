@@ -96,9 +96,10 @@ function testTrackA() {
         var outputs  = period.outputs;
         Logger.log('Period ' + pi + ': ' + JSON.stringify(interval));
         Logger.log('  Output keys: ' + Object.keys(outputs).join(', '));
-        var out  = outputs['shpi'] || outputs[Object.keys(outputs)[0]];
+        var out   = outputs['shpi'] || outputs[Object.keys(outputs)[0]];
         Logger.log('  Band keys: ' + Object.keys(out).join(', '));
-        var band = out['B0'] || out[Object.keys(out)[0]];
+        var bands = out.bands || out;
+        var band  = bands['B0'] || bands[Object.keys(bands)[0]];
         Logger.log('  Stat keys: ' + Object.keys(band).join(', '));
         if (band.histogram && band.histogram.bins) {
           var bins = band.histogram.bins;
@@ -188,7 +189,8 @@ function testTrackB() {
       try {
         var outputs = period.outputs;
         var out     = outputs['ndvi'] || outputs[Object.keys(outputs)[0]];
-        var band    = out['B0'] || out[Object.keys(out)[0]];
+        var bands   = out.bands || out;
+        var band    = bands['B0'] || bands[Object.keys(bands)[0]];
         if (band.histogram && band.histogram.bins) {
           band.histogram.bins.forEach(function(b) {
             if (b.count > 0) {
@@ -379,10 +381,14 @@ function testBinDiagnostics() {
     }
 
     var bandKeys = Object.keys(out);
-    Logger.log('    band keys: ' + bandKeys.join(', '));
+    Logger.log('    output wrapper keys: ' + bandKeys.join(', '));
 
-    var band = out['B0'] || out[bandKeys[0]];
-    Logger.log('    selected band: ' + (out['B0'] ? 'B0' : bandKeys[0]));
+    var bands = out.bands || out;
+    var b0Keys = Object.keys(bands);
+    Logger.log('    band keys: ' + b0Keys.join(', '));
+
+    var band = bands['B0'] || bands[b0Keys[0]];
+    Logger.log('    selected band: ' + (bands['B0'] ? 'B0' : b0Keys[0]));
     Logger.log('    band stat keys: ' + Object.keys(band).join(', '));
 
     if (!band.histogram) {
