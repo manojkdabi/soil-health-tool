@@ -49,8 +49,6 @@ function buildEvalscriptA_(rabiMonths) {
     '  }\n' +
     '  var b2  = med(v,"B02"), b3  = med(v,"B03"), b4  = med(v,"B04");\n' +
     '  var b8  = med(v,"B08"), b11 = med(v,"B11"), b12 = med(v,"B12");\n' +
-    '  var lswi = (b8 - b11) / (b8 + b11 + 0.0001);\n' +
-    '  if (lswi >= 0) return { shpi: [0], dataMask: [0] };\n' +
     '  var bsi  = ((b11+b4)-(b8+b2)) / ((b11+b4)+(b8+b2)+0.0001);\n' +
     '  var bi   = Math.sqrt((b4*b4 + b3*b3 + b2*b2) / 3.0);\n' +
     '  var ri   = (b4*b4) / (b2*b3 + 0.0001);\n' +
@@ -69,8 +67,8 @@ function buildEvalscriptA_(rabiMonths) {
 }
 
 // buildEvalscriptB_: multi-temporal evalscript that computes CPI (Kharif NDVI) per SHPI zone.
-// Methodology: SHPI zones are defined from bare-soil pixels (Track A). CPI is then calculated
-// for ALL pixels in the ROI during Kharif — not just bare-soil pixels — because the whole ROI
+// Methodology: SHPI zones are defined from ALL cloud-free pixels in the ROI during Rabi (Track A).
+// CPI is then calculated for ALL pixels in the ROI during Kharif — because the whole ROI
 // is covered with crops during the monsoon season.
 // For each pixel it:
 //   1. Mediates Rabi-season samples → computes SHPI-proxy value (same spectral formula as Track A)
@@ -245,8 +243,6 @@ function buildProcessEvalscript_(thresholds, rabiMonths) {
     '  }\n' +
     '  var b2=med(v,"B02"),b3=med(v,"B03"),b4=med(v,"B04");\n' +
     '  var b8=med(v,"B08"),b11=med(v,"B11"),b12=med(v,"B12");\n' +
-    '  var lswi=(b8-b11)/(b8+b11+0.0001);\n' +
-    '  if(lswi>=0)return[0,0,0,0];\n' +
     '  var bsi=((b11+b4)-(b8+b2))/((b11+b4)+(b8+b2)+0.0001);\n' +
     '  var bi=Math.sqrt((b4*b4+b3*b3+b2*b2)/3.0);\n' +
     '  var ri=(b4*b4)/(b2*b3+0.0001);\n' +
