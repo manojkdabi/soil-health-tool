@@ -41,6 +41,12 @@ input:focus,select:focus{border-color:#F5A623}
 .upload{border:1.5px dashed #2E6B4F;border-radius:6px;padding:10px;text-align:center;cursor:pointer;font-size:11.5px;color:#5a8a6a;transition:.15s;margin-bottom:6px}
 .upload:hover{border-color:#F5A623;color:#F5A623}
 
+/* Context menus */
+.ctx-menu{position:absolute;background:#13241e;border:1px solid #2E6B4F;border-radius:6px;padding:4px 0;z-index:9999;min-width:200px;box-shadow:0 4px 14px rgba(0,0,0,.55);display:none}
+.ctx-menu.open{display:block}
+.ctx-menu-item{display:block;padding:8px 14px;font-size:12px;color:#9FE1CB;cursor:pointer;white-space:nowrap}
+.ctx-menu-item:hover{background:#1e3d30;color:#F5A623}
+
 /* Buttons */
 .btn{width:100%;padding:10px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;margin-top:4px}
 .btn-run{background:#F5A623;color:#3A1800}
@@ -110,7 +116,7 @@ canvas{display:block}
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
     <span class="ver-pill ver-pill-be">BE1.0.7</span>
-    <span class="ver-pill ver-pill-fe">FE1.0.8</span>
+    <span class="ver-pill ver-pill-fe">FE1.0.9</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -124,10 +130,17 @@ canvas{display:block}
       <h3>Step 1 · Study Area</h3>
       <p class="hint">Draw a polygon on the map or upload a GeoJSON file. Keep area under ~5,000 km².</p>
       <div id="roiStatus" class="roi-ok"></div>
-      <label class="upload" onclick="document.getElementById('gjInput').click()">
-        <input type="file" id="gjInput" accept=".geojson,.json" style="display:none">
-        📁 Upload GeoJSON file
-      </label>
+      <div style="position:relative">
+        <div class="upload" id="uploadBtn" onclick="showUploadMenu_(event)">
+          <input type="file" id="gjInput" accept=".geojson,.json" style="display:none">
+          <input type="file" id="shpInput" accept=".zip" style="display:none">
+          📁 Upload ROI
+        </div>
+        <div id="uploadMenu" class="ctx-menu">
+          <div class="ctx-menu-item" onclick="closeMenus_();document.getElementById('gjInput').click()">📄 Upload GeoJSON (.geojson, .json)</div>
+          <div class="ctx-menu-item" onclick="closeMenus_();document.getElementById('shpInput').click()">🗺 Upload Shapefile (.zip)</div>
+        </div>
+      </div>
       <div style="text-align:center;font-size:10px;color:#3a6a4a;margin:4px 0">— or draw on map —</div>
       <button class="btn btn-sec" onclick="clearROI()">✕ Clear ROI</button>
     </div>
@@ -719,17 +732,31 @@ function renderResultsMap_(zoneStat) {
 }
 
 // ── Shapefile download + area display controls ────────────────
-// Custom download-SHP button (topleft, below draw toolbar)
+// Custom download button with context menu (topleft, below draw toolbar)
 var ShpDownloadCtrl = L.Control.extend({
   options: { position: 'topleft' },
   onAdd: function () {
     var div = L.DomUtil.create('div', 'leaflet-bar leaflet-control')
+    div.style.position = 'relative'
     var a = L.DomUtil.create('a', '', div)
     a.href = '#'
-    a.title = 'Download ROI as Shapefile (.zip)'
+    a.title = 'Download ROI'
     a.innerHTML = '⬇'
     a.style.cssText = 'display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;font-weight:700;cursor:pointer'
-    L.DomEvent.on(a, 'click', L.DomEvent.stop).on(a, 'click', downloadShapefile_)
+    var menu = L.DomUtil.create('div', 'ctx-menu', div)
+    menu.id = 'dlMenu'
+    menu.style.left = '34px'
+    menu.style.top = '0'
+    var item1 = L.DomUtil.create('div', 'ctx-menu-item', menu)
+    item1.innerHTML = '🗺 Shapefile (.zip)'
+    var item2 = L.DomUtil.create('div', 'ctx-menu-item', menu)
+    item2.innerHTML = '📄 GeoJSON (.geojson)'
+    L.DomEvent.on(a, 'click', L.DomEvent.stop)
+    L.DomEvent.on(a, 'click', function () { toggleMenu_('dlMenu') })
+    L.DomEvent.on(item1, 'click', L.DomEvent.stop)
+    L.DomEvent.on(item1, 'click', function () { closeMenus_(); downloadShapefile_() })
+    L.DomEvent.on(item2, 'click', L.DomEvent.stop)
+    L.DomEvent.on(item2, 'click', function () { closeMenus_(); downloadGeoJSON_() })
     return div
   }
 })
@@ -866,6 +893,100 @@ function downloadShapefile_() {
     a.download = fn + '.zip'
     a.click()
   })
+}
+
+// ── Context menu helpers ──────────────────────────────────────
+function toggleMenu_(id) {
+  var m = document.getElementById(id)
+  if (!m) return
+  var open = m.classList.contains('open')
+  closeMenus_()
+  if (!open) m.classList.add('open')
+}
+function showUploadMenu_(e) {
+  e.stopPropagation()
+  toggleMenu_('uploadMenu')
+}
+function closeMenus_() {
+  document.querySelectorAll('.ctx-menu').forEach(function (m) { m.classList.remove('open') })
+}
+document.addEventListener('click', closeMenus_)
+
+// ── GeoJSON download ──────────────────────────────────────────
+function downloadGeoJSON_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+  var fn = 'roi_' + new Date().toISOString().slice(0, 10) + '.geojson'
+  var gj = JSON.stringify({ type: 'Feature', geometry: roi, properties: {} }, null, 2)
+  var blob = new Blob([gj], { type: 'application/geo+json' })
+  var a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = fn
+  a.click()
+}
+
+// ── Shapefile (.zip) upload ───────────────────────────────────
+document.getElementById('shpInput').addEventListener('change', function (e) {
+  var file = e.target.files[0]
+  if (!file) return
+  var reader = new FileReader()
+  reader.onload = function (ev) {
+    JSZip.loadAsync(ev.target.result).then(function (zip) {
+      var shpName = Object.keys(zip.files).find(function (n) { return n.toLowerCase().endsWith('.shp') })
+      if (!shpName) { alert('No .shp file found in the ZIP.'); return }
+      zip.file(shpName).async('arraybuffer').then(function (buf) {
+        var gj = shpToGeoJSON_(buf)
+        if (!gj) { alert('Could not parse shapefile — only Polygon shapes are supported.'); return }
+        drawn.clearLayers()
+        var layer = L.geoJSON(gj, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } }).addTo(drawn)
+        map.fitBounds(layer.getBounds())
+        var feat = gj.features[0]
+        roi = feat ? feat.geometry : gj
+        var extraMsg = gj.features.length > 1 ? ' (first of ' + gj.features.length + ' features used)' : ''
+        setROIStatus('✓ Shapefile loaded: ' + file.name + extraMsg)
+        document.getElementById('runBtn').disabled = false
+        updateAreaDisplay_()
+      })
+    }).catch(function (err) { alert('Could not read ZIP: ' + err.message) })
+  }
+  reader.readAsArrayBuffer(file)
+  e.target.value = ''
+})
+
+// Parse a minimal Shapefile (.shp) ArrayBuffer → GeoJSON FeatureCollection
+// Supports shape type 5 (Polygon) only.
+function shpToGeoJSON_(buf) {
+  var v = new DataView(buf)
+  if (v.getInt32(0, false) !== 9994) return null        // not a shapefile
+  var shapeType = v.getInt32(32, true)
+  if (shapeType !== 5) return null                      // only Polygon supported
+  var features = []
+  var offset = 100
+  while (offset + 8 <= buf.byteLength) {
+    var contentLen = v.getInt32(offset + 4, false) * 2  // 16-bit words → bytes
+    offset += 8
+    if (offset + contentLen > buf.byteLength) break
+    var recType = v.getInt32(offset, true)
+    if (recType === 5) {
+      var numParts  = v.getInt32(offset + 36, true)
+      var numPoints = v.getInt32(offset + 40, true)
+      var partsStart  = offset + 44
+      var pointsStart = partsStart + numParts * 4
+      var parts = []
+      for (var i = 0; i < numParts; i++) parts.push(v.getInt32(partsStart + i * 4, true))
+      parts.push(numPoints)
+      var rings = []
+      for (var i = 0; i < numParts; i++) {
+        var ring = []
+        for (var j = parts[i]; j < parts[i + 1]; j++) {
+          ring.push([v.getFloat64(pointsStart + j * 16, true), v.getFloat64(pointsStart + j * 16 + 8, true)])
+        }
+        rings.push(ring)
+      }
+      features.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: rings }, properties: {} })
+    }
+    offset += contentLen
+  }
+  return features.length ? { type: 'FeatureCollection', features: features } : null
 }
 
 // ── Save to Sheet ─────────────────────────────────────────────
