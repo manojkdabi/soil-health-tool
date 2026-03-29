@@ -1805,9 +1805,11 @@ function onMonSourceChange_() {
 }
 
 function fmtWaybackDate_(dateStr) {
-  // Parse a YYYY-MM-DD string and return "07 Nov 2023 (Wk 45)"
+  // Parse a YYYY-MM-DD (or ISO datetime) string and return "07 Nov 2023 (Wk 45)"
   if (!dateStr) return ''
-  var d = new Date(dateStr + 'T00:00:00Z') // parse as UTC to avoid timezone shift
+  // Strip time component if present (e.g. "2024-01-10T21:44:30.000Z" → "2024-01-10")
+  var datePart = dateStr.length > 10 ? dateStr.substring(0, 10) : dateStr
+  var d = new Date(datePart + 'T00:00:00Z') // parse as UTC to avoid timezone shift
   if (isNaN(d.getTime())) return dateStr
   var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   var jan1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
@@ -1817,12 +1819,17 @@ function fmtWaybackDate_(dateStr) {
 }
 
 function esriExtractDate_(entry) {
-  // Try known date field names first
-  var raw = entry.releaseDate || entry.imageDate || entry.itemDate || ''
-  // Fallback: extract YYYY-MM-DD from the title string (e.g. "World Imagery (Wayback 2023-11-07T...)")
-  if (!raw && entry.title) {
-    var m = entry.title.match(/(\d{4}-\d{2}-\d{2})/)
-    if (m) raw = m[1]
+  if (!entry || typeof entry !== 'object') return ''
+  // Check all known ESRI Wayback config date field names; releaseDatetime is the primary field
+  var raw = entry.releaseDatetime || entry.releaseDate || entry.imageDate || entry.itemDate || ''
+  if (!raw) {
+    // Fallback: extract YYYY-MM-DD from itemTitle or title
+    // (e.g. "World Imagery (Wayback 2023-11-07T...)")
+    var titleStr = entry.itemTitle || entry.title || ''
+    if (titleStr) {
+      var m = titleStr.match(/(\d{4}-\d{2}-\d{2})/)
+      if (m) raw = m[1]
+    }
   }
   return raw
 }
@@ -1835,7 +1842,10 @@ function loadEsriReleases_() {
     .then(function (r) { return r.json() })
     .then(function (cfg) {
       esriWaybackReleases = cfg
-      // sort by release date descending; fall back to numeric id ascending when no date
+      // Log a sample entry so we can inspect the actual field names in the browser console
+      var sampleIds = Object.keys(cfg)
+      if (sampleIds.length) console.log('[Wayback] config sample entry:', sampleIds[0], cfg[sampleIds[0]])
+      // sort by release date descending; fall back to numeric id descending when no date
       var releases = Object.keys(cfg).sort(function (a, b) {
         var da = esriExtractDate_(cfg[a])
         var db = esriExtractDate_(cfg[b])
@@ -1846,8 +1856,15 @@ function loadEsriReleases_() {
       })
       sel.innerHTML = '<option value="">— choose a release date —</option>'
       releases.forEach(function (id) {
-        var rawDate = esriExtractDate_(cfg[id])
-        var datePart = rawDate ? fmtWaybackDate_(rawDate) : (cfg[id].releaseDateLabel || '')
+        var entry = cfg[id]
+        var rawDate = esriExtractDate_(entry)
+        var datePart = ''
+        if (rawDate) {
+          datePart = fmtWaybackDate_(rawDate)
+        } else if (entry && typeof entry === 'object' && entry.releaseDateLabel) {
+          // releaseDateLabel is already human-readable (e.g. "Jan 10, 2024")
+          datePart = entry.releaseDateLabel
+        }
         // Always show the date alongside the numeric ID so users can correlate
         var label = datePart ? (datePart + ' · #' + id) : ('#' + id)
         var opt = document.createElement('option')
