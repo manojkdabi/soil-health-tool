@@ -223,10 +223,6 @@ canvas{display:block}
         <option value="60" selected>60 m — recommended for POC</option>
         <option value="30">30 m — precise, slower</option>
       </select>
-      <label class="field">Kharif months (comma-separated)</label>
-      <input type="text" id="kharifMonths" value="7,8,9,10">
-      <label class="field">Rabi months (comma-separated)</label>
-      <input type="text" id="rabiMonths" value="12,1,2,3">
     </div>
 
     <!-- Monthly Satellite Imagery -->
@@ -576,33 +572,27 @@ function runAnalysis() {
   const yearStart    = parseInt(document.getElementById('yearStart').value, 10)
   const yearEnd      = parseInt(document.getElementById('yearEnd').value, 10)
   const resolution   = parseInt(document.getElementById('resolution').value, 10)
-  const kharifMonths = document.getElementById('kharifMonths').value.split(',').map(Number).filter(Boolean)
-  const rabiMonths   = document.getElementById('rabiMonths').value.split(',').map(Number).filter(Boolean)
-
-  const currentYear = new Date().getFullYear()
+    const currentYear = new Date().getFullYear()
   if (isNaN(yearStart) || isNaN(yearEnd)) { alert('Year start and end must be valid numbers.'); return }
   if (yearStart < 2015 || yearEnd > currentYear) { alert('Years must be between 2015 and ' + currentYear + '.'); return }
   if (yearEnd <= yearStart) { alert('Year end must be after year start.'); return }
   if (isNaN(resolution) || resolution < 10 || resolution > 1000) { alert('Resolution must be between 10 and 1000 metres.'); return }
-  const validMonth = m => Number.isInteger(m) && m >= 1 && m <= 12
-  if (!kharifMonths.every(validMonth)) { alert('Kharif months must be integers between 1 and 12.'); return }
-  if (!rabiMonths.every(validMonth)) { alert('Rabi months must be integers between 1 and 12.'); return }
 
   showOverlay(true, 'Connecting to Sentinel Hub...')
-  setProgress(true, 10, 'Fetching dry season composite (Track A)...')
+  setProgress(true, 10, 'Fetching bare-soil composite (Track A)...')
   document.getElementById('runBtn').disabled = true
   document.getElementById('results').classList.remove('show')
 
-  const params = { geojson: roi, yearStart, yearEnd, resolution, kharifMonths, rabiMonths }
+  const params = { geojson: roi, yearStart, yearEnd, resolution }
 
   // Progress animation
   let pct = 10
   const timer = setInterval(() => {
     pct = Math.min(pct + 4, 88)
     const msgs = [
-      'Fetching dry season composite (Track A)...',
-      'Fetching Kharif NDVI (Track B)...',
-      'Fetching Rabi NDVI (Track B)...',
+      'Fetching bare-soil composite (Track A)...',
+      'Fetching peak-crop NDVI (Track B)...',
+      'Fetching peak-crop NDVI per zone (Track B)...',
       'Computing SHPI & CPI...',
       'Classifying zones...',
       'Running validation...',
@@ -1515,8 +1505,6 @@ function runAllROIs_() {
   var yearStart    = parseInt(document.getElementById('yearStart').value, 10)
   var yearEnd      = parseInt(document.getElementById('yearEnd').value, 10)
   var resolution   = parseInt(document.getElementById('resolution').value, 10)
-  var kharifMonths = document.getElementById('kharifMonths').value.split(',').map(Number).filter(Boolean)
-  var rabiMonths   = document.getElementById('rabiMonths').value.split(',').map(Number).filter(Boolean)
 
   var batchDiv = document.getElementById('batchProgress')
   batchDiv.classList.add('show')
@@ -1569,7 +1557,7 @@ function runAllROIs_() {
         setTimeout(runNext, BATCH_DELAY_MS)
       })
       .runAnalysis({ geojson: item.geojson, yearStart: yearStart, yearEnd: yearEnd,
-                     resolution: resolution, kharifMonths: kharifMonths, rabiMonths: rabiMonths })
+                     resolution: resolution })
   }
   runNext()
 }

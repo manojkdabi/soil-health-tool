@@ -13,42 +13,41 @@ var SH_PROCESS_URL   = 'https://sh.dataspace.copernicus.eu/api/v1/process';
 // Default SHPI quantile-boundary thresholds (used as fallback before real histogram analysis)
 var DEFAULT_SHPI_THRESHOLDS = [0.20, 0.35, 0.50, 0.65];
 
-// ── Evalscript builders: inject user-specified months ─────────
-// rabiMonths / kharifMonths are Arrays of integers, e.g. [12,1,2,3]
+// ── Evalscript builders ───────────────────────────────────────
+// No month filters — bare soil and peak crop are detected per-observation, per-pixel.
+// Only user inputs are year_start and year_end.
 
-function buildEvalscriptA_(rabiMonths) {
-  var monthList = '[' + rabiMonths.join(',') + ']';
+// Track A: SHPI — scans ALL observations in the archive window.
+// For each pixel, only bare-soil observations contribute to the SHPI composite:
+//   NDVI < 0.25 (no significant vegetation), LSWI < 0.0 (dry surface), SCL clean.
+// Per-pixel median of qualifying observations → compute 6 soil spectral indices → SHPI.
+function buildEvalscriptA_() {
   return '//VERSION=3\n' +
     'function setup() {\n' +
     '  return {\n' +
     '    input: [{ bands: ["B02","B03","B04","B08","B11","B12","SCL"] }],\n' +
     '    output: [\n' +
-    '      { id: "shpi",     bands: 1, sampleType: "FLOAT32" },\n' +
+    '      { id: "shpi",     bands: 1, sampleType: "AUTO" },\n' +
     '      { id: "dataMask", bands: 1, sampleType: "UINT8"   }\n' +
     '    ],\n' +
     '    mosaicking: "ORBIT"\n' +
     '  };\n' +
     '}\n' +
-    'function preProcessScenes(c) {\n' +
-    '  var rabi = ' + monthList + ';\n' +
-    '  c.scenes.orbits = c.scenes.orbits.filter(function(o) {\n' +
-    '    var m = new Date(o.dateFrom).getMonth() + 1;\n' +
-    '    return rabi.indexOf(m) !== -1;\n' +
-    '  });\n' +
-    '  return c;\n' +
-    '}\n' +
     'function evaluatePixel(samples) {\n' +
-    '  var v = samples.filter(function(s) {\n' +
-    '    return s.SCL !== 3 && s.SCL !== 8 && s.SCL !== 9 && s.SCL !== 10;\n' +
+    '  var bareS = samples.filter(function(s) {\n' +
+    '    if (s.SCL === 3 || s.SCL === 8 || s.SCL === 9 || s.SCL === 10) return false;\n' +
+    '    var ndvi = (s.B08 - s.B04) / (s.B08 + s.B04 + 0.0001);\n' +
+    '    var lswi = (s.B08 - s.B11) / (s.B08 + s.B11 + 0.0001);\n' +
+    '    return ndvi < 0.25 && lswi < 0.0;\n' +
     '  });\n' +
-    '  if (v.length === 0) return { shpi: [0], dataMask: [0] };\n' +
+    '  if (bareS.length === 0) return { shpi: [0], dataMask: [0] };\n' +
     '  function med(a, k) {\n' +
     '    var x = a.map(function(s) { return s[k]; }).sort(function(a,b) { return a-b; });\n' +
     '    var m = Math.floor(x.length / 2);\n' +
     '    return x.length % 2 ? x[m] : (x[m-1] + x[m]) / 2;\n' +
     '  }\n' +
-    '  var b2  = med(v,"B02"), b3  = med(v,"B03"), b4  = med(v,"B04");\n' +
-    '  var b8  = med(v,"B08"), b11 = med(v,"B11"), b12 = med(v,"B12");\n' +
+    '  var b2  = med(bareS,"B02"), b3  = med(bareS,"B03"), b4  = med(bareS,"B04");\n' +
+    '  var b8  = med(bareS,"B08"), b11 = med(bareS,"B11"), b12 = med(bareS,"B12");\n' +
     '  var bsi  = ((b11+b4)-(b8+b2)) / ((b11+b4)+(b8+b2)+0.0001);\n' +
     '  var bi   = Math.sqrt((b4*b4 + b3*b3 + b2*b2) / 3.0);\n' +
     '  var ri   = (b4*b4) / (b2*b3 + 0.0001);\n' +
@@ -66,21 +65,16 @@ function buildEvalscriptA_(rabiMonths) {
     '}';
 }
 
-// buildEvalscriptB_: multi-temporal evalscript that computes CPI (Kharif NDVI) per SHPI zone.
-// Methodology: SHPI zones are defined from ALL cloud-free pixels in the ROI during Rabi (Track A).
-// CPI is then calculated for ALL pixels in the ROI during Kharif — because the whole ROI
-// is covered with crops during the monsoon season.
-// For each pixel it:
-//   1. Mediates Rabi-season samples → computes SHPI-proxy value (same spectral formula as Track A)
-//   2. Assigns the pixel to one of 5 SHPI zones using the thresholds from Track A
-//   3. Mediates Kharif-season samples → computes NDVI for ALL pixels (no bare-soil filter)
-//   4. Outputs NDVI in the zone-specific band; sets -2.0 (below histogram range) in other bands
-// The Statistical API then gives mean NDVI per SHPI zone — a genuine cross-variable correlation.
-// rabiMonths / kharifMonths: Arrays of month integers, e.g. [11,12,1,2]
+// Track B: CPI per SHPI zone — scans ALL observations in the archive window.
+// For each pixel, samples are split into:
+//   bareS  = NDVI < 0.25 AND LSWI < 0.0 AND SCL clean  (bare-soil obs → SHPI composite)
+//   cropS  = NDVI > 0.4 AND SCL clean                   (crop obs → CPI/NDVI composite)
+// If either bareS or cropS is empty for a pixel → noDataResult (pixel excluded from stats).
+// SHPI from bareS → assign pixel to one of 5 zones using Track A thresholds.
+// NDVI from cropS → output in zone-specific band; sentinel -2.0 in all other zone bands.
+// The Statistical API returns mean NDVI per SHPI zone: a genuine cross-variable correlation.
 // shpiThresholds: 4-element Array of SHPI boundary values, e.g. [0.20, 0.35, 0.50, 0.65]
-function buildEvalscriptB_(rabiMonths, kharifMonths, shpiThresholds) {
-  var rabiList   = '[' + rabiMonths.join(',') + ']';
-  var kharifList = '[' + kharifMonths.join(',') + ']';
+function buildEvalscriptB_(shpiThresholds) {
   var T = (shpiThresholds || DEFAULT_SHPI_THRESHOLDS).slice();
   var threshList = '[' + T.map(function(t) { return t.toFixed(6); }).join(',') + ']';
   var NO_DATA = '-2.0'; // sentinel below histogram lowEdge (-0.5); goes to underflow bin
@@ -89,50 +83,39 @@ function buildEvalscriptB_(rabiMonths, kharifMonths, shpiThresholds) {
     '  return {\n' +
     '    input: [{ bands: ["B02","B03","B04","B08","B11","B12","SCL"] }],\n' +
     '    output: [\n' +
-    '      { id: "cpi_z1", bands: 1, sampleType: "FLOAT32" },\n' +
-    '      { id: "cpi_z2", bands: 1, sampleType: "FLOAT32" },\n' +
-    '      { id: "cpi_z3", bands: 1, sampleType: "FLOAT32" },\n' +
-    '      { id: "cpi_z4", bands: 1, sampleType: "FLOAT32" },\n' +
-    '      { id: "cpi_z5", bands: 1, sampleType: "FLOAT32" },\n' +
+    '      { id: "cpi_z1", bands: 1, sampleType: "AUTO" },\n' +
+    '      { id: "cpi_z2", bands: 1, sampleType: "AUTO" },\n' +
+    '      { id: "cpi_z3", bands: 1, sampleType: "AUTO" },\n' +
+    '      { id: "cpi_z4", bands: 1, sampleType: "AUTO" },\n' +
+    '      { id: "cpi_z5", bands: 1, sampleType: "AUTO" },\n' +
     '      { id: "dataMask", bands: 1, sampleType: "UINT8" }\n' +
     '    ],\n' +
     '    mosaicking: "ORBIT"\n' +
     '  };\n' +
     '}\n' +
-    'function preProcessScenes(c) {\n' +
-    '  var rabi   = ' + rabiList + ';\n' +
-    '  var kharif = ' + kharifList + ';\n' +
-    '  c.scenes.orbits = c.scenes.orbits.filter(function(o) {\n' +
-    '    var m = new Date(o.dateFrom).getMonth() + 1;\n' +
-    '    return rabi.indexOf(m) !== -1 || kharif.indexOf(m) !== -1;\n' +
-    '  });\n' +
-    '  return c;\n' +
-    '}\n' +
-    'function evaluatePixel(samples, scenes) {\n' +
-    '  var rabi   = ' + rabiList + ';\n' +
-    '  var kharif = ' + kharifList + ';\n' +
-    '  var T      = ' + threshList + ';\n' +
-    '  var ND     = ' + NO_DATA + ';\n' +
+    'function evaluatePixel(samples) {\n' +
+    '  var T  = ' + threshList + ';\n' +
+    '  var ND = ' + NO_DATA + ';\n' +
     '  var noDataResult = { cpi_z1:[ND],cpi_z2:[ND],cpi_z3:[ND],cpi_z4:[ND],cpi_z5:[ND], dataMask:[0] };\n' +
-    '  var clean  = function(s) {\n' +
-    '    return s.SCL !== 3 && s.SCL !== 8 && s.SCL !== 9 && s.SCL !== 10;\n' +
-    '  };\n' +
-    '  var rabiS = [], kharS = [];\n' +
-    '  samples.forEach(function(s, i) {\n' +
-    '    var m = new Date(scenes.orbits[i].dateFrom).getMonth() + 1;\n' +
-    '    if (clean(s)) {\n' +
-    '      if (rabi.indexOf(m)   !== -1) rabiS.push(s);\n' +
-    '      if (kharif.indexOf(m) !== -1) kharS.push(s);\n' +
-    '    }\n' +
+    '  var bareS = samples.filter(function(s) {\n' +
+    '    if (s.SCL === 3 || s.SCL === 8 || s.SCL === 9 || s.SCL === 10) return false;\n' +
+    '    var ndvi = (s.B08 - s.B04) / (s.B08 + s.B04 + 0.0001);\n' +
+    '    var lswi = (s.B08 - s.B11) / (s.B08 + s.B11 + 0.0001);\n' +
+    '    return ndvi < 0.25 && lswi < 0.0;\n' +
     '  });\n' +
-    '  if (!rabiS.length || !kharS.length) return noDataResult;\n' +
+    '  var cropS = samples.filter(function(s) {\n' +
+    '    if (s.SCL === 3 || s.SCL === 8 || s.SCL === 9 || s.SCL === 10) return false;\n' +
+    '    var ndvi = (s.B08 - s.B04) / (s.B08 + s.B04 + 0.0001);\n' +
+    '    return ndvi > 0.4;\n' +
+    '  });\n' +
+    '  if (!bareS.length || !cropS.length) return noDataResult;\n' +
     '  function med(a, k) {\n' +
     '    var x = a.map(function(s){return s[k];}).sort(function(a,b){return a-b;});\n' +
     '    var mid = Math.floor(x.length/2);\n' +
     '    return x.length%2 ? x[mid] : (x[mid-1]+x[mid])/2;\n' +
     '  }\n' +
-    '  var b2=med(rabiS,"B02"),b3=med(rabiS,"B03"),b4r=med(rabiS,"B04"),\n' +
-    '      b8r=med(rabiS,"B08"),b11=med(rabiS,"B11"),b12=med(rabiS,"B12");\n' +
+    '  var b2=med(bareS,"B02"),b3=med(bareS,"B03"),b4r=med(bareS,"B04"),\n' +
+    '      b8r=med(bareS,"B08"),b11=med(bareS,"B11"),b12=med(bareS,"B12");\n' +
     '  var bsi  = ((b11+b4r)-(b8r+b2)) / ((b11+b4r)+(b8r+b2)+0.0001);\n' +
     '  var bi   = Math.sqrt((b4r*b4r + b3*b3 + b2*b2) / 3.0);\n' +
     '  var ri   = (b4r*b4r) / (b2*b3 + 0.0001);\n' +
@@ -147,7 +130,7 @@ function buildEvalscriptB_(rabiMonths, kharifMonths, shpiThresholds) {
     '  var hueN  = Math.max(0,Math.min(1,(hue  + 0.5)));\n' +
     '  var shpi  = (1-biN)*0.25 + (1-bsiN)*0.20 + clayN*0.20 + riN*0.15 + carbN*0.10 + hueN*0.10;\n' +
     '  var zone  = shpi<T[0]?1:shpi<T[1]?2:shpi<T[2]?3:shpi<T[3]?4:5;\n' +
-    '  var b4k = med(kharS,"B04"), b8k = med(kharS,"B08");\n' +
+    '  var b4k = med(cropS,"B04"), b8k = med(cropS,"B08");\n' +
     '  var ndvi = Math.max(0,Math.min(1,(b8k-b4k)/(b8k+b4k+0.0001)));\n' +
     '  var res = { cpi_z1:[ND],cpi_z2:[ND],cpi_z3:[ND],cpi_z4:[ND],cpi_z5:[ND], dataMask:[1] };\n' +
     '  res["cpi_z"+zone] = [ndvi];\n' +
@@ -212,9 +195,9 @@ function getBbox_(geometry) {
 
 // ── Build Process API evalscript with zone colour thresholds ─────────────────
 // thresholds: 4-element array [t01, t12, t23, t34] separating zones 1-2-3-4-5
-function buildProcessEvalscript_(thresholds, rabiMonths) {
+// No month filter — uses per-observation bare-soil detection (NDVI < 0.25, LSWI < 0.0, SCL clean).
+function buildProcessEvalscript_(thresholds) {
   var t0 = thresholds[0], t1 = thresholds[1], t2 = thresholds[2], t3 = thresholds[3];
-  var monthList = '[' + rabiMonths.join(',') + ']';
   return '//VERSION=3\n' +
     'function setup(){\n' +
     '  return{\n' +
@@ -223,26 +206,21 @@ function buildProcessEvalscript_(thresholds, rabiMonths) {
     '    mosaicking:"ORBIT"\n' +
     '  };\n' +
     '}\n' +
-    'function preProcessScenes(c){\n' +
-    '  var rabi=' + monthList + ';\n' +
-    '  c.scenes.orbits=c.scenes.orbits.filter(function(o){\n' +
-    '    var m=new Date(o.dateFrom).getMonth()+1;\n' +
-    '    return rabi.indexOf(m)!==-1;\n' +
-    '  });\n' +
-    '  return c;\n' +
-    '}\n' +
     'function evaluatePixel(samples){\n' +
-    '  var v=samples.filter(function(s){\n' +
-    '    return s.SCL!==3&&s.SCL!==8&&s.SCL!==9&&s.SCL!==10;\n' +
+    '  var bareS=samples.filter(function(s){\n' +
+    '    if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10)return false;\n' +
+    '    var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);\n' +
+    '    var lswi=(s.B08-s.B11)/(s.B08+s.B11+0.0001);\n' +
+    '    return ndvi<0.25&&lswi<0.0;\n' +
     '  });\n' +
-    '  if(v.length===0)return[0,0,0,0];\n' +
+    '  if(bareS.length===0)return[0,0,0,0];\n' +
     '  function med(a,k){\n' +
     '    var x=a.map(function(s){return s[k];}).sort(function(a,b){return a-b;});\n' +
     '    var m=Math.floor(x.length/2);\n' +
     '    return x.length%2?x[m]:(x[m-1]+x[m])/2;\n' +
     '  }\n' +
-    '  var b2=med(v,"B02"),b3=med(v,"B03"),b4=med(v,"B04");\n' +
-    '  var b8=med(v,"B08"),b11=med(v,"B11"),b12=med(v,"B12");\n' +
+    '  var b2=med(bareS,"B02"),b3=med(bareS,"B03"),b4=med(bareS,"B04");\n' +
+    '  var b8=med(bareS,"B08"),b11=med(bareS,"B11"),b12=med(bareS,"B12");\n' +
     '  var bsi=((b11+b4)-(b8+b2))/((b11+b4)+(b8+b2)+0.0001);\n' +
     '  var bi=Math.sqrt((b4*b4+b3*b3+b2*b2)/3.0);\n' +
     '  var ri=(b4*b4)/(b2*b3+0.0001);\n' +
@@ -264,7 +242,7 @@ function buildProcessEvalscript_(thresholds, rabiMonths) {
 
 // ── Fetch zone-coloured SHPI raster from Process API ─────────────────────────
 // Returns base64-encoded PNG string, or null on failure
-function fetchRasterOverlay_(bbox, yearStart, yearEnd, token, thresholds, rabiMonths) {
+function fetchRasterOverlay_(bbox, yearStart, yearEnd, token, thresholds) {
   try {
     var from = yearStart + '-01-01T00:00:00Z';
     var to   = yearEnd   + '-12-31T23:59:59Z';
@@ -296,7 +274,7 @@ function fetchRasterOverlay_(bbox, yearStart, yearEnd, token, thresholds, rabiMo
         height: H,
         responses: [{ identifier: 'default', format: { type: 'image/png' } }]
       },
-      evalscript: buildProcessEvalscript_(thresholds, rabiMonths)
+      evalscript: buildProcessEvalscript_(thresholds)
     };
 
     var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
@@ -336,8 +314,6 @@ function runAnalysis(params) {
     var yearStart    = params.yearStart;
     var yearEnd      = params.yearEnd;
     var resolution   = params.resolution;
-    var kharifMonths = params.kharifMonths;
-    var rabiMonths   = params.rabiMonths;
 
     Logger.log('runAnalysis: ' + yearStart + '-' + yearEnd + ' at ' + resolution + 'm');
 
@@ -345,13 +321,13 @@ function runAnalysis(params) {
     var bbox  = getBbox_(geojson);
     Logger.log('BBox: ' + JSON.stringify(bbox));
 
-    var results = fetchBandStats_(bbox, yearStart, yearEnd, token, kharifMonths, rabiMonths);
+    var results = fetchBandStats_(bbox, yearStart, yearEnd, token);
 
     // Fetch real SHPI zone-coloured raster from Process API using the computed thresholds
     var rasterB64 = null;
     if (results.validation.shpi_thresholds) {
       Logger.log('Fetching Process API raster...');
-      rasterB64 = fetchRasterOverlay_(bbox, yearStart, yearEnd, token, results.validation.shpi_thresholds, rabiMonths);
+      rasterB64 = fetchRasterOverlay_(bbox, yearStart, yearEnd, token, results.validation.shpi_thresholds);
       Logger.log('Raster fetch ' + (rasterB64 ? 'OK (' + Math.round(rasterB64.length / 1024) + ' KB base64)' : 'FAILED'));
     }
 
@@ -375,7 +351,7 @@ function runAnalysis(params) {
 }
 
 // ── Fetch statistics from Sentinel Hub Statistical API ────────
-function fetchBandStats_(bbox, yearStart, yearEnd, token, kharifMonths, rabiMonths) {
+function fetchBandStats_(bbox, yearStart, yearEnd, token) {
 
   var fromA = yearStart + '-01-01T00:00:00Z';
   var toA   = yearEnd   + '-12-31T23:59:59Z';
@@ -397,7 +373,7 @@ function fetchBandStats_(bbox, yearStart, yearEnd, token, kharifMonths, rabiMont
     aggregation: {
       timeRange:           { from: fromA, to: toA },
       aggregationInterval: { of: 'P3M' },
-      evalscript:          buildEvalscriptA_(rabiMonths),
+      evalscript:          buildEvalscriptA_(),
       resx:                0.01,
       resy:                0.01
     },
@@ -449,7 +425,7 @@ function fetchBandStats_(bbox, yearStart, yearEnd, token, kharifMonths, rabiMont
     aggregation: {
       timeRange:           { from: fromA, to: toA },
       aggregationInterval: { of: 'P3M' },
-      evalscript:          buildEvalscriptB_(rabiMonths, kharifMonths, shpiThresholds),
+      evalscript:          buildEvalscriptB_(shpiThresholds),
       resx:                0.01,
       resy:                0.01
     },
