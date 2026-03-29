@@ -1804,6 +1804,18 @@ function onMonSourceChange_() {
   document.getElementById('shWmsCtrl').style.display       = src === 'sh'   ? 'block' : 'none'
 }
 
+function fmtWaybackDate_(dateStr) {
+  // Parse a YYYY-MM-DD string and return "07 Nov 2023 (Wk 45)"
+  if (!dateStr) return ''
+  var d = new Date(dateStr + 'T00:00:00Z') // parse as UTC to avoid timezone shift
+  if (isNaN(d.getTime())) return dateStr
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  var jan1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  var wk = Math.ceil(((d - jan1) / 86400000 + jan1.getUTCDay() + 1) / 7)
+  return d.getUTCDate() + ' ' + months[d.getUTCMonth()] + ' ' + d.getUTCFullYear() +
+         ' (Wk ' + wk + ')'
+}
+
 function loadEsriReleases_() {
   var sel = document.getElementById('esriReleaseSelect')
   var msg = document.getElementById('monLoading')
@@ -1820,10 +1832,11 @@ function loadEsriReleases_() {
       })
       sel.innerHTML = '<option value="">— choose a date —</option>'
       releases.forEach(function (id) {
-        var date = cfg[id].releaseDateLabel || cfg[id].releaseDate || cfg[id].imageDate || id
+        var rawDate = cfg[id].releaseDate || cfg[id].imageDate || ''
+        var label   = rawDate ? fmtWaybackDate_(rawDate) : (cfg[id].releaseDateLabel || id)
         var opt = document.createElement('option')
         opt.value = id
-        opt.textContent = date
+        opt.textContent = label
         sel.appendChild(opt)
       })
       msg.style.display = 'none'
@@ -1838,13 +1851,16 @@ function loadEsriReleases_() {
 function loadEsriRelease_() {
   var releaseId = document.getElementById('esriReleaseSelect').value
   if (!releaseId) { alert('Please select a date first.'); return }
-  clearMonthlyLayer_()
-  monthlyLayer = L.tileLayer(
+  // Build new layer before removing old one to avoid blank-map flash
+  var newLayer = L.tileLayer(
     'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/' +
     releaseId + '/{z}/{y}/{x}',
-    { attribution: 'ESRI Wayback', maxZoom: 19, opacity: 0.9 }
+    { attribution: 'ESRI Wayback', maxZoom: 19, opacity: 0.9, keepBuffer: 0 }
   )
+  if (monthlyLayer) { map.removeLayer(monthlyLayer) }
+  monthlyLayer = newLayer
   monthlyLayer.addTo(map)
+  monthlyLayer.redraw()  // force fresh tile requests for the selected release
   // bring drawn layer & results raster to front
   drawn.bringToFront()
   if (resultsRasterLayer) resultsRasterLayer.bringToFront()
