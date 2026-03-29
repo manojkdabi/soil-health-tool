@@ -130,17 +130,9 @@ canvas{display:block}
       <h3>Step 1 · Study Area</h3>
       <p class="hint">Draw a polygon on the map or upload a GeoJSON file. Keep area under ~5,000 km².</p>
       <div id="roiStatus" class="roi-ok"></div>
-      <div style="position:relative">
-        <div class="upload" id="uploadBtn" onclick="showUploadMenu_(event)">
-          <input type="file" id="gjInput" accept=".geojson,.json" style="display:none">
-          <input type="file" id="shpInput" accept=".zip" style="display:none">
-          📁 Upload ROI
-        </div>
-        <div id="uploadMenu" class="ctx-menu">
-          <div class="ctx-menu-item" onclick="closeMenus_();document.getElementById('gjInput').click()">📄 Upload GeoJSON (.geojson, .json)</div>
-          <div class="ctx-menu-item" onclick="closeMenus_();document.getElementById('shpInput').click()">🗺 Upload Shapefile (.zip)</div>
-        </div>
-      </div>
+      <input type="file" id="gjInput" accept=".geojson,.json" style="display:none">
+      <input type="file" id="shpInput" accept=".zip" style="display:none">
+      <div class="upload" id="uploadBtn" onclick="showUploadMenu_(event)">📁 Upload ROI</div>
       <div style="text-align:center;font-size:10px;color:#3a6a4a;margin:4px 0">— or draw on map —</div>
       <button class="btn btn-sec" onclick="clearROI()">✕ Clear ROI</button>
     </div>
@@ -903,8 +895,25 @@ function toggleMenu_(id) {
   closeMenus_()
   if (!open) m.classList.add('open')
 }
+// Build upload menu at body level (avoids sidebar overflow-y clip)
+;(function () {
+  var m = document.createElement('div')
+  m.id = 'uploadMenu'
+  m.className = 'ctx-menu'
+  m.style.position = 'fixed'
+  m.style.zIndex = '99999'
+  m.innerHTML =
+    '<div class="ctx-menu-item" onclick="closeMenus_();document.getElementById(\'gjInput\').click()">📄 Upload GeoJSON (.geojson, .json)</div>' +
+    '<div class="ctx-menu-item" onclick="closeMenus_();document.getElementById(\'shpInput\').click()">🗺 Upload Shapefile (.zip)</div>'
+  document.body.appendChild(m)
+})()
 function showUploadMenu_(e) {
   e.stopPropagation()
+  var btn = document.getElementById('uploadBtn')
+  var r = btn.getBoundingClientRect()
+  var m = document.getElementById('uploadMenu')
+  m.style.left = r.left + 'px'
+  m.style.top = (r.bottom + 4) + 'px'
   toggleMenu_('uploadMenu')
 }
 function closeMenus_() {
