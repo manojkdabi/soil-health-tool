@@ -1,5 +1,5 @@
 // ============================================================
-// Soil Health Stratification Tool — Apps Script Backend BE1.0.7
+// Soil Health Stratification Tool — Apps Script Backend BE1.0.8
 // Treeconomy Soil Intelligence Division
 // All strings use single quotes and + concatenation. No backticks.
 // ============================================================
@@ -8,6 +8,10 @@ const SH_CLIENT_ID = '..............'
 const SH_CLIENT_SECRET = '...................'
 var SH_TOKEN_URL     = 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token';
 var SH_STATS_URL     = 'https://sh.dataspace.copernicus.eu/api/v1/statistics';
+var SH_PROCESS_URL   = 'https://sh.dataspace.copernicus.eu/api/v1/process';
+
+// Default SHPI quantile-boundary thresholds (used as fallback before real histogram analysis)
+var DEFAULT_SHPI_THRESHOLDS = [0.20, 0.35, 0.50, 0.65];
 
 // ── Evalscript: Track A — Soil Health Proxy Index ────────────
 // resx/resy = 0.01 degrees (~1.1km) — within Sentinel Hub limit
@@ -151,6 +155,114 @@ function getBbox_(geometry) {
   ];
 }
 
+// ── Build Process API evalscript with zone colour thresholds ─────────────────
+// thresholds: 4-element array [t01, t12, t23, t34] separating zones 1-2-3-4-5
+function buildProcessEvalscript_(thresholds) {
+  var t0 = thresholds[0], t1 = thresholds[1], t2 = thresholds[2], t3 = thresholds[3];
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{\n' +
+    '    input:[{bands:["B02","B03","B04","B08","B11","B12","SCL"]}],\n' +
+    '    output:{bands:4,sampleType:"UINT8"},\n' +
+    '    mosaicking:"ORBIT"\n' +
+    '  };\n' +
+    '}\n' +
+    'function preProcessScenes(c){\n' +
+    '  c.scenes.orbits=c.scenes.orbits.filter(function(o){\n' +
+    '    var m=new Date(o.dateFrom).getMonth()+1;\n' +
+    '    return m===11||m===12||m===1||m===2;\n' +
+    '  });\n' +
+    '  return c;\n' +
+    '}\n' +
+    'function evaluatePixel(samples){\n' +
+    '  var v=samples.filter(function(s){\n' +
+    '    return s.SCL!==3&&s.SCL!==8&&s.SCL!==9&&s.SCL!==10;\n' +
+    '  });\n' +
+    '  if(v.length===0)return[0,0,0,0];\n' +
+    '  function med(a,k){\n' +
+    '    var x=a.map(function(s){return s[k];}).sort(function(a,b){return a-b;});\n' +
+    '    var m=Math.floor(x.length/2);\n' +
+    '    return x.length%2?x[m]:(x[m-1]+x[m])/2;\n' +
+    '  }\n' +
+    '  var b2=med(v,"B02"),b3=med(v,"B03"),b4=med(v,"B04");\n' +
+    '  var b8=med(v,"B08"),b11=med(v,"B11"),b12=med(v,"B12");\n' +
+    '  var lswi=(b8-b11)/(b8+b11+0.0001);\n' +
+    '  if(lswi>=0)return[0,0,0,0];\n' +
+    '  var bsi=((b11+b4)-(b8+b2))/((b11+b4)+(b8+b2)+0.0001);\n' +
+    '  var bi=Math.sqrt((b4*b4+b3*b3+b2*b2)/3.0);\n' +
+    '  var ri=(b4*b4)/(b2*b3+0.0001);\n' +
+    '  var clay=b11/(b12+0.0001);\n' +
+    '  var carb=b11/(b8+0.0001);\n' +
+    '  var hue=Math.atan((b3-b4)/(b3+b4+0.0001));\n' +
+    '  var bsiN=Math.max(0,Math.min(1,(bsi+0.5)));\n' +
+    '  var biN=Math.max(0,Math.min(1,bi/0.3));\n' +
+    '  var riN=Math.max(0,Math.min(1,ri/5.0));\n' +
+    '  var clayN=Math.max(0,Math.min(1,(clay-0.8)/0.6));\n' +
+    '  var carbN=Math.max(0,Math.min(1,(carb-0.5)/1.5));\n' +
+    '  var hueN=Math.max(0,Math.min(1,(hue+0.5)));\n' +
+    '  var shpi=(1-biN)*0.25+(1-bsiN)*0.20+clayN*0.20+riN*0.15+carbN*0.10+hueN*0.10;\n' +
+    '  var zone=shpi<' + t0 + '?0:shpi<' + t1 + '?1:shpi<' + t2 + '?2:shpi<' + t3 + '?3:4;\n' +
+    '  var c=[[215,48,39],[252,141,89],[254,224,139],[145,207,96],[26,152,80]];\n' +
+    '  return[c[zone][0],c[zone][1],c[zone][2],200];\n' +
+    '}';
+}
+
+// ── Fetch zone-coloured SHPI raster from Process API ─────────────────────────
+// Returns base64-encoded PNG string, or null on failure
+function fetchRasterOverlay_(bbox, yearStart, yearEnd, token, thresholds) {
+  try {
+    var from = yearStart + '-01-01T00:00:00Z';
+    var to   = yearEnd   + '-12-31T23:59:59Z';
+
+    // Proportional pixel dimensions, capped at 512 on the longer side
+    var lngSpan = bbox[2] - bbox[0];
+    var latSpan = bbox[3] - bbox[1];
+    var maxPx = 512;
+    var W, H;
+    if (lngSpan >= latSpan) {
+      W = maxPx;
+      H = Math.max(1, Math.round(maxPx * latSpan / lngSpan));
+    } else {
+      H = maxPx;
+      W = Math.max(1, Math.round(maxPx * lngSpan / latSpan));
+    }
+    Logger.log('Process API raster size: ' + W + 'x' + H);
+
+    var payload = {
+      input: {
+        bounds: {
+          bbox: bbox,
+          properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' }
+        },
+        data: [{ dataFilter: { timeRange: { from: from, to: to } }, type: 'sentinel-2-l2a' }]
+      },
+      output: {
+        width: W,
+        height: H,
+        responses: [{ identifier: 'default', format: { type: 'image/png' } }]
+      },
+      evalscript: buildProcessEvalscript_(thresholds)
+    };
+
+    var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
+      method:             'post',
+      contentType:        'application/json',
+      headers:            { Authorization: 'Bearer ' + token },
+      payload:            JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    Logger.log('Process API status: ' + resp.getResponseCode());
+    if (resp.getResponseCode() !== 200) {
+      Logger.log('Process API error: ' + resp.getContentText().substring(0, 400));
+      return null;
+    }
+    return Utilities.base64Encode(resp.getContent());
+  } catch(e) {
+    Logger.log('fetchRasterOverlay_ error: ' + e.message);
+    return null;
+  }
+}
+
 // ── Pearson correlation coefficient ───────────────────────────
 function pearson_(xs, ys) {
   var n  = xs.length;
@@ -180,11 +292,20 @@ function runAnalysis(params) {
 
     var results = fetchBandStats_(bbox, yearStart, yearEnd, token);
 
+    // Fetch real SHPI zone-coloured raster from Process API using the computed thresholds
+    var rasterB64 = null;
+    if (results.validation.shpi_thresholds) {
+      Logger.log('Fetching Process API raster...');
+      rasterB64 = fetchRasterOverlay_(bbox, yearStart, yearEnd, token, results.validation.shpi_thresholds);
+      Logger.log('Raster fetch ' + (rasterB64 ? 'OK (' + Math.round(rasterB64.length / 1024) + ' KB base64)' : 'FAILED'));
+    }
+
     return {
-      success:    true,
-      bbox:       bbox,
-      zone_stats: results.zoneStats,
-      validation: results.validation,
+      success:        true,
+      bbox:           bbox,
+      zone_stats:     results.zoneStats,
+      validation:     results.validation,
+      raster_png_b64: rasterB64,
       meta: {
         resolution_m: resolution,
         year_range:   yearStart + '-' + yearEnd,
@@ -339,6 +460,7 @@ function buildZoneStats_(aBins, bBins) {
   var dataSource = 'synthetic';
   var shpiPixels = null; // actual per-zone pixel counts from SHPI histogram
   var cpiPixels  = null; // actual per-zone pixel counts from NDVI histogram
+  var shpiThresholds = DEFAULT_SHPI_THRESHOLDS.slice(); // zone boundary SHPI values
 
   // Split bins into 5 zones by pixel-count quantile (each zone = 20% of total pixels).
   // Sorting by bin midpoint and dividing by bin count gives identical means when all
@@ -381,15 +503,28 @@ function buildZoneStats_(aBins, bBins) {
     var pixelCounts = buckets.map(function(slice) {
       return slice.reduce(function(s, b) { return s + b.count; }, 0);
     });
+    // Compute 4 threshold values (SHPI boundary between adjacent zones)
+    var thresholds = DEFAULT_SHPI_THRESHOLDS.slice();
+    var SHPI_ROUND = 10000; // round thresholds to 4 decimal places
+    for (var ti = 0; ti < 4; ti++) {
+      var zA = buckets[ti], zB = buckets[ti + 1];
+      if (zA.length && zB.length) {
+        thresholds[ti] = Math.round(((zA[zA.length - 1].mean + zB[0].mean) / 2) * SHPI_ROUND) / SHPI_ROUND;
+      } else if (zA.length) {
+        thresholds[ti] = Math.round((zA[zA.length - 1].mean + 0.05) * SHPI_ROUND) / SHPI_ROUND;
+      }
+    }
     Logger.log(label + ' zone means: ' + JSON.stringify(means));
-    return { means: means, pixelCounts: pixelCounts };
+    Logger.log(label + ' thresholds: ' + JSON.stringify(thresholds));
+    return { means: means, pixelCounts: pixelCounts, thresholds: thresholds };
   }
 
   if (aBins && aBins.length >= 3) {
     Logger.log('SHPI allBins count: ' + aBins.length);
     var aResult = binsToZoneMeans('SHPI', aBins);
-    shpiMeans   = aResult.means;
-    shpiPixels  = aResult.pixelCounts;
+    shpiMeans      = aResult.means;
+    shpiPixels     = aResult.pixelCounts;
+    shpiThresholds = aResult.thresholds;
     dataSource  = 'real';
     Logger.log('REAL SHPI means: ' + JSON.stringify(shpiMeans));
   } else {
@@ -438,13 +573,14 @@ function buildZoneStats_(aBins, bBins) {
   return {
     zoneStats: zoneStats,
     validation: {
-      pearson_r:    pr,
-      r_squared:    r2,
-      is_monotonic: mono,
-      cpi_ratio:    ratio,
-      confirmed:    pr > 0.60 && mono,
-      n_zones:      5,
-      data_source:  dataSource
+      pearson_r:       pr,
+      r_squared:       r2,
+      is_monotonic:    mono,
+      cpi_ratio:       ratio,
+      confirmed:       pr > 0.60 && mono,
+      n_zones:         5,
+      data_source:     dataSource,
+      shpi_thresholds: shpiThresholds
     }
   };
 }

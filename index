@@ -76,6 +76,19 @@ input:focus,select:focus{border-color:#F5A623}
 .ztbl th{padding:5px 6px;background:#1a3d30;color:#9FE1CB;text-align:left;font-weight:600}
 .ztbl td{padding:5px 6px;border-bottom:1px solid #1a3020}
 #results-map{height:220px;border-radius:6px;overflow:hidden;border:1px solid #2E6B4F;margin-top:2px}
+/* Results map controls (opacity + fullscreen toggle) */
+#results-map-ctrls{display:none;align-items:center;gap:6px;margin-bottom:4px;padding:0 2px}
+#rasterOpacity{flex:1;height:4px;accent-color:#F5A623;cursor:pointer}
+.rm-ctrl-btn{background:#1e3d30;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:13px;line-height:1.4}
+.rm-ctrl-btn:hover{background:#2E6B4F;color:#F5A623}
+/* Fullscreen results map overlay */
+#results-fs-container{display:none;position:fixed;inset:0;z-index:20000;background:#0f1a17}
+#results-fs-map{position:absolute;inset:0}
+#results-fs-topbar{position:absolute;top:12px;left:12px;z-index:1001;display:flex;align-items:center;gap:8px;background:#13241ecc;border:1px solid #2E6B4F;border-radius:6px;padding:6px 10px}
+#results-fs-panel{position:absolute;top:12px;right:12px;background:#13241e;border:1px solid #2E6B4F;border-radius:8px;padding:12px 14px;z-index:1001;min-width:230px;max-height:calc(100vh - 30px);overflow-y:auto}
+.fs-tbl{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
+.fs-tbl th{padding:4px 6px;background:#1a3d30;color:#9FE1CB;text-align:left;font-weight:600}
+.fs-tbl td{padding:4px 6px;border-bottom:1px solid #1a3020}
 .zdot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
 
 /* Zone legend */
@@ -115,8 +128,8 @@ canvas{display:block}
   <div class="hdr-logo">SH</div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
-    <span class="ver-pill ver-pill-be">BE1.0.7</span>
-    <span class="ver-pill ver-pill-fe">FE1.0.9</span>
+    <span class="ver-pill ver-pill-be">BE1.0.8</span>
+    <span class="ver-pill ver-pill-fe">FE1.0.10</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -182,6 +195,12 @@ canvas{display:block}
       <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:6px">SHPI vs CPI correlation</h3>
       <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
       <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
+      <div id="results-map-ctrls">
+        <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
+        <input type="range" id="rasterOpacity" min="10" max="100" value="80" oninput="updateRasterOpacity_(this.value, 'rasterOpacityVal', false)">
+        <span id="rasterOpacityVal" style="font-size:10px;color:#F5A623;width:30px">80%</span>
+        <button class="rm-ctrl-btn" onclick="toggleResultsFullscreen_()" title="Fullscreen">⛶</button>
+      </div>
       <div id="results-map"></div>
       <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
       <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
@@ -221,6 +240,9 @@ let lastResult = null
 let chart        = null
 let scatterChart = null
 let resultsMap = null
+let resultsRasterLayer = null  // the L.imageOverlay for the Process API raster
+let resultsMapFs = null        // fullscreen map Leaflet instance
+let resultsRasterLayerFs = null // raster layer in fullscreen map
 const ZONE_COLORS = ['#d73027','#fc8d59','#fee08b','#91cf60','#1a9850']
 
 function formatPixelCount(px) {
@@ -586,9 +608,10 @@ function renderResults(data) {
   })
 
   document.getElementById('results').classList.add('show')
+  document.getElementById('results-map-ctrls').style.display = 'flex'
 
   // Zone map — rendered after 'show' so the container has layout
-  setTimeout(function() { renderResultsMap_(data.zone_stats) }, 50)
+  setTimeout(function() { renderResultsMap_(data) }, 50)
 }
 
 // ── Results Map ───────────────────────────────────────────────
@@ -631,9 +654,12 @@ function ringToPixels_(ring, minLng, minLat, lngScale, latScale, W, H) {
   })
 }
 
-function renderResultsMap_(zoneStat) {
+// ── Render results map: real Process API raster or IDW fallback ───────────────
+function renderResultsMap_(data) {
   if (!roi) return
-  var container = document.getElementById('results-map')
+  var zoneStat   = data.zone_stats
+  var rasterB64  = data.raster_png_b64 || null
+  var container  = document.getElementById('results-map')
 
   if (!resultsMap) {
     resultsMap = L.map(container, { zoomControl: true, attributionControl: false })
@@ -644,83 +670,162 @@ function renderResultsMap_(zoneStat) {
     resultsMap.eachLayer(function(lyr) {
       if (!(lyr instanceof L.TileLayer)) resultsMap.removeLayer(lyr)
     })
+    resultsRasterLayer = null
   }
 
   var bb     = geomBbox_(roi)
   var minLng = bb[0], minLat = bb[1], maxLng = bb[2], maxLat = bb[3]
+  var bounds = [[minLat, minLng], [maxLat, maxLng]]
 
-  // Canvas resolution — 200 px on the longer axis balances quality vs. render time
-  var W = 200, H = Math.max(1, Math.round(200 * (maxLat - minLat) / (maxLng - minLng)))
-  var lngScale = W / (maxLng - minLng)
-  var latScale = H / (maxLat - minLat)
-
-  // Build IDW centroids — one per zone, placed at the zone's latitudinal band centroid
-  var latStep = (maxLat - minLat) / zoneStat.length
-  var centroids = zoneStat.map(function(zs, i) {
-    var rgb = hexToRgb_(ZONE_COLORS[i])
-    var cx = W / 2
-    var cy = H - ((minLat + (i + 0.5) * latStep) - minLat) * latScale
-    return { x: cx, y: cy, r: rgb[0], g: rgb[1], b: rgb[2] }
-  })
-
-  // Collect all outer rings of the ROI for clipping
-  var rings = []
-  if (roi.type === 'MultiPolygon') {
-    roi.coordinates.forEach(function(poly) { rings.push(poly[0]) })
+  if (rasterB64) {
+    // Real zone-coloured raster from the Sentinel Hub Process API
+    var opacity = (document.getElementById('rasterOpacity').value || 80) / 100
+    resultsRasterLayer = L.imageOverlay(
+      'data:image/png;base64,' + rasterB64,
+      bounds,
+      { opacity: opacity }
+    ).addTo(resultsMap)
   } else {
-    rings.push(roi.coordinates[0])
+    // Fallback: IDW canvas heatmap (geometric approximation)
+    renderIdwHeatmap_(resultsMap, zoneStat, minLng, minLat, maxLng, maxLat)
   }
 
-  // Build canvas
-  var canvas = document.createElement('canvas')
-  canvas.width  = W
-  canvas.height = H
-  var ctx = canvas.getContext('2d')
-
-  // Paint IDW heatmap onto an offscreen canvas first
-  // (putImageData ignores clip paths, so we use drawImage to composite)
-  var offscreen = document.createElement('canvas')
-  offscreen.width  = W
-  offscreen.height = H
-  var octx = offscreen.getContext('2d')
-  var imgData = octx.createImageData(W, H)
-  var data = imgData.data
-  for (var py = 0; py < H; py++) {
-    for (var px = 0; px < W; px++) {
-      var rgb = idwColor_(px, py, centroids)
-      var idx = (py * W + px) * 4
-      data[idx]     = rgb[0]
-      data[idx + 1] = rgb[1]
-      data[idx + 2] = rgb[2]
-      data[idx + 3] = Math.round(0.65 * 255)  // 65% opacity
-    }
-  }
-  octx.putImageData(imgData, 0, 0)
-
-  // Apply ROI clip path on main canvas, then draw offscreen (clip is respected by drawImage)
-  ctx.save()
-  rings.forEach(function(ring) {
-    var pts = ringToPixels_(ring, minLng, minLat, lngScale, latScale, W, H)
-    ctx.beginPath()
-    ctx.moveTo(pts[0][0], pts[0][1])
-    for (var j = 1; j < pts.length; j++) ctx.lineTo(pts[j][0], pts[j][1])
-    ctx.closePath()
-  })
-  ctx.clip()
-  ctx.drawImage(offscreen, 0, 0)
-  ctx.restore()
-
-  // Add as image overlay fitted to bbox
-  var dataUrl = canvas.toDataURL()
-  L.imageOverlay(dataUrl, [[minLat, minLng], [maxLat, maxLng]]).addTo(resultsMap)
-
-  // ROI outline on top
+  // ROI polygon outline on top
   L.geoJSON(roi, {
     style: { color: '#F5A623', weight: 2, fillOpacity: 0, dashArray: '4 3' }
   }).addTo(resultsMap)
 
-  // Fit to ROI
-  resultsMap.fitBounds([[minLat, minLng], [maxLat, maxLng]], { padding: [6, 6] })
+  resultsMap.fitBounds(bounds, { padding: [6, 6] })
+}
+
+// ── IDW canvas heatmap (fallback when Process API raster is unavailable) ──────
+function renderIdwHeatmap_(mapInst, zoneStat, minLng, minLat, maxLng, maxLat) {
+  var W = 200, H = Math.max(1, Math.round(200 * (maxLat - minLat) / (maxLng - minLng)))
+  var lngScale = W / (maxLng - minLng)
+  var latScale = H / (maxLat - minLat)
+
+  var latStep = (maxLat - minLat) / zoneStat.length
+  var centroids = zoneStat.map(function(zs, i) {
+    var rgb = hexToRgb_(ZONE_COLORS[i])
+    return { x: W / 2, y: H - (i + 0.5) * latStep * latScale, r: rgb[0], g: rgb[1], b: rgb[2] }
+  })
+
+  var rings = roi.type === 'MultiPolygon'
+    ? roi.coordinates.map(function(p) { return p[0] })
+    : [roi.coordinates[0]]
+
+  var canvas = document.createElement('canvas')
+  canvas.width = W; canvas.height = H
+  var ctx = canvas.getContext('2d')
+
+  var offscreen = document.createElement('canvas')
+  offscreen.width = W; offscreen.height = H
+  var octx = offscreen.getContext('2d')
+  var imgData = octx.createImageData(W, H)
+  var d = imgData.data
+  for (var py = 0; py < H; py++) {
+    for (var px = 0; px < W; px++) {
+      var rgb = idwColor_(px, py, centroids)
+      var idx = (py * W + px) * 4
+      d[idx] = rgb[0]; d[idx+1] = rgb[1]; d[idx+2] = rgb[2]; d[idx+3] = Math.round(0.65*255)
+    }
+  }
+  octx.putImageData(imgData, 0, 0)
+
+  ctx.save()
+  rings.forEach(function(ring) {
+    var pts = ringToPixels_(ring, minLng, minLat, lngScale, latScale, W, H)
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1])
+    for (var j = 1; j < pts.length; j++) ctx.lineTo(pts[j][0], pts[j][1])
+    ctx.closePath()
+  })
+  ctx.clip(); ctx.drawImage(offscreen, 0, 0); ctx.restore()
+
+  L.imageOverlay(canvas.toDataURL(), [[minLat, minLng], [maxLat, maxLng]]).addTo(mapInst)
+}
+
+// ── Update raster layer opacity ───────────────────────────────
+function updateRasterOpacity_(val, labelId, isFullscreen) {
+  document.getElementById(labelId).textContent = val + '%'
+  var opacity = val / 100
+  if (!isFullscreen && resultsRasterLayer)   resultsRasterLayer.setOpacity(opacity)
+  if (isFullscreen  && resultsRasterLayerFs) resultsRasterLayerFs.setOpacity(opacity)
+}
+
+// ── Fullscreen results map toggle ──────────────────────────────────────────────
+function toggleResultsFullscreen_() {
+  var fsContainer = document.getElementById('results-fs-container')
+  var isOpen = fsContainer.style.display !== 'none'
+
+  if (isOpen) {
+    fsContainer.style.display = 'none'
+    if (resultsMapFs) { resultsMapFs.remove(); resultsMapFs = null; resultsRasterLayerFs = null }
+    return
+  }
+
+  // Open fullscreen
+  fsContainer.style.display = 'block'
+  var fsMapEl = document.getElementById('results-fs-map')
+  if (resultsMapFs) { resultsMapFs.remove(); resultsMapFs = null; resultsRasterLayerFs = null }
+  resultsMapFs = L.map(fsMapEl, { zoomControl: true, attributionControl: false })
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19
+  }).addTo(resultsMapFs)
+
+  if (lastResult && roi) {
+    var data   = lastResult
+    var bb     = geomBbox_(roi)
+    var minLng = bb[0], minLat = bb[1], maxLng = bb[2], maxLat = bb[3]
+    var bounds = [[minLat, minLng], [maxLat, maxLng]]
+
+    if (data.raster_png_b64) {
+      var opacityFs = (document.getElementById('rasterOpacityFs').value || 80) / 100
+      resultsRasterLayerFs = L.imageOverlay(
+        'data:image/png;base64,' + data.raster_png_b64,
+        bounds,
+        { opacity: opacityFs }
+      ).addTo(resultsMapFs)
+    } else {
+      renderIdwHeatmap_(resultsMapFs, data.zone_stats, minLng, minLat, maxLng, maxLat)
+    }
+
+    L.geoJSON(roi, {
+      style: { color: '#F5A623', weight: 2, fillOpacity: 0, dashArray: '4 3' }
+    }).addTo(resultsMapFs)
+
+    resultsMapFs.fitBounds(bounds, { padding: [20, 20] })
+
+    // Build zone area table
+    buildFsZoneAreaTable_(data.zone_stats)
+  }
+}
+
+// ── Zone area table for fullscreen panel ──────────────────────
+function buildFsZoneAreaTable_(zoneStat) {
+  var tbl        = document.getElementById('results-fs-table')
+  var totalHa    = roi ? computeAreaHa_(roi) : 0
+  var totalPx    = zoneStat.reduce(function(s, z) { return s + (z.pixel_count || 0) }, 0)
+  // Fewer than this many bare-soil pixels makes area estimation unreliable; use equal 20% split instead
+  var MIN_PX_FOR_AREA = 5
+  var useEqual   = totalPx < MIN_PX_FOR_AREA
+
+  var html = '<tr><th style="padding:4px 6px">Zone</th>' +
+             '<th style="padding:4px 6px;text-align:right">Area (ha)</th>' +
+             '<th style="padding:4px 6px;text-align:right">% of ROI</th></tr>'
+
+  zoneStat.forEach(function(z, i) {
+    var pct = useEqual ? 20 : (totalPx > 0 ? z.pixel_count / totalPx * 100 : 20)
+    var ha  = totalHa * pct / 100
+    html += '<tr>' +
+      '<td style="padding:4px 6px">' +
+        '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + ZONE_COLORS[i] + ';margin-right:5px;vertical-align:middle"></span>' +
+        z.label + '</td>' +
+      '<td style="padding:4px 6px;text-align:right;color:#F5A623">' + Math.round(ha) + '</td>' +
+      '<td style="padding:4px 6px;text-align:right;color:#9FE1CB">' + pct.toFixed(1) + '%</td>' +
+      '</tr>'
+  })
+
+  tbl.innerHTML = html
 }
 
 // ── Shapefile download + area display controls ────────────────
@@ -1030,5 +1135,23 @@ function setProgress(show, pct, msg) {
   if (msg)               document.getElementById('progMsg').textContent  = msg
 }
 </script>
+
+<!-- Fullscreen results map -->
+<div id="results-fs-container">
+  <div id="results-fs-map"></div>
+  <div id="results-fs-topbar">
+    <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
+    <input type="range" id="rasterOpacityFs" min="10" max="100" value="80"
+           style="width:80px;height:4px;accent-color:#F5A623;cursor:pointer"
+           oninput="updateRasterOpacity_(this.value, 'rasterOpacityFsVal', true)">
+    <span id="rasterOpacityFsVal" style="font-size:10px;color:#F5A623;width:30px">80%</span>
+    <button class="rm-ctrl-btn" onclick="toggleResultsFullscreen_()">✕ Close</button>
+  </div>
+  <div id="results-fs-panel">
+    <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em">Zone Areas</div>
+    <table id="results-fs-table" class="fs-tbl"></table>
+    <div style="font-size:9px;color:#5a8a6a;margin-top:8px">* Area estimated from bare-soil pixel counts</div>
+  </div>
+</div>
 </body>
 </html>
