@@ -870,9 +870,12 @@ function renderResultsMap_(data) {
 
   if (!resultsMap) {
     resultsMap = L.map(container, { zoomControl: true, attributionControl: false })
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19
-    }).addTo(resultsMap)
+    var mainBaseLayers0 = [esriSatellite, esriTopo, esriStreet, osmStandard]
+    var activeBase0 = mainBaseLayers0.find(function(l) { return map.hasLayer(l) }) || esriSatellite
+    L.tileLayer(activeBase0._url, Object.assign({}, activeBase0.options)).addTo(resultsMap)
+    if (monthlyLayer && map.hasLayer(monthlyLayer)) {
+      L.tileLayer(monthlyLayer._url, Object.assign({}, monthlyLayer.options)).addTo(resultsMap)
+    }
   } else {
     resultsMap.eachLayer(function(lyr) {
       if (!(lyr instanceof L.TileLayer)) resultsMap.removeLayer(lyr)
@@ -975,9 +978,14 @@ function toggleResultsFullscreen_() {
   var fsMapEl = document.getElementById('results-fs-map')
   if (resultsMapFs) { resultsMapFs.remove(); resultsMapFs = null; resultsRasterLayerFs = null }
   resultsMapFs = L.map(fsMapEl, { zoomControl: true, attributionControl: false })
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-    maxZoom: 19
-  }).addTo(resultsMapFs)
+  // Mirror the main map's active base layer (whichever tile layer is currently on the map)
+  var mainBaseLayers = [esriSatellite, esriTopo, esriStreet, osmStandard]
+  var activeBase = mainBaseLayers.find(function(l) { return map.hasLayer(l) }) || esriSatellite
+  L.tileLayer(activeBase._url, Object.assign({}, activeBase.options)).addTo(resultsMapFs)
+  // Also mirror the monthly imagery overlay if one is active on the main map
+  if (monthlyLayer && map.hasLayer(monthlyLayer)) {
+    L.tileLayer(monthlyLayer._url, Object.assign({}, monthlyLayer.options)).addTo(resultsMapFs)
+  }
 
   if (lastResult && roi) {
     var data   = lastResult
@@ -1707,7 +1715,12 @@ function openCompareMap_() {
   var mapEl = document.getElementById('compare-fs-map')
   if (compareMapFs) { compareMapFs.remove(); compareMapFs = null }
   compareMapFs = L.map(mapEl, { zoomControl: true, attributionControl: false })
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(compareMapFs)
+  var mainBaseLayers2 = [esriSatellite, esriTopo, esriStreet, osmStandard]
+  var activeBase2 = mainBaseLayers2.find(function(l) { return map.hasLayer(l) }) || esriSatellite
+  L.tileLayer(activeBase2._url, Object.assign({}, activeBase2.options)).addTo(compareMapFs)
+  if (monthlyLayer && map.hasLayer(monthlyLayer)) {
+    L.tileLayer(monthlyLayer._url, Object.assign({}, monthlyLayer.options)).addTo(compareMapFs)
+  }
 
   var allBounds = []
   rois.forEach(function(item, idx) {
