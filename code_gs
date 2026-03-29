@@ -1,5 +1,5 @@
 // ============================================================
-// Soil Health Stratification Tool — Apps Script Backend BE1.0.9
+// Soil Health Stratification Tool — Apps Script Backend BE1.0.11
 // Treeconomy Soil Intelligence Division
 // All strings use single quotes and + concatenation. No backticks.
 // ============================================================
@@ -68,11 +68,14 @@ function buildEvalscriptA_(rabiMonths) {
     '}';
 }
 
-// buildEvalscriptB_: multi-temporal evalscript that computes NDVI per SHPI zone.
+// buildEvalscriptB_: multi-temporal evalscript that computes CPI (Kharif NDVI) per SHPI zone.
+// Methodology: SHPI zones are defined from bare-soil pixels (Track A). CPI is then calculated
+// for ALL pixels in the ROI during Kharif — not just bare-soil pixels — because the whole ROI
+// is covered with crops during the monsoon season.
 // For each pixel it:
-//   1. Mediates Rabi-season samples → computes full SHPI value (same formula as Track A)
+//   1. Mediates Rabi-season samples → computes SHPI-proxy value (same spectral formula as Track A)
 //   2. Assigns the pixel to one of 5 SHPI zones using the thresholds from Track A
-//   3. Mediates Kharif-season samples → computes NDVI
+//   3. Mediates Kharif-season samples → computes NDVI for ALL pixels (no bare-soil filter)
 //   4. Outputs NDVI in the zone-specific band; sets -2.0 (below histogram range) in other bands
 // The Statistical API then gives mean NDVI per SHPI zone — a genuine cross-variable correlation.
 // rabiMonths / kharifMonths: Arrays of month integers, e.g. [11,12,1,2]
@@ -132,9 +135,6 @@ function buildEvalscriptB_(rabiMonths, kharifMonths, shpiThresholds) {
     '  }\n' +
     '  var b2=med(rabiS,"B02"),b3=med(rabiS,"B03"),b4r=med(rabiS,"B04"),\n' +
     '      b8r=med(rabiS,"B08"),b11=med(rabiS,"B11"),b12=med(rabiS,"B12");\n' +
-    '  var lswi = (b8r - b11) / (b8r + b11 + 0.0001);\n' +
-    '  // Skip vegetated pixels: only bare-soil pixels (lswi < 0) have meaningful SHPI\n' +
-    '  if (lswi >= 0) return noDataResult;\n' +
     '  var bsi  = ((b11+b4r)-(b8r+b2)) / ((b11+b4r)+(b8r+b2)+0.0001);\n' +
     '  var bi   = Math.sqrt((b4r*b4r + b3*b3 + b2*b2) / 3.0);\n' +
     '  var ri   = (b4r*b4r) / (b2*b3 + 0.0001);\n' +
