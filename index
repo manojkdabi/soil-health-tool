@@ -120,6 +120,39 @@ canvas{display:block}
 
 /* Footer */
 .footer{background:#0d1e18;border-top:1px solid #1e3d30;padding:4px 16px;font-size:10px;color:#3a6a4a;flex-shrink:0}
+
+/* ROI Library */
+.lib-empty{text-align:center;font-size:11px;color:#3a6a4a;padding:8px 0}
+.lib-item{background:#1a3d30;border:1px solid #2E6B4F;border-radius:5px;padding:8px 10px;margin-bottom:6px}
+.lib-item-name{font-size:12px;font-weight:600;color:#e8f4ee;margin-bottom:2px}
+.lib-item-meta{font-size:10px;color:#5a8a6a;display:flex;gap:10px;margin-bottom:4px}
+.lib-item-actions{display:flex;gap:5px}
+.lib-btn{flex:1;padding:4px 6px;border:1px solid #2E6B4F;border-radius:4px;background:#0f1a17;color:#9FE1CB;font-size:10px;cursor:pointer;text-align:center}
+.lib-btn:hover{background:#2E6B4F;color:#F5A623}
+.lib-btn-load{border-color:#F5A623;color:#F5A623}.lib-btn-load:hover{background:#F5A623;color:#3A1800}
+.lib-btn-del{border-color:#6d2a2a;color:#f07070}.lib-btn-del:hover{background:#6d2a2a}
+.lib-btn-cached{border-color:#3a6d3a;color:#7FE07F}.lib-btn-cached:hover{background:#3a6d3a}
+
+/* Batch run */
+.batch-progress{display:none;margin-top:8px;padding:8px 10px;background:#1a3d30;border:1px solid #2E6B4F;border-radius:5px}
+.batch-progress.show{display:block}
+.batch-prog-item{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px;color:#9FE1CB}
+.batch-prog-dot{width:8px;height:8px;border-radius:50%;background:#2E6B4F;flex-shrink:0}
+.batch-prog-dot.running{background:#F5A623;animation:pulse_ 1s infinite}
+.batch-prog-dot.done{background:#7FE07F}.batch-prog-dot.failed{background:#f07070}
+@keyframes pulse_{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* Compare section */
+.compare-section{display:none;padding:14px 16px;border-top:2px solid #F5A623}
+.compare-section.show{display:block}
+.cmp-table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:6px}
+.cmp-table th{padding:5px 5px;background:#1a3d30;color:#9FE1CB;text-align:left;font-weight:600}
+.cmp-table td{padding:4px 5px;border-bottom:1px solid #1a3020}
+.roi-color-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.cmp-tabs{display:flex;gap:4px;margin-bottom:8px}
+.cmp-tab{flex:1;padding:4px 6px;background:#1e3d30;border:1px solid #2E6B4F;border-radius:4px;color:#9FE1CB;font-size:10px;cursor:pointer;text-align:center}
+.cmp-tab.active{background:#F5A623;color:#3A1800;border-color:#F5A623;font-weight:600}
+.cmp-chart-wrap{height:130px;margin-top:4px}
 </style>
 </head>
 <body>
@@ -148,6 +181,17 @@ canvas{display:block}
       <div class="upload" id="uploadBtn" onclick="showUploadMenu_(event)">📁 Upload ROI</div>
       <div style="text-align:center;font-size:10px;color:#3a6a4a;margin:4px 0">— or draw on map —</div>
       <button class="btn btn-sec" onclick="clearROI()">✕ Clear ROI</button>
+      <button class="btn btn-sec" style="margin-top:4px" onclick="saveCurrentROI_()">💾 Save ROI to Library</button>
+    </div>
+
+    <!-- ROI Library -->
+    <div class="sb" id="libSection">
+      <h3 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px" onclick="toggleLibrary_()">
+        <span>📚 ROI Library</span>
+        <span id="libCount" style="font-size:10px;color:#9FE1CB;font-weight:400;text-transform:none;letter-spacing:0;flex:1"></span>
+        <span id="libToggleIcon" style="font-size:10px">▼</span>
+      </h3>
+      <div id="libList"></div>
     </div>
 
     <!-- Step 2: Config -->
@@ -174,9 +218,16 @@ canvas{display:block}
       <button class="btn btn-run" id="runBtn" onclick="runAnalysis()" disabled>
         ▶ Run Phase 1 Analysis
       </button>
+      <button class="btn btn-sec" id="runAllBtn" style="margin-top:6px" onclick="runAllROIs_()">
+        ▶▶ Run All Saved ROIs
+      </button>
       <div class="progress" id="progress">
         <div class="prog-msg" id="progMsg">Initialising...</div>
         <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+      </div>
+      <div class="batch-progress" id="batchProgress">
+        <div style="font-size:10px;font-weight:700;color:#F5A623;margin-bottom:6px">Batch Progress</div>
+        <div id="batchItems"></div>
       </div>
     </div>
 
@@ -204,6 +255,24 @@ canvas{display:block}
       <div id="results-map"></div>
       <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
       <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
+    </div>
+
+    <!-- Compare ROIs section -->
+    <div id="compareSection" class="compare-section">
+      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-bottom:8px">📊 Compare ROIs</h3>
+      <button class="btn btn-sec" style="margin-bottom:8px" onclick="openCompareMap_()">🗺 View Comparison Map</button>
+      <div style="overflow-x:auto">
+        <table class="cmp-table" id="cmpTable"></table>
+      </div>
+      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:8px;margin-bottom:2px">CPI by Zone (all ROIs)</h3>
+      <div class="cmp-chart-wrap"><canvas id="cmpBarChart"></canvas></div>
+      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:8px;margin-bottom:4px">SHPI vs CPI — all ROIs</h3>
+      <div class="cmp-tabs">
+        <div class="cmp-tab active" id="cmpTabZones" onclick="setCmpScatterMode_('zones')">Per-zone</div>
+        <div class="cmp-tab" id="cmpTabSummary" onclick="setCmpScatterMode_('summary')">Per-ROI summary</div>
+      </div>
+      <div class="cmp-chart-wrap" style="height:150px"><canvas id="cmpScatterChart"></canvas></div>
+      <div id="cmpScatterLabel" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
     </div>
 
   </div>
@@ -243,7 +312,16 @@ let resultsMap = null
 let resultsRasterLayer = null  // the L.imageOverlay for the Process API raster
 let resultsMapFs = null        // fullscreen map Leaflet instance
 let resultsRasterLayerFs = null // raster layer in fullscreen map
-const ZONE_COLORS = ['#d73027','#fc8d59','#fee08b','#91cf60','#1a9850']
+let currentRoiId = null        // UUID of the library ROI currently loaded (null if drawn/ad-hoc)
+let cmpBarChart = null
+let cmpScatterChart = null
+let cmpScatterMode = 'zones'   // 'zones' | 'summary'
+let compareMapFs = null
+const ZONE_COLORS         = ['#d73027','#fc8d59','#fee08b','#91cf60','#1a9850']
+const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','#ff9f43','#54a0ff','#5f27cd','#ee5a24','#0abde3']
+const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
+const MAX_ROIS_FOR_LEGEND = 6     // hide chart legend when more ROIs than this (to avoid clutter)
+const EPSILON_DENOM       = 1e-10 // numerical stability guard against near-zero denominators in regression
 
 function formatPixelCount(px) {
   return px >= 1000 ? (px / 1000).toFixed(1) + 'k' : String(Math.round(px))
@@ -316,7 +394,8 @@ map.addControl(drawCtrl)
 map.on(L.Draw.Event.CREATED, e => {
   drawn.clearLayers()
   drawn.addLayer(e.layer)
-  roi = e.layer.toGeoJSON().geometry
+  roi          = e.layer.toGeoJSON().geometry
+  currentRoiId = null
   setROIStatus('✓ ROI set from drawn shape')
   document.getElementById('runBtn').disabled = false
   updateAreaDisplay_()
@@ -342,6 +421,7 @@ document.getElementById('gjInput').addEventListener('change', e => {
       else if (gj.type === 'Feature') roi = gj.geometry
       else roi = gj
       setROIStatus('✓ GeoJSON loaded: ' + file.name)
+      currentRoiId = null
       document.getElementById('runBtn').disabled = false
       updateAreaDisplay_()
     } catch(err) { alert('Invalid GeoJSON: ' + err.message) }
@@ -352,11 +432,13 @@ document.getElementById('gjInput').addEventListener('change', e => {
 
 function clearROI() {
   drawn.clearLayers()
-  roi = null
+  roi          = null
+  currentRoiId = null
   document.getElementById('runBtn').disabled = true
   document.getElementById('roiStatus').classList.remove('show')
   document.getElementById('results').classList.remove('show')
   updateAreaDisplay_()
+  renderLibraryPanel_()
 }
 
 function setROIStatus(msg) {
@@ -417,6 +499,14 @@ function runAnalysis() {
       document.getElementById('runBtn').disabled = false
       if (data.success) {
         lastResult = data
+        // Cache result for current ROI (if it has a library ID)
+        if (currentRoiId) {
+          var cache = loadResultsCache_()
+          cache[currentRoiId] = data
+          saveResultsCache_(cache)
+          renderLibraryPanel_()
+          maybeShowCompareSection_()
+        }
         renderResults(data)
       } else {
         alert('Analysis failed: ' + data.error)
@@ -1057,6 +1147,7 @@ document.getElementById('shpInput').addEventListener('change', function (e) {
         roi = feat ? feat.geometry : gj
         var extraMsg = gj.features.length > 1 ? ' (first of ' + gj.features.length + ' features used)' : ''
         setROIStatus('✓ Shapefile loaded: ' + file.name + extraMsg)
+        currentRoiId = null
         document.getElementById('runBtn').disabled = false
         updateAreaDisplay_()
       })
@@ -1102,6 +1193,448 @@ function shpToGeoJSON_(buf) {
   }
   return features.length ? { type: 'FeatureCollection', features: features } : null
 }
+
+// ── ROI Library (Phase A+B) ───────────────────────────────────
+function uuid4_() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
+}
+
+function escHtml_(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+}
+
+function loadLibrary_() {
+  try { return JSON.parse(localStorage.getItem('shpRoiLibrary') || '[]') } catch(e) { return [] }
+}
+
+function saveLibrary_(lib) {
+  localStorage.setItem('shpRoiLibrary', JSON.stringify(lib))
+}
+
+function loadResultsCache_() {
+  try { return JSON.parse(localStorage.getItem('shpResultsCache') || '{}') } catch(e) { return {} }
+}
+
+function saveResultsCache_(cache) {
+  localStorage.setItem('shpResultsCache', JSON.stringify(cache))
+}
+
+function saveCurrentROI_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+  var name = prompt('Enter a name for this ROI:', 'ROI ' + new Date().toLocaleDateString())
+  if (!name) return
+  var lib = loadLibrary_()
+  var id  = uuid4_()
+  lib.push({ id: id, name: name, geojson: roi, savedAt: Date.now(), areaHa: Math.round(computeAreaHa_(roi)) })
+  saveLibrary_(lib)
+  currentRoiId = id
+  renderLibraryPanel_()
+  maybeShowCompareSection_()
+  setROIStatus('✓ Saved to library: ' + name)
+}
+
+function renderLibraryPanel_() {
+  var lib   = loadLibrary_()
+  var cache = loadResultsCache_()
+  var el    = document.getElementById('libList')
+  var cnt   = document.getElementById('libCount')
+  if (cnt) cnt.textContent = lib.length > 0 ? '(' + lib.length + ')' : ''
+  if (lib.length === 0) {
+    el.innerHTML = '<div class="lib-empty">No saved ROIs yet</div>'
+    return
+  }
+  el.innerHTML = lib.map(function(item) {
+    var hasResult = !!cache[item.id]
+    var date      = new Date(item.savedAt).toLocaleDateString()
+    var active    = currentRoiId === item.id ? ' style="border-color:#F5A623"' : ''
+    return '<div class="lib-item"' + active + '>' +
+      '<div class="lib-item-name">' + escHtml_(item.name) +
+        (hasResult ? '<span style="font-size:9px;color:#7FE07F;margin-left:5px">📊</span>' : '') +
+      '</div>' +
+      '<div class="lib-item-meta"><span>📐 ' + item.areaHa + ' ha</span><span>📅 ' + date + '</span></div>' +
+      '<div class="lib-item-actions">' +
+        '<button class="lib-btn lib-btn-load" onclick="loadROIFromLibrary_(\'' + item.id + '\')">🗺 Load</button>' +
+        (hasResult ? '<button class="lib-btn lib-btn-cached" onclick="viewCachedResult_(\'' + item.id + '\')">📊 Results</button>' : '') +
+        '<button class="lib-btn lib-btn-del" onclick="deleteROIFromLibrary_(\'' + item.id + '\')">🗑</button>' +
+      '</div>' +
+    '</div>'
+  }).join('')
+}
+
+function toggleLibrary_() {
+  var el   = document.getElementById('libList')
+  var icon = document.getElementById('libToggleIcon')
+  var vis  = el.style.display !== 'none'
+  el.style.display  = vis ? 'none' : 'block'
+  icon.textContent  = vis ? '▶' : '▼'
+}
+
+function loadROIFromLibrary_(id) {
+  var lib  = loadLibrary_()
+  var item = lib.find(function(r) { return r.id === id })
+  if (!item) return
+  drawn.clearLayers()
+  var layer = L.geoJSON(item.geojson, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } }).addTo(drawn)
+  map.fitBounds(layer.getBounds())
+  roi          = item.geojson
+  currentRoiId = id
+  setROIStatus('✓ Loaded: ' + item.name)
+  document.getElementById('runBtn').disabled = false
+  updateAreaDisplay_()
+  renderLibraryPanel_()
+  var cache = loadResultsCache_()
+  if (cache[id]) {
+    if (confirm('Cached results available for "' + item.name + '". View them now?')) {
+      viewCachedResult_(id)
+    }
+  }
+}
+
+function viewCachedResult_(id) {
+  var cache = loadResultsCache_()
+  if (!cache[id]) return
+  var lib  = loadLibrary_()
+  var item = lib.find(function(r) { return r.id === id })
+  if (item) {
+    roi          = item.geojson
+    currentRoiId = id
+    drawn.clearLayers()
+    var layer = L.geoJSON(item.geojson, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } }).addTo(drawn)
+    map.fitBounds(layer.getBounds())
+    updateAreaDisplay_()
+    renderLibraryPanel_()
+  }
+  lastResult = cache[id]
+  renderResults(cache[id])
+}
+
+function deleteROIFromLibrary_(id) {
+  if (!confirm('Delete this ROI from the library? Cached results will also be removed.')) return
+  var lib = loadLibrary_().filter(function(r) { return r.id !== id })
+  saveLibrary_(lib)
+  var cache = loadResultsCache_()
+  delete cache[id]
+  saveResultsCache_(cache)
+  if (currentRoiId === id) currentRoiId = null
+  renderLibraryPanel_()
+  maybeShowCompareSection_()
+}
+
+// ── Batch run (Phase C) ───────────────────────────────────────
+function runAllROIs_() {
+  var lib = loadLibrary_()
+  if (lib.length === 0) { alert('No saved ROIs in the library. Save at least one ROI first.'); return }
+
+  var yearStart    = parseInt(document.getElementById('yearStart').value, 10)
+  var yearEnd      = parseInt(document.getElementById('yearEnd').value, 10)
+  var resolution   = parseInt(document.getElementById('resolution').value, 10)
+  var kharifMonths = document.getElementById('kharifMonths').value.split(',').map(Number).filter(Boolean)
+  var rabiMonths   = document.getElementById('rabiMonths').value.split(',').map(Number).filter(Boolean)
+
+  var batchDiv = document.getElementById('batchProgress')
+  batchDiv.classList.add('show')
+  var batchItems = document.getElementById('batchItems')
+  batchItems.innerHTML = lib.map(function(item) {
+    return '<div class="batch-prog-item" id="bpItem_' + item.id + '">' +
+      '<span class="batch-prog-dot" id="bpDot_' + item.id + '"></span>' +
+      '<span style="flex:1">' + escHtml_(item.name) + '</span>' +
+      '<span id="bpStat_' + item.id + '" style="font-size:10px;color:#5a8a6a">Queued</span>' +
+    '</div>'
+  }).join('')
+
+  document.getElementById('runAllBtn').disabled = true
+  document.getElementById('runBtn').disabled    = true
+
+  var i = 0
+  function runNext() {
+    if (i >= lib.length) {
+      document.getElementById('runAllBtn').disabled = false
+      document.getElementById('runBtn').disabled    = (roi === null)
+      renderLibraryPanel_()
+      maybeShowCompareSection_()
+      return
+    }
+    var item = lib[i]
+    var dot  = document.getElementById('bpDot_' + item.id)
+    var stat = document.getElementById('bpStat_' + item.id)
+    if (dot)  dot.className = 'batch-prog-dot running'
+    if (stat) { stat.textContent = 'Running…'; stat.style.color = '#F5A623' }
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (data.success) {
+          var cache = loadResultsCache_()
+          cache[item.id] = data
+          saveResultsCache_(cache)
+          if (dot)  dot.className = 'batch-prog-dot done'
+          if (stat) { stat.textContent = '✓ Done'; stat.style.color = '#7FE07F' }
+        } else {
+          if (dot)  dot.className = 'batch-prog-dot failed'
+          if (stat) { stat.textContent = '✗ Failed'; stat.style.color = '#f07070' }
+        }
+        i++
+        setTimeout(runNext, BATCH_DELAY_MS)
+      })
+      .withFailureHandler(function() {
+        if (dot)  dot.className = 'batch-prog-dot failed'
+        if (stat) { stat.textContent = '✗ Error'; stat.style.color = '#f07070' }
+        i++
+        setTimeout(runNext, BATCH_DELAY_MS)
+      })
+      .runAnalysis({ geojson: item.geojson, yearStart: yearStart, yearEnd: yearEnd,
+                     resolution: resolution, kharifMonths: kharifMonths, rabiMonths: rabiMonths })
+  }
+  runNext()
+}
+
+// ── Compare view (Phase D+E) ──────────────────────────────────
+function loadROIsWithResults_() {
+  var lib   = loadLibrary_()
+  var cache = loadResultsCache_()
+  return lib.filter(function(item) { return !!cache[item.id] })
+}
+
+function maybeShowCompareSection_() {
+  var rois    = loadROIsWithResults_()
+  var section = document.getElementById('compareSection')
+  if (rois.length >= 2) {
+    section.classList.add('show')
+    renderCompareView_()
+  } else {
+    section.classList.remove('show')
+  }
+}
+
+function renderCompareView_() {
+  var rois  = loadROIsWithResults_()
+  if (rois.length < 2) return
+  var cache = loadResultsCache_()
+
+  // Summary table
+  var html = '<tr><th>ROI</th><th>SHPI range</th><th>r</th><th>R²</th><th>CPI Z5/Z1</th></tr>'
+  rois.forEach(function(item, idx) {
+    var d      = cache[item.id]
+    var v      = d.validation
+    var z      = d.zone_stats
+    var sMin   = Math.min.apply(null, z.map(function(zs) { return zs.mean_shpi }))
+    var sMax   = Math.max.apply(null, z.map(function(zs) { return zs.mean_shpi }))
+    var color  = ROI_COLORS[idx % ROI_COLORS.length]
+    html += '<tr>' +
+      '<td><span class="roi-color-dot" style="background:' + color + '"></span>' + escHtml_(item.name) + '</td>' +
+      '<td>' + sMin.toFixed(2) + '–' + sMax.toFixed(2) + '</td>' +
+      '<td>' + (v.pearson_r !== undefined ? v.pearson_r : '—') + '</td>' +
+      '<td>' + (v.r_squared !== undefined ? v.r_squared : '—') + '</td>' +
+      '<td>' + (v.cpi_ratio !== undefined ? v.cpi_ratio + '×' : '—') + '</td>' +
+    '</tr>'
+  })
+  document.getElementById('cmpTable').innerHTML = html
+
+  // Grouped CPI bar chart
+  if (cmpBarChart) { cmpBarChart.destroy(); cmpBarChart = null }
+  var bctx = document.getElementById('cmpBarChart').getContext('2d')
+  cmpBarChart = new Chart(bctx, {
+    type: 'bar',
+    data: {
+      labels: ['Z1','Z2','Z3','Z4','Z5'],
+      datasets: rois.map(function(item, idx) {
+        var z = cache[item.id].zone_stats
+        return {
+          label: item.name,
+          data: z.map(function(zs) { return zs.mean_cpi }),
+          backgroundColor: ROI_COLORS[idx % ROI_COLORS.length] + 'cc',
+          borderColor:     ROI_COLORS[idx % ROI_COLORS.length],
+          borderWidth: 1, borderRadius: 3
+        }
+      })
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: rois.length <= MAX_ROIS_FOR_LEGEND, labels: { color: '#9FE1CB', font: { size: 9 }, boxWidth: 10 } }
+      },
+      scales: {
+        x: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } },
+        y: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' }, max: 1 }
+      }
+    }
+  })
+
+  renderCmpScatterChart_(rois, cache)
+}
+
+function setCmpScatterMode_(mode) {
+  cmpScatterMode = mode
+  document.getElementById('cmpTabZones').classList.toggle('active', mode === 'zones')
+  document.getElementById('cmpTabSummary').classList.toggle('active', mode === 'summary')
+  var rois = loadROIsWithResults_()
+  if (rois.length >= 2) renderCmpScatterChart_(rois, loadResultsCache_())
+}
+
+function renderCmpScatterChart_(rois, cache) {
+  if (cmpScatterMode === 'summary') {
+    renderCmpScatterSummary_(rois, cache)
+  } else {
+    renderCmpScatterZones_(rois, cache)
+  }
+}
+
+function renderCmpScatterZones_(rois, cache) {
+  var datasets = []
+  rois.forEach(function(item, idx) {
+    var z     = cache[item.id].zone_stats
+    var color = ROI_COLORS[idx % ROI_COLORS.length]
+    datasets.push({
+      type: 'scatter', label: item.name,
+      data: z.map(function(zs) { return { x: zs.mean_shpi, y: zs.mean_cpi } }),
+      backgroundColor: color, pointRadius: 5, pointHoverRadius: 7
+    })
+    var xs = z.map(function(zs) { return zs.mean_shpi })
+    var ys = z.map(function(zs) { return zs.mean_cpi })
+    var n = xs.length, sx = 0, sy = 0, sxy = 0, sxx = 0
+    xs.forEach(function(x,i){ sx+=x; sy+=ys[i]; sxy+=x*ys[i]; sxx+=x*x })
+    var denom = n*sxx-sx*sx
+    var slope = Math.abs(denom)>EPSILON_DENOM ? (n*sxy-sx*sy)/denom : 0
+    var icpt  = (sy-slope*sx)/n
+    var xMin  = Math.min.apply(null,xs), xMax = Math.max.apply(null,xs)
+    datasets.push({
+      type: 'line', label: item.name+' fit',
+      data: [{x:xMin,y:slope*xMin+icpt},{x:xMax,y:slope*xMax+icpt}],
+      borderColor: color, borderWidth: 1, pointRadius: 0, fill: false,
+      tension: 0, borderDash: [3,3]
+    })
+  })
+  _applyCmpScatter(datasets, 'SHPI', 'CPI')
+  document.getElementById('cmpScatterLabel').textContent = ''
+}
+
+function renderCmpScatterSummary_(rois, cache) {
+  var pts = rois.map(function(item,idx) {
+    var z = cache[item.id].zone_stats
+    var meanShpi = z.reduce(function(a,zs){return a+zs.mean_shpi},0)/z.length
+    var meanCpi  = z.reduce(function(a,zs){return a+zs.mean_cpi},0)/z.length
+    return { x: meanShpi, y: meanCpi, label: item.name, color: ROI_COLORS[idx%ROI_COLORS.length] }
+  })
+  var xs = pts.map(function(p){return p.x}), ys = pts.map(function(p){return p.y})
+  var n = xs.length, sx=0,sy=0,sxy=0,sxx=0
+  xs.forEach(function(x,i){sx+=x;sy+=ys[i];sxy+=x*ys[i];sxx+=x*x})
+  var denom = n*sxx-sx*sx
+  var slope = Math.abs(denom)>EPSILON_DENOM?(n*sxy-sx*sy)/denom:0
+  var icpt  = (sy-slope*sx)/n
+  var xMin  = Math.min.apply(null,xs), xMax = Math.max.apply(null,xs)
+  var yMean = sy/n
+  var ssTot = ys.reduce(function(a,y){return a+(y-yMean)*(y-yMean)},0)
+  var ssRes = xs.reduce(function(a,x,i){return a+(ys[i]-(slope*x+icpt))*(ys[i]-(slope*x+icpt))},0)
+  var r2    = ssTot>0?1-ssRes/ssTot:0
+  var datasets = [
+    {
+      type: 'scatter', label: 'ROIs',
+      data: pts.map(function(p){return{x:p.x,y:p.y}}),
+      backgroundColor: pts.map(function(p){return p.color}),
+      pointRadius: 7, pointHoverRadius: 9
+    },
+    {
+      type: 'line', label: 'Global fit',
+      data: [{x:xMin,y:slope*xMin+icpt},{x:xMax,y:slope*xMax+icpt}],
+      borderColor: '#F5A623', borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0
+    }
+  ]
+  _applyCmpScatter(datasets, 'Mean SHPI', 'Mean CPI', pts)
+  var interceptSign = icpt >= 0 ? ' + ' : ' − '
+  document.getElementById('cmpScatterLabel').textContent =
+    'Global: y = ' + slope.toFixed(3) + 'x' + interceptSign + Math.abs(icpt).toFixed(3) + '   R² = ' + r2.toFixed(3)
+}
+
+function _applyCmpScatter(datasets, xLabel, yLabel, tooltipPts) {
+  if (cmpScatterChart) { cmpScatterChart.destroy(); cmpScatterChart = null }
+  var ctx = document.getElementById('cmpScatterChart').getContext('2d')
+  cmpScatterChart = new Chart(ctx, {
+    data: { datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              if (tooltipPts && ctx.datasetIndex === 0) {
+                var p = tooltipPts[ctx.dataIndex]
+                return p ? p.label + ' (' + ctx.raw.x.toFixed(3) + ', ' + ctx.raw.y.toFixed(3) + ')' : ''
+              }
+              return null
+            }
+          }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: xLabel, color: '#9FE1CB', font: { size: 9 } },
+             ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } },
+        y: { title: { display: true, text: yLabel, color: '#9FE1CB', font: { size: 9 } },
+             ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } }
+      }
+    }
+  })
+}
+
+// ── Compare fullscreen map ───────────────────────────────────
+function openCompareMap_() {
+  var rois  = loadROIsWithResults_()
+  var cache = loadResultsCache_()
+  if (rois.length < 2) { alert('Need at least 2 ROIs with results.'); return }
+
+  var container = document.getElementById('compare-fs-container')
+  container.style.display = 'block'
+
+  var mapEl = document.getElementById('compare-fs-map')
+  if (compareMapFs) { compareMapFs.remove(); compareMapFs = null }
+  compareMapFs = L.map(mapEl, { zoomControl: true, attributionControl: false })
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(compareMapFs)
+
+  var allBounds = []
+  rois.forEach(function(item, idx) {
+    var color = ROI_COLORS[idx % ROI_COLORS.length]
+    var lyr   = L.geoJSON(item.geojson, {
+      style: { color: color, weight: 2, fillColor: color, fillOpacity: 0.2 }
+    }).addTo(compareMapFs)
+    allBounds.push(lyr.getBounds())
+
+    var d = cache[item.id]
+    if (d && d.raster_png_b64) {
+      var bb = geomBbox_(item.geojson)
+      L.imageOverlay('data:image/png;base64,' + d.raster_png_b64,
+        [[bb[1],bb[0]],[bb[3],bb[2]]], { opacity: 0.65 }).addTo(compareMapFs)
+    }
+  })
+
+  if (allBounds.length) {
+    var combined = allBounds[0]
+    for (var i = 1; i < allBounds.length; i++) combined.extend(allBounds[i])
+    compareMapFs.fitBounds(combined, { padding: [20, 20] })
+  }
+
+  // Legend
+  var legendEl = document.getElementById('compareMapLegend')
+  legendEl.innerHTML = '<div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">ROI Legend</div>' +
+    rois.map(function(item, idx) {
+      return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">' +
+        '<span style="display:inline-block;width:14px;height:10px;border-radius:2px;background:' + ROI_COLORS[idx%ROI_COLORS.length] + '"></span>' +
+        '<span style="font-size:11px;color:#9FE1CB">' + escHtml_(item.name) + '</span>' +
+      '</div>'
+    }).join('')
+}
+
+function closeCompareMap_() {
+  document.getElementById('compare-fs-container').style.display = 'none'
+  if (compareMapFs) { compareMapFs.remove(); compareMapFs = null }
+}
+
+// ── Library init ──────────────────────────────────────────────
+;(function initLibrary_() {
+  renderLibraryPanel_()
+  maybeShowCompareSection_()
+})()
 
 // ── Save to Sheet ─────────────────────────────────────────────
 function saveResult() {
@@ -1151,6 +1684,18 @@ function setProgress(show, pct, msg) {
     <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em">Zone Areas</div>
     <table id="results-fs-table" class="fs-tbl"></table>
     <div style="font-size:9px;color:#5a8a6a;margin-top:8px">* Area estimated from bare-soil pixel counts</div>
+  </div>
+</div>
+
+<!-- Fullscreen compare map -->
+<div id="compare-fs-container" style="display:none;position:fixed;inset:0;z-index:20001;background:#0f1a17">
+  <div id="compare-fs-map" style="position:absolute;inset:0"></div>
+  <div style="position:absolute;top:12px;left:12px;z-index:1001;background:#13241ecc;border:1px solid #2E6B4F;border-radius:6px;padding:7px 12px;display:flex;align-items:center;gap:10px">
+    <span style="font-size:12px;font-weight:700;color:#F5A623">🗺 All ROIs — Comparison Map</span>
+    <button class="rm-ctrl-btn" onclick="closeCompareMap_()">✕ Close</button>
+  </div>
+  <div id="compareMapLegend" style="position:absolute;top:12px;right:12px;background:#13241e;border:1px solid #2E6B4F;border-radius:8px;padding:12px 14px;z-index:1001;min-width:160px;max-height:calc(100vh - 40px);overflow-y:auto">
+    <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">ROI Legend</div>
   </div>
 </div>
 </body>
