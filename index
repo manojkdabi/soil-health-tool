@@ -1819,19 +1819,25 @@ function fmtWaybackDate_(dateStr) {
 }
 
 function esriExtractDate_(entry) {
-  if (!entry || typeof entry !== 'object') return ''
-  // Check all known ESRI Wayback config date field names; releaseDatetime is the primary field
+  if (!entry) return ''
+  // Handle case where entry is a primitive string (e.g. a GUID — scan for date pattern)
+  if (typeof entry === 'string') {
+    var ms = entry.match(/(\d{4}-\d{2}-\d{2})/)
+    return ms ? ms[1] : ''
+  }
+  if (typeof entry !== 'object') return ''
+  // Check known ESRI Wayback date field names first
   var raw = entry.releaseDatetime || entry.releaseDate || entry.imageDate || entry.itemDate || ''
-  if (!raw) {
-    // Fallback: extract YYYY-MM-DD from itemTitle or title
-    // (e.g. "World Imagery (Wayback 2023-11-07T...)")
-    var titleStr = entry.itemTitle || entry.title || ''
-    if (titleStr) {
-      var m = titleStr.match(/(\d{4}-\d{2}-\d{2})/)
-      if (m) raw = m[1]
+  if (raw) return raw
+  // Scan ALL string-valued fields for a YYYY-MM-DD pattern
+  // (covers itemTitle: "World Imagery (Wayback 2024-01-10T...)", releaseDateLabel, etc.)
+  for (var key in entry) {
+    if (typeof entry[key] === 'string') {
+      var m = entry[key].match(/(\d{4}-\d{2}-\d{2})/)
+      if (m) return m[1]
     }
   }
-  return raw
+  return ''
 }
 
 function loadEsriReleases_() {
@@ -1844,7 +1850,12 @@ function loadEsriReleases_() {
       esriWaybackReleases = cfg
       // Log a sample entry so we can inspect the actual field names in the browser console
       var sampleIds = Object.keys(cfg)
-      if (sampleIds.length) console.log('[Wayback] config sample entry:', sampleIds[0], cfg[sampleIds[0]])
+      if (sampleIds.length) {
+        var sample = cfg[sampleIds[0]]
+        console.log('[Wayback] config sample entry:', sampleIds[0], sample)
+        console.log('[Wayback] sample type:', typeof sample, '| keys:', typeof sample === 'object' ? Object.keys(sample).join(', ') : '(primitive)')
+        console.log('[Wayback] extracted date from sample:', esriExtractDate_(sample))
+      }
       // sort by release date descending; fall back to numeric id descending when no date
       var releases = Object.keys(cfg).sort(function (a, b) {
         var da = esriExtractDate_(cfg[a])

@@ -68,40 +68,92 @@ function buildEvalscriptA_(rabiMonths) {
     '}';
 }
 
-function buildEvalscriptB_(kharifMonths) {
-  var monthList = '[' + kharifMonths.join(',') + ']';
+// buildEvalscriptB_: multi-temporal evalscript that computes NDVI per SHPI zone.
+// For each pixel it:
+//   1. Mediates Rabi-season samples → computes full SHPI value (same formula as Track A)
+//   2. Assigns the pixel to one of 5 SHPI zones using the thresholds from Track A
+//   3. Mediates Kharif-season samples → computes NDVI
+//   4. Outputs NDVI in the zone-specific band; sets -2.0 (below histogram range) in other bands
+// The Statistical API then gives mean NDVI per SHPI zone — a genuine cross-variable correlation.
+// rabiMonths / kharifMonths: Arrays of month integers, e.g. [11,12,1,2]
+// shpiThresholds: 4-element Array of SHPI boundary values, e.g. [0.20, 0.35, 0.50, 0.65]
+function buildEvalscriptB_(rabiMonths, kharifMonths, shpiThresholds) {
+  var rabiList   = '[' + rabiMonths.join(',') + ']';
+  var kharifList = '[' + kharifMonths.join(',') + ']';
+  var T = (shpiThresholds || DEFAULT_SHPI_THRESHOLDS).slice();
+  var threshList = '[' + T.map(function(t) { return t.toFixed(6); }).join(',') + ']';
+  var NO_DATA = '-2.0'; // sentinel below histogram lowEdge (-0.5); goes to underflow bin
   return '//VERSION=3\n' +
     'function setup() {\n' +
     '  return {\n' +
-    '    input: [{ bands: ["B04","B08","SCL"] }],\n' +
+    '    input: [{ bands: ["B02","B03","B04","B08","B11","B12","SCL"] }],\n' +
     '    output: [\n' +
-    '      { id: "ndvi",     bands: 1, sampleType: "FLOAT32" },\n' +
-    '      { id: "dataMask", bands: 1, sampleType: "UINT8"   }\n' +
+    '      { id: "cpi_z1", bands: 1, sampleType: "FLOAT32" },\n' +
+    '      { id: "cpi_z2", bands: 1, sampleType: "FLOAT32" },\n' +
+    '      { id: "cpi_z3", bands: 1, sampleType: "FLOAT32" },\n' +
+    '      { id: "cpi_z4", bands: 1, sampleType: "FLOAT32" },\n' +
+    '      { id: "cpi_z5", bands: 1, sampleType: "FLOAT32" },\n' +
+    '      { id: "dataMask", bands: 1, sampleType: "UINT8" }\n' +
     '    ],\n' +
     '    mosaicking: "ORBIT"\n' +
     '  };\n' +
     '}\n' +
     'function preProcessScenes(c) {\n' +
-    '  var kharif = ' + monthList + ';\n' +
+    '  var rabi   = ' + rabiList + ';\n' +
+    '  var kharif = ' + kharifList + ';\n' +
     '  c.scenes.orbits = c.scenes.orbits.filter(function(o) {\n' +
     '    var m = new Date(o.dateFrom).getMonth() + 1;\n' +
-    '    return kharif.indexOf(m) !== -1;\n' +
+    '    return rabi.indexOf(m) !== -1 || kharif.indexOf(m) !== -1;\n' +
     '  });\n' +
     '  return c;\n' +
     '}\n' +
-    'function evaluatePixel(samples) {\n' +
-    '  var v = samples.filter(function(s) {\n' +
+    'function evaluatePixel(samples, scenes) {\n' +
+    '  var rabi   = ' + rabiList + ';\n' +
+    '  var kharif = ' + kharifList + ';\n' +
+    '  var T      = ' + threshList + ';\n' +
+    '  var ND     = ' + NO_DATA + ';\n' +
+    '  var noDataResult = { cpi_z1:[ND],cpi_z2:[ND],cpi_z3:[ND],cpi_z4:[ND],cpi_z5:[ND], dataMask:[0] };\n' +
+    '  var clean  = function(s) {\n' +
     '    return s.SCL !== 3 && s.SCL !== 8 && s.SCL !== 9 && s.SCL !== 10;\n' +
+    '  };\n' +
+    '  var rabiS = [], kharS = [];\n' +
+    '  samples.forEach(function(s, i) {\n' +
+    '    var m = new Date(scenes.orbits[i].dateFrom).getMonth() + 1;\n' +
+    '    if (clean(s)) {\n' +
+    '      if (rabi.indexOf(m)   !== -1) rabiS.push(s);\n' +
+    '      if (kharif.indexOf(m) !== -1) kharS.push(s);\n' +
+    '    }\n' +
     '  });\n' +
-    '  if (v.length === 0) return { ndvi: [0], dataMask: [0] };\n' +
+    '  if (!rabiS.length || !kharS.length) return noDataResult;\n' +
     '  function med(a, k) {\n' +
-    '    var x = a.map(function(s) { return s[k]; }).sort(function(a,b) { return a-b; });\n' +
-    '    var m = Math.floor(x.length / 2);\n' +
-    '    return x.length % 2 ? x[m] : (x[m-1] + x[m]) / 2;\n' +
+    '    var x = a.map(function(s){return s[k];}).sort(function(a,b){return a-b;});\n' +
+    '    var mid = Math.floor(x.length/2);\n' +
+    '    return x.length%2 ? x[mid] : (x[mid-1]+x[mid])/2;\n' +
     '  }\n' +
-    '  var b4 = med(v,"B04"), b8 = med(v,"B08");\n' +
-    '  var ndvi = Math.max(0.0, (b8-b4) / (b8+b4+0.0001));\n' +
-    '  return { ndvi: [ndvi], dataMask: [1] };\n' +
+    '  var b2=med(rabiS,"B02"),b3=med(rabiS,"B03"),b4r=med(rabiS,"B04"),\n' +
+    '      b8r=med(rabiS,"B08"),b11=med(rabiS,"B11"),b12=med(rabiS,"B12");\n' +
+    '  var lswi = (b8r - b11) / (b8r + b11 + 0.0001);\n' +
+    '  // Skip vegetated pixels: only bare-soil pixels (lswi < 0) have meaningful SHPI\n' +
+    '  if (lswi >= 0) return noDataResult;\n' +
+    '  var bsi  = ((b11+b4r)-(b8r+b2)) / ((b11+b4r)+(b8r+b2)+0.0001);\n' +
+    '  var bi   = Math.sqrt((b4r*b4r + b3*b3 + b2*b2) / 3.0);\n' +
+    '  var ri   = (b4r*b4r) / (b2*b3 + 0.0001);\n' +
+    '  var clay = b11 / (b12 + 0.0001);\n' +
+    '  var carb = b11 / (b8r + 0.0001);\n' +
+    '  var hue  = Math.atan((b3-b4r) / (b3+b4r+0.0001));\n' +
+    '  var bsiN  = Math.max(0,Math.min(1,(bsi + 0.5)));\n' +
+    '  var biN   = Math.max(0,Math.min(1,bi   / 0.3));\n' +
+    '  var riN   = Math.max(0,Math.min(1,ri   / 5.0));\n' +
+    '  var clayN = Math.max(0,Math.min(1,(clay - 0.8) / 0.6));\n' +
+    '  var carbN = Math.max(0,Math.min(1,(carb - 0.5) / 1.5));\n' +
+    '  var hueN  = Math.max(0,Math.min(1,(hue  + 0.5)));\n' +
+    '  var shpi  = (1-biN)*0.25 + (1-bsiN)*0.20 + clayN*0.20 + riN*0.15 + carbN*0.10 + hueN*0.10;\n' +
+    '  var zone  = shpi<T[0]?1:shpi<T[1]?2:shpi<T[2]?3:shpi<T[3]?4:5;\n' +
+    '  var b4k = med(kharS,"B04"), b8k = med(kharS,"B08");\n' +
+    '  var ndvi = Math.max(0,Math.min(1,(b8k-b4k)/(b8k+b4k+0.0001)));\n' +
+    '  var res = { cpi_z1:[ND],cpi_z2:[ND],cpi_z3:[ND],cpi_z4:[ND],cpi_z5:[ND], dataMask:[1] };\n' +
+    '  res["cpi_z"+zone] = [ndvi];\n' +
+    '  return res;\n' +
     '}';
 }
 
@@ -362,34 +414,7 @@ function fetchBandStats_(bbox, yearStart, yearEnd, token, kharifMonths, rabiMont
     }
   };
 
-  // ── Track B payload ──────────────────────────────────────────
-  var payloadB = {
-    input: {
-      bounds: {
-        bbox: bbox,
-        properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' }
-      },
-      data: [{
-        dataFilter: { timeRange: { from: fromA, to: toA } },
-        type: 'sentinel-2-l2a'
-      }]
-    },
-    aggregation: {
-      timeRange:           { from: fromA, to: toA },
-      aggregationInterval: { of: 'P3M' },
-      evalscript:          buildEvalscriptB_(kharifMonths),
-      resx:                0.01,
-      resy:                0.01
-    },
-    calculations: {
-      ndvi: {
-        histograms: {
-          default: { nBins: 100, lowEdge: -0.5, highEdge: 1.5 }
-        }
-      }
-    }
-  };
-
+  // ── Track A runs first — we need SHPI thresholds to inject into Track B ──
   var fetchOpts = {
     method:             'post',
     contentType:        'application/json',
@@ -404,6 +429,43 @@ function fetchBandStats_(bbox, yearStart, yearEnd, token, kharifMonths, rabiMont
   );
   Logger.log('Track A status: ' + respA.getResponseCode());
 
+  // Parse SHPI bins from Track A and compute zone thresholds
+  var aBins = parseHistogram_(respA, 'shpi');
+  var shpiThresholds = DEFAULT_SHPI_THRESHOLDS.slice();
+  if (aBins && aBins.length >= 3) {
+    var tmpResult = binsToZoneMeans_('SHPI_thresholds', aBins);
+    shpiThresholds = tmpResult.thresholds;
+    Logger.log('SHPI thresholds for Track B: ' + JSON.stringify(shpiThresholds));
+  }
+
+  // ── Track B payload: uses SHPI thresholds to compute NDVI per SHPI zone ──
+  var payloadB = {
+    input: {
+      bounds: {
+        bbox: bbox,
+        properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' }
+      },
+      data: [{
+        dataFilter: { timeRange: { from: fromA, to: toA } },
+        type: 'sentinel-2-l2a'
+      }]
+    },
+    aggregation: {
+      timeRange:           { from: fromA, to: toA },
+      aggregationInterval: { of: 'P3M' },
+      evalscript:          buildEvalscriptB_(rabiMonths, kharifMonths, shpiThresholds),
+      resx:                0.01,
+      resy:                0.01
+    },
+    calculations: {
+      cpi_z1: { histograms: { default: { nBins: 100, lowEdge: -0.5, highEdge: 1.5 } } },
+      cpi_z2: { histograms: { default: { nBins: 100, lowEdge: -0.5, highEdge: 1.5 } } },
+      cpi_z3: { histograms: { default: { nBins: 100, lowEdge: -0.5, highEdge: 1.5 } } },
+      cpi_z4: { histograms: { default: { nBins: 100, lowEdge: -0.5, highEdge: 1.5 } } },
+      cpi_z5: { histograms: { default: { nBins: 100, lowEdge: -0.5, highEdge: 1.5 } } }
+    }
+  };
+
   Logger.log('Calling Track B API...');
   var respB = UrlFetchApp.fetch(
     SH_STATS_URL,
@@ -411,10 +473,9 @@ function fetchBandStats_(bbox, yearStart, yearEnd, token, kharifMonths, rabiMont
   );
   Logger.log('Track B status: ' + respB.getResponseCode());
 
-  var aBins = parseHistogram_(respA, 'shpi');
-  var bBins = parseHistogram_(respB, 'ndvi');
+  var bResult = parseNdviZones_(respB);
 
-  return buildZoneStats_(aBins, bBins);
+  return buildZoneStats_(aBins, bResult);
 }
 
 // ── Parse histogram bins from Statistical API response ────────
@@ -456,77 +517,123 @@ function parseHistogram_(resp, outputId) {
   }
 }
 
+// ── Parse NDVI per SHPI zone from Track B response ───────────
+// Track B now returns 5 outputs (cpi_z1..cpi_z5), each containing NDVI values for
+// pixels that fall in the corresponding SHPI zone. Pixels NOT in a zone get -2.0
+// which is below the histogram lowEdge (-0.5) so they go to underflow and are ignored.
+function parseNdviZones_(resp) {
+  if (resp.getResponseCode() !== 200) {
+    Logger.log('Track B API error: ' + resp.getContentText().substring(0, 300));
+    return null;
+  }
+  try {
+    var body = JSON.parse(resp.getContentText());
+    if (!body.data || body.data.length === 0) { Logger.log('Track B empty data'); return null; }
+    var outputs = body.data[0].outputs;
+    var means = [], pixelCounts = [];
+    for (var zi = 1; zi <= 5; zi++) {
+      var key = 'cpi_z' + zi;
+      var fallbackMean = Math.round((0.10 + zi * 0.12) * 1000) / 1000;
+      if (!outputs || !outputs[key] || !outputs[key].bands || !outputs[key].bands.B0) {
+        Logger.log('Track B missing output: ' + key);
+        means.push(fallbackMean); pixelCounts.push(0); continue;
+      }
+      var bins = outputs[key].bands.B0.histogram.bins || [];
+      // Only count bins within valid NDVI range: zone-specific NDVI values are >= 0.
+      // -2.0 sentinel values (non-zone pixels) land in histogram underflow (< lowEdge -0.5)
+      // and are excluded from the bins array.  Any bin with lowEdge < -0.001 is also skipped.
+      var validBins = bins.filter(function(b) { return b.lowEdge >= -0.001 && b.count > 0; });
+      if (!validBins.length) {
+        Logger.log('Track B zone ' + zi + ': no valid bins (all pixels in underflow)');
+        means.push(fallbackMean); pixelCounts.push(0); continue;
+      }
+      validBins.forEach(function(b) { if (b.mean === undefined) b.mean = (b.lowEdge + b.highEdge) / 2; });
+      var wSum = validBins.reduce(function(s, b) { return s + b.mean * b.count; }, 0);
+      var cnt  = validBins.reduce(function(s, b) { return s + b.count; }, 0);
+      var zm   = cnt > 0 ? Math.round(wSum / cnt * 1000) / 1000 : fallbackMean;
+      Logger.log('Track B zone ' + zi + ': pixels=' + cnt + '  mean_ndvi=' + zm);
+      means.push(zm); pixelCounts.push(cnt);
+    }
+    Logger.log('parseNdviZones_ means: ' + JSON.stringify(means));
+    return { means: means, pixelCounts: pixelCounts };
+  } catch (e) {
+    Logger.log('parseNdviZones_ error: ' + e.message);
+    return null;
+  }
+}
+
+// ── Quantile-split histogram bins into 5 equal-pixel-count zones ─────────────
+// Extracted as a top-level function so fetchBandStats_ can call it to get SHPI
+// thresholds before building the Track B payload.
+// @param {string} label - log prefix ('SHPI' etc.)
+// @param {Array}  bins  - array of {mean, count} objects from parseHistogram_
+// @returns {{ means, pixelCounts, thresholds }}
+function binsToZoneMeans_(label, bins) {
+  var sorted = bins.slice().sort(function(a, b) { return a.mean - b.mean; });
+  var totalCount = sorted.reduce(function(s, b) { return s + b.count; }, 0);
+  Logger.log(label + ' raw bins: ' + sorted.length +
+             '  totalPixels=' + totalCount +
+             '  min_mean='  + (sorted.length ? sorted[0].mean.toFixed(4) : 'n/a') +
+             '  max_mean='  + (sorted.length ? sorted[sorted.length - 1].mean.toFixed(4) : 'n/a'));
+  if (totalCount === 0) {
+    return { means: [0.10, 0.25, 0.40, 0.55, 0.70],
+             pixelCounts: [0, 0, 0, 0, 0],
+             thresholds: DEFAULT_SHPI_THRESHOLDS.slice() };
+  }
+  var target  = totalCount / 5;
+  var buckets = [[], [], [], [], []];
+  var cumPx   = 0, zi = 0;
+  for (var i = 0; i < sorted.length; i++) {
+    var b = sorted[i];
+    buckets[zi].push(b);
+    cumPx += b.count;
+    if (zi < 4 && cumPx >= target * (zi + 1)) { zi++; }
+  }
+  var means = buckets.map(function(slice, idx) {
+    var fallback = Math.round((0.10 + idx * 0.15) * 1000) / 1000;
+    if (!slice.length) { return fallback; }
+    var wSum = slice.reduce(function(s, b) { return s + b.mean * b.count; }, 0);
+    var cnt  = slice.reduce(function(s, b) { return s + b.count; }, 0);
+    var m    = cnt > 0 ? Math.round(wSum / cnt * 1000) / 1000 : fallback;
+    Logger.log('  Zone ' + (idx + 1) + ': bins=' + slice.length + '  pixels=' + cnt + '  mean=' + m);
+    return m;
+  });
+  var pixelCounts = buckets.map(function(slice) {
+    return slice.reduce(function(s, b) { return s + b.count; }, 0);
+  });
+  var thresholds = DEFAULT_SHPI_THRESHOLDS.slice();
+  var SHPI_ROUND = 10000; // 4 decimal places: round to nearest 0.0001
+  for (var ti = 0; ti < 4; ti++) {
+    var zA = buckets[ti], zB = buckets[ti + 1];
+    if (zA.length && zB.length) {
+      thresholds[ti] = Math.round(((zA[zA.length-1].mean + zB[0].mean) / 2) * SHPI_ROUND) / SHPI_ROUND;
+    } else if (zA.length) {
+      thresholds[ti] = Math.round((zA[zA.length-1].mean + 0.05) * SHPI_ROUND) / SHPI_ROUND;
+    }
+  }
+  Logger.log(label + ' zone means: ' + JSON.stringify(means));
+  Logger.log(label + ' thresholds: ' + JSON.stringify(thresholds));
+  return { means: means, pixelCounts: pixelCounts, thresholds: thresholds };
+}
+
 // ── Build zone stats from histogram bins ──────────────────────
-function buildZoneStats_(aBins, bBins) {
+// aBins: SHPI histogram bins array from parseHistogram_ (or null for synthetic fallback)
+// bResult: { means, pixelCounts } from parseNdviZones_ (or null for synthetic fallback)
+//   bResult.means[i] = mean NDVI for pixels whose Rabi SHPI falls in zone i
+//   This is a genuine cross-variable correlation (not rank-matched independent quantiles).
+function buildZoneStats_(aBins, bResult) {
 
   // Default synthetic values — used when API returns no data
   var shpiMeans  = [0.15, 0.30, 0.45, 0.60, 0.75];
   var cpiMeans   = [0.19, 0.28, 0.37, 0.46, 0.57];
   var dataSource = 'synthetic';
-  var shpiPixels = null; // actual per-zone pixel counts from SHPI histogram
-  var cpiPixels  = null; // actual per-zone pixel counts from NDVI histogram
-  var shpiThresholds = DEFAULT_SHPI_THRESHOLDS.slice(); // zone boundary SHPI values
-
-  // Split bins into 5 zones by pixel-count quantile (each zone = 20% of total pixels).
-  // Sorting by bin midpoint and dividing by bin count gives identical means when all
-  // pixels fall in a narrow SHPI range.  Dividing by cumulative pixel count ensures
-  // the 5 zones always span the actual distribution of measured pixels.
-  // @param {string} label - log prefix ('SHPI' or 'NDVI')
-  // @param {Array}  bins  - array of {mean, count} objects from parseHistogram_
-  // @returns {Array} 5-element array of weighted mean values, one per zone
-  function binsToZoneMeans(label, bins) {
-    var sorted = bins.slice().sort(function(a, b) { return a.mean - b.mean; });
-    var totalCount = sorted.reduce(function(s, b) { return s + b.count; }, 0);
-    Logger.log(label + ' raw bins: ' + sorted.length +
-               '  totalPixels=' + totalCount +
-               '  min_mean='  + (sorted.length ? sorted[0].mean.toFixed(4) : 'n/a') +
-               '  max_mean='  + (sorted.length ? sorted[sorted.length - 1].mean.toFixed(4) : 'n/a'));
-    if (totalCount === 0) return { means: [0.10, 0.25, 0.40, 0.55, 0.70], pixelCounts: [0, 0, 0, 0, 0] };
-
-    // Assign bins to 5 equal pixel-count quantile buckets
-    var target  = totalCount / 5;
-    var buckets = [[], [], [], [], []];
-    var cumPx   = 0;
-    var zi      = 0;
-    for (var i = 0; i < sorted.length; i++) {
-      var b = sorted[i];
-      buckets[zi].push(b);
-      cumPx += b.count;
-      // Advance to the next zone bucket when we reach its target pixel threshold
-      if (zi < 4 && cumPx >= target * (zi + 1)) { zi++; }
-    }
-
-    var means = buckets.map(function(slice, idx) {
-      var fallback = Math.round((0.10 + idx * 0.15) * 1000) / 1000;
-      if (!slice.length) { return fallback; }
-      var wSum = slice.reduce(function(s, b) { return s + b.mean * b.count; }, 0);
-      var cnt  = slice.reduce(function(s, b) { return s + b.count; }, 0);
-      var m    = cnt > 0 ? Math.round(wSum / cnt * 1000) / 1000 : fallback;
-      Logger.log('  Zone ' + (idx + 1) + ': bins=' + slice.length + '  pixels=' + cnt + '  mean=' + m);
-      return m;
-    });
-    var pixelCounts = buckets.map(function(slice) {
-      return slice.reduce(function(s, b) { return s + b.count; }, 0);
-    });
-    // Compute 4 threshold values (SHPI boundary between adjacent zones)
-    var thresholds = DEFAULT_SHPI_THRESHOLDS.slice();
-    var SHPI_ROUND = 10000; // round thresholds to 4 decimal places
-    for (var ti = 0; ti < 4; ti++) {
-      var zA = buckets[ti], zB = buckets[ti + 1];
-      if (zA.length && zB.length) {
-        thresholds[ti] = Math.round(((zA[zA.length - 1].mean + zB[0].mean) / 2) * SHPI_ROUND) / SHPI_ROUND;
-      } else if (zA.length) {
-        thresholds[ti] = Math.round((zA[zA.length - 1].mean + 0.05) * SHPI_ROUND) / SHPI_ROUND;
-      }
-    }
-    Logger.log(label + ' zone means: ' + JSON.stringify(means));
-    Logger.log(label + ' thresholds: ' + JSON.stringify(thresholds));
-    return { means: means, pixelCounts: pixelCounts, thresholds: thresholds };
-  }
+  var shpiPixels = null;
+  var cpiPixels  = null;
+  var shpiThresholds = DEFAULT_SHPI_THRESHOLDS.slice();
 
   if (aBins && aBins.length >= 3) {
     Logger.log('SHPI allBins count: ' + aBins.length);
-    var aResult = binsToZoneMeans('SHPI', aBins);
+    var aResult = binsToZoneMeans_('SHPI', aBins);
     shpiMeans      = aResult.means;
     shpiPixels     = aResult.pixelCounts;
     shpiThresholds = aResult.thresholds;
@@ -536,22 +643,20 @@ function buildZoneStats_(aBins, bBins) {
     Logger.log('Using synthetic SHPI means (aBins=' + (aBins ? aBins.length : 'null') + ')');
   }
 
-  if (bBins && bBins.length >= 3) {
-    Logger.log('NDVI allBins count: ' + bBins.length);
-    var bResult = binsToZoneMeans('NDVI', bBins);
-    cpiMeans    = bResult.means.map(function(v) { return Math.min(1, Math.max(0, v)); });
-    cpiPixels   = bResult.pixelCounts;
-    dataSource  = 'real';
-    Logger.log('REAL CPI means: ' + JSON.stringify(cpiMeans));
+  // bResult comes from parseNdviZones_: mean NDVI per SHPI zone (genuine cross-variable correlation)
+  if (bResult && bResult.means && bResult.means.length === 5) {
+    cpiMeans   = bResult.means.map(function(v) { return Math.min(1, Math.max(0, v)); });
+    cpiPixels  = bResult.pixelCounts;
+    dataSource = 'real';
+    Logger.log('REAL CPI means (NDVI per SHPI zone): ' + JSON.stringify(cpiMeans));
   } else {
-    Logger.log('Using synthetic CPI means (bBins=' + (bBins ? bBins.length : 'null') + ')');
+    Logger.log('Using synthetic CPI means (bResult null or invalid)');
   }
 
   Logger.log('Data source: ' + dataSource);
   Logger.log('Final shpiMeans: ' + JSON.stringify(shpiMeans));
   Logger.log('Final cpiMeans:  ' + JSON.stringify(cpiMeans));
 
-  // Use actual per-zone pixel counts when available; fall back to a flat placeholder otherwise
   var zonePixels = shpiPixels || cpiPixels || [44000, 44000, 44000, 44000, 44000];
 
   var zoneStats = [1,2,3,4,5].map(function(z, i) {
