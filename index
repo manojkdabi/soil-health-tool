@@ -105,6 +105,17 @@ input:focus,select:focus{border-color:#F5A623}
 @keyframes spin{to{transform:rotate(360deg)}}
 .ov-msg{color:#9FE1CB;font-size:13px;font-weight:500;text-align:center;max-width:240px;line-height:1.5}
 
+/* Monthly imagery section */
+.mon-section{margin-top:4px}
+.mon-row{display:flex;gap:4px;align-items:center;margin-top:4px}
+.mon-row select,.mon-row input[type=number]{flex:1;background:#0f1a17;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:3px 5px;font-size:11px}
+.mon-row button{background:#1e3d30;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;white-space:nowrap}
+.mon-row button:hover{background:#2E6B4F;color:#F5A623}
+.mon-hint{font-size:9px;color:#5a8a6a;margin-top:3px;line-height:1.4}
+.mon-loading{font-size:9px;color:#F5A623;margin-top:3px;display:none}
+/* Boundary layer status */
+.bound-badge{font-size:9px;color:#9FE1CB;background:#1a3d30;border:1px solid #2E6B4F;border-radius:3px;padding:1px 5px;margin-left:4px;display:none}
+
 /* Leaflet overrides */
 .leaflet-container{background:#e8e0d8!important}
 .leaflet-draw-toolbar a{background-color:#1A3C34!important;border-color:#2E6B4F!important}
@@ -162,7 +173,7 @@ canvas{display:block}
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
     <span class="ver-pill ver-pill-be">BE1.0.9</span>
-    <span class="ver-pill ver-pill-fe">FE1.0.10</span>
+    <span class="ver-pill ver-pill-fe">FE1.0.12</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -211,6 +222,58 @@ canvas{display:block}
       <input type="text" id="kharifMonths" value="7,8,9,10">
       <label class="field">Rabi months (comma-separated)</label>
       <input type="text" id="rabiMonths" value="12,1,2,3">
+    </div>
+
+    <!-- Monthly Satellite Imagery -->
+    <div class="sb mon-section">
+      <h3 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px" onclick="toggleMonSection_()">
+        <span>🛰 Monthly Imagery</span>
+        <span id="monToggleIcon" style="font-size:10px;margin-left:auto">▶</span>
+      </h3>
+      <div id="monBody" style="display:none">
+        <p class="hint" style="margin:0 0 6px">View satellite imagery for any month. Uses ESRI Wayback (no setup) or Sentinel-2 via your SH/CDS instance ID.</p>
+        <label class="field">Source</label>
+        <select id="monSource" onchange="onMonSourceChange_()">
+          <option value="esri">🌍 ESRI Wayback (free, no login)</option>
+          <option value="sh">🛰 Sentinel-2 WMS (requires Instance ID)</option>
+        </select>
+
+        <!-- ESRI Wayback controls -->
+        <div id="esriWaybackCtrl">
+          <label class="field">Select date</label>
+          <div class="mon-row">
+            <select id="esriReleaseSelect" style="flex:2">
+              <option value="">— load dates —</option>
+            </select>
+            <button onclick="loadEsriRelease_()">▶ Apply</button>
+          </div>
+          <div class="mon-hint">Dates are ESRI's update cycles (not exact calendar months).</div>
+          <div id="esriReleaseMsg" class="mon-hint" style="color:#9FE1CB"></div>
+        </div>
+
+        <!-- Sentinel Hub WMS controls -->
+        <div id="shWmsCtrl" style="display:none">
+          <label class="field">Instance ID (from CDS/SH dashboard)</label>
+          <input type="text" id="shInstanceId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="width:100%;background:#0f1a17;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:4px 6px;font-size:10px;box-sizing:border-box">
+          <label class="field" style="margin-top:6px">Month / Year</label>
+          <div class="mon-row">
+            <select id="shMonth">
+              <option value="01">January</option><option value="02">February</option>
+              <option value="03">March</option><option value="04">April</option>
+              <option value="05">May</option><option value="06">June</option>
+              <option value="07">July</option><option value="08">August</option>
+              <option value="09">September</option><option value="10">October</option>
+              <option value="11">November</option><option value="12">December</option>
+            </select>
+            <input type="number" id="shYear" value="2023" min="2017" max="2025" style="max-width:64px">
+            <button onclick="applyShWms_()">▶ Apply</button>
+          </div>
+          <div class="mon-hint">Requires a WMS Configuration created in your Copernicus Browser account (sh.dataspace.copernicus.eu → Dashboard → Configurations). Paste the Configuration ID above.</div>
+        </div>
+
+        <button class="btn btn-sec" style="margin-top:6px;width:100%" onclick="clearMonthlyLayer_()">✕ Clear Monthly Imagery</button>
+        <div id="monLoading" class="mon-loading">Loading release list…</div>
+      </div>
     </div>
 
     <!-- Step 3: Run -->
@@ -366,17 +429,71 @@ const esriLabels = L.tileLayer(
 esriSatellite.addTo(map)
 esriLabels.addTo(map)
 
-// Layer control
-L.control.layers(
+// ── Admin boundary layers (loaded on-demand) ──────────────────
+var boundaryLayers = {
+  state:    L.layerGroup(),
+  district: L.layerGroup(),
+  tehsil:   L.layerGroup()
+}
+var boundaryLoaded = { state: false, district: false, tehsil: false }
+var BOUNDARY_URLS = {
+  state:    'https://raw.githubusercontent.com/datameet/maps/master/States/Admin2.geojson',
+  district: 'https://raw.githubusercontent.com/datameet/maps/master/Districts/India_Districts-simplified.geojson',
+  tehsil:   'https://raw.githubusercontent.com/datameet/maps/master/Tehsils/India_Tehsils-simplified.geojson'
+}
+var BOUNDARY_STYLE = {
+  state:    { color: '#F5A623', weight: 1.5, fillOpacity: 0,  opacity: 0.8 },
+  district: { color: '#9FE1CB', weight: 0.8, fillOpacity: 0,  opacity: 0.7 },
+  tehsil:   { color: '#a0c0ff', weight: 0.5, fillOpacity: 0,  opacity: 0.6 }
+}
+
+function loadBoundaryLayer_(key) {
+  if (boundaryLoaded[key]) return
+  fetch(BOUNDARY_URLS[key])
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      return r.json()
+    })
+    .then(function (gj) {
+      boundaryLoaded[key] = true
+      L.geoJSON(gj, {
+        style: BOUNDARY_STYLE[key],
+        onEachFeature: function (feature, layer) {
+          var p = feature.properties || {}
+          var name = p.NAME_2 || p.NAME_1 || p.DISTRICT || p.ST_NM || p.NAME || ''
+          if (name) layer.bindTooltip(name, { sticky: true, className: 'bound-tooltip' })
+        }
+      }).addTo(boundaryLayers[key])
+    })
+    .catch(function (err) {
+      console.warn('Boundary load failed (' + key + '):', err)
+    })
+}
+
+// Layer control (with boundary overlays)
+var layerCtrl = L.control.layers(
   {
     '🛰 Satellite (ESRI)': esriSatellite,
     '🗺 Topographic (ESRI)': esriTopo,
     '🏙 Street Map (ESRI)': esriStreet,
     '🌍 OpenStreetMap': osmStandard,
   },
-  { '🏷 Place Labels': esriLabels },
+  {
+    '🏷 Place Labels': esriLabels,
+    '🏛 State Boundaries (India)': boundaryLayers.state,
+    '📍 District Boundaries (India)': boundaryLayers.district,
+    '🗺 Subdistrict Boundaries (India)': boundaryLayers.tehsil
+  },
   { position: 'topright', collapsed: false }
 ).addTo(map)
+
+// Load boundary GeoJSON when overlay is turned on
+map.on('overlayadd', function (e) {
+  var name = e.name
+  if (name === '🏛 State Boundaries (India)')       loadBoundaryLayer_('state')
+  if (name === '📍 District Boundaries (India)')    loadBoundaryLayer_('district')
+  if (name === '🗺 Subdistrict Boundaries (India)') loadBoundaryLayer_('tehsil')
+})
 
 window.L = L  // make available for leaflet-draw
 
@@ -1667,6 +1784,112 @@ function setProgress(show, pct, msg) {
   if (pct !== undefined) document.getElementById('progFill').style.width = pct + '%'
   if (msg)               document.getElementById('progMsg').textContent  = msg
 }
+
+// ── Monthly Imagery (ESRI Wayback + SH WMS) ────────────────────
+var monthlyLayer = null
+var esriWaybackReleases = null  // cached release list
+
+function toggleMonSection_() {
+  var body = document.getElementById('monBody')
+  var icon = document.getElementById('monToggleIcon')
+  var shown = body.style.display !== 'none'
+  body.style.display = shown ? 'none' : 'block'
+  icon.textContent = shown ? '▶' : '▼'
+  if (!shown && !esriWaybackReleases) loadEsriReleases_()
+}
+
+function onMonSourceChange_() {
+  var src = document.getElementById('monSource').value
+  document.getElementById('esriWaybackCtrl').style.display = src === 'esri' ? 'block' : 'none'
+  document.getElementById('shWmsCtrl').style.display       = src === 'sh'   ? 'block' : 'none'
+}
+
+function loadEsriReleases_() {
+  var sel = document.getElementById('esriReleaseSelect')
+  var msg = document.getElementById('monLoading')
+  msg.style.display = 'block'
+  fetch('https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json')
+    .then(function (r) { return r.json() })
+    .then(function (cfg) {
+      esriWaybackReleases = cfg
+      // sort by release date descending
+      var releases = Object.keys(cfg).sort(function (a, b) {
+        var da = cfg[a].releaseDate || cfg[a].imageDate || ''
+        var db = cfg[b].releaseDate || cfg[b].imageDate || ''
+        return da && db ? new Date(db) - new Date(da) : da ? -1 : 1
+      })
+      sel.innerHTML = '<option value="">— choose a date —</option>'
+      releases.forEach(function (id) {
+        var date = cfg[id].releaseDateLabel || cfg[id].releaseDate || cfg[id].imageDate || id
+        var opt = document.createElement('option')
+        opt.value = id
+        opt.textContent = date
+        sel.appendChild(opt)
+      })
+      msg.style.display = 'none'
+      document.getElementById('esriReleaseMsg').textContent = releases.length + ' releases loaded.'
+    })
+    .catch(function (err) {
+      msg.textContent = 'Could not load releases.'
+      console.error('ESRI Wayback config error:', err)
+    })
+}
+
+function loadEsriRelease_() {
+  var releaseId = document.getElementById('esriReleaseSelect').value
+  if (!releaseId) { alert('Please select a date first.'); return }
+  clearMonthlyLayer_()
+  monthlyLayer = L.tileLayer(
+    'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/' +
+    releaseId + '/{z}/{y}/{x}',
+    { attribution: 'ESRI Wayback', maxZoom: 19, opacity: 0.9 }
+  )
+  monthlyLayer.addTo(map)
+  // bring drawn layer & results raster to front
+  drawn.bringToFront()
+  if (resultsRasterLayer) resultsRasterLayer.bringToFront()
+  var selEl = document.getElementById('esriReleaseSelect')
+  document.getElementById('esriReleaseMsg').textContent =
+    selEl.selectedOptions && selEl.selectedOptions.length
+      ? '✓ Showing imagery from: ' + selEl.selectedOptions[0].text
+      : '✓ Layer loaded.'
+}
+
+function applyShWms_() {
+  var instanceId = document.getElementById('shInstanceId').value.trim()
+  if (!instanceId) { alert('Please enter your Sentinel Hub / CDS Instance ID.'); return }
+  var month = document.getElementById('shMonth').value
+  var year  = document.getElementById('shYear').value
+  // date range: first to last day of month
+  var daysInMonth = new Date(year, parseInt(month), 0).getDate()
+  var timeParam = year + '-' + month + '-01/' + year + '-' + month + '-' + daysInMonth
+  clearMonthlyLayer_()
+  var wmsUrl = 'https://sh.dataspace.copernicus.eu/ogc/wms/' + instanceId
+  monthlyLayer = L.tileLayer.wms(wmsUrl, {
+    layers:      'TRUE-COLOR',
+    format:      'image/png',
+    transparent: true,
+    version:     '1.3.0',
+    time:        timeParam,
+    attribution: 'Sentinel-2 © ESA / Copernicus Data Space',
+    opacity:     0.9
+  })
+  monthlyLayer.addTo(map)
+  drawn.bringToFront()
+  if (resultsRasterLayer) resultsRasterLayer.bringToFront()
+}
+
+function clearMonthlyLayer_() {
+  if (monthlyLayer) { map.removeLayer(monthlyLayer); monthlyLayer = null }
+  document.getElementById('esriReleaseMsg').textContent = ''
+}
+
+// Tooltip CSS for boundary tooltips (inject dynamically)
+;(function () {
+  var s = document.createElement('style')
+  s.textContent = '.bound-tooltip{background:#13241e;border:1px solid #2E6B4F;color:#9FE1CB;font-size:10px;padding:2px 6px;border-radius:4px;box-shadow:none}'
+  document.head.appendChild(s)
+})()
 </script>
 
 <!-- Fullscreen results map -->
