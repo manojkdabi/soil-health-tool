@@ -91,7 +91,14 @@ input:focus,select:focus{border-color:#F5A623}
 #fs-swipe-knob{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:32px;height:32px;background:#F5A623;color:#0f1a17;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;user-select:none;box-shadow:0 2px 8px #0007;pointer-events:none}
 #fs-swipe-label-l{position:absolute;top:50%;transform:translateY(-50%);right:calc(100% + 8px);font-size:10px;font-weight:700;color:#fff;background:#0006;padding:2px 5px;border-radius:3px;white-space:nowrap;pointer-events:none}
 #fs-swipe-label-r{position:absolute;top:50%;transform:translateY(-50%);left:calc(100% + 8px);font-size:10px;font-weight:700;color:#fff;background:#0006;padding:2px 5px;border-radius:3px;white-space:nowrap;pointer-events:none}
-.fs-tbl{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
+/* Radio toggle for Zones / SHPI / CPI in fullscreen map */
+#fs-layer-toggle{display:flex;gap:4px;align-items:center}
+#fs-layer-toggle label{display:flex;align-items:center;gap:3px;cursor:pointer;font-size:10px;color:#9FE1CB;padding:2px 6px;border-radius:4px;border:1px solid transparent;user-select:none;transition:background .15s,border-color .15s}
+#fs-layer-toggle label:hover{background:#1a3d30}
+#fs-layer-toggle input[type=radio]{display:none}
+#fs-layer-toggle input[type=radio]:checked+span{color:#F5A623}
+#fs-layer-toggle label:has(input:checked){border-color:#F5A623;background:#1e3d30}
+
 .fs-tbl th{padding:4px 6px;background:#1a3d30;color:#9FE1CB;text-align:left;font-weight:600}
 .fs-tbl td{padding:4px 6px;border-bottom:1px solid #1a3020}
 .zdot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
@@ -376,6 +383,7 @@ let resultsMap = null
 let resultsRasterLayer = null  // the L.imageOverlay for the Process API raster
 let resultsMapFs = null        // fullscreen map Leaflet instance
 let resultsRasterLayerFs = null // raster layer in fullscreen map
+let currentFsLayer = 'zones'   // 'zones' | 'shpi' | 'cpi'
 let currentRoiId = null        // UUID of the library ROI currently loaded (null if drawn/ad-hoc)
 let cmpBarChart = null
 let cmpScatterChart = null
@@ -968,6 +976,10 @@ function toggleResultsFullscreen_() {
     return
   }
 
+  // Reset radio to Zones when opening
+  currentFsLayer = 'zones'
+  document.querySelectorAll('input[name=fsLayer]').forEach(function(r) { r.checked = r.value === 'zones' })
+
   // Open fullscreen
   fsContainer.style.display = 'block'
   var fsMapEl = document.getElementById('results-fs-map')
@@ -987,6 +999,10 @@ function toggleResultsFullscreen_() {
     var bb     = geomBbox_(roi)
     var minLng = bb[0], minLat = bb[1], maxLng = bb[2], maxLat = bb[3]
     var bounds = [[minLat, minLng], [maxLat, maxLng]]
+
+    // Disable unavailable radio options
+    document.querySelector('input[name=fsLayer][value=shpi]').disabled = !data.shpi_png_b64
+    document.querySelector('input[name=fsLayer][value=cpi]').disabled  = !data.cpi_png_b64
 
     if (data.raster_png_b64) {
       var opacityFs = (document.getElementById('rasterOpacityFs').value || 80) / 100
@@ -1063,6 +1079,45 @@ function updateSwipeClip_(xPos) {
   // so the raster is fully visible left of the handle and hidden right of it
   var pct = ((w - xPos) / w * 100).toFixed(2)
   img.style.clipPath = 'inset(0 ' + pct + '% 0 0)'
+}
+
+// ── Switch the fullscreen map overlay between Zones / SHPI / CPI ──────────────
+function switchFsLayer_(layerName) {
+  if (!resultsMapFs || !lastResult || !roi) return
+  currentFsLayer = layerName
+
+  var data   = lastResult
+  var bb     = geomBbox_(roi)
+  var bounds = [[bb[1], bb[0]], [bb[3], bb[2]]]
+
+  // Pick the correct base64 PNG
+  var b64
+  if      (layerName === 'shpi') b64 = data.shpi_png_b64
+  else if (layerName === 'cpi')  b64 = data.cpi_png_b64
+  else                           b64 = data.raster_png_b64
+
+  // Remove old overlay
+  if (resultsRasterLayerFs) {
+    resultsMapFs.removeLayer(resultsRasterLayerFs)
+    resultsRasterLayerFs = null
+  }
+
+  if (b64) {
+    var opacityFs = (document.getElementById('rasterOpacityFs').value || 80) / 100
+    resultsRasterLayerFs = L.imageOverlay(
+      'data:image/png;base64,' + b64,
+      bounds,
+      { opacity: opacityFs }
+    ).addTo(resultsMapFs)
+  }
+
+  // Toggle panel sections
+  document.getElementById('fs-panel-zones').style.display = layerName === 'zones' ? '' : 'none'
+  document.getElementById('fs-panel-shpi').style.display  = layerName === 'shpi'  ? '' : 'none'
+  document.getElementById('fs-panel-cpi').style.display   = layerName === 'cpi'   ? '' : 'none'
+
+  // Re-initialise swipe handle for the new layer
+  initSwipeHandle_()
 }
 
 function buildFsZoneAreaTable_(zoneStat) {
@@ -2016,11 +2071,17 @@ function clearMonthlyLayer_() {
 <div id="results-fs-container">
   <div id="results-fs-map"></div>
   <div id="fs-swipe-handle">
-    <div id="fs-swipe-label-l">Zones</div>
+    <div id="fs-swipe-label-l">Overlay</div>
     <div id="fs-swipe-knob">⇔</div>
     <div id="fs-swipe-label-r">Basemap</div>
   </div>
   <div id="results-fs-topbar">
+    <div id="fs-layer-toggle">
+      <label><input type="radio" name="fsLayer" value="zones" checked onchange="switchFsLayer_(this.value)"><span>Zones</span></label>
+      <label><input type="radio" name="fsLayer" value="shpi" onchange="switchFsLayer_(this.value)"><span>SHPI</span></label>
+      <label><input type="radio" name="fsLayer" value="cpi" onchange="switchFsLayer_(this.value)"><span>CPI</span></label>
+    </div>
+    <span style="width:1px;height:16px;background:#2E6B4F;margin:0 2px;display:inline-block"></span>
     <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
     <input type="range" id="rasterOpacityFs" min="10" max="100" value="80"
            style="width:80px;height:4px;accent-color:#F5A623;cursor:pointer"
@@ -2029,9 +2090,41 @@ function clearMonthlyLayer_() {
     <button class="rm-ctrl-btn" onclick="toggleResultsFullscreen_()">✕ Close</button>
   </div>
   <div id="results-fs-panel">
-    <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em">Zone Areas</div>
-    <table id="results-fs-table" class="fs-tbl"></table>
-    <div style="font-size:9px;color:#5a8a6a;margin-top:8px">* Area estimated from bare-soil pixel counts</div>
+    <div id="fs-panel-zones">
+      <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em">Zone Areas</div>
+      <table id="results-fs-table" class="fs-tbl"></table>
+      <div style="font-size:9px;color:#5a8a6a;margin-top:8px">* Area estimated from bare-soil pixel counts</div>
+    </div>
+    <div id="fs-panel-shpi" style="display:none">
+      <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">SHPI — Bare-soil composite</div>
+      <div style="font-size:9px;color:#9FE1CB;margin-bottom:8px">Per-pixel median from all bare-soil observations (NDVI&lt;0.25, LSWI&lt;0)</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+        <span style="font-size:9px;color:#9FE1CB">Low</span>
+        <div style="flex:1;height:10px;border-radius:3px;background:linear-gradient(to right,#d73027,#fc8d59,#fee08b,#91cf60,#1a9850)"></div>
+        <span style="font-size:9px;color:#9FE1CB">High</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:2px">
+        <span style="font-size:9px;color:#5a8a6a">0</span>
+        <span style="font-size:9px;color:#5a8a6a">0.5</span>
+        <span style="font-size:9px;color:#5a8a6a">1.0</span>
+      </div>
+      <div style="font-size:9px;color:#5a8a6a;margin-top:8px">Black = no bare-soil observations</div>
+    </div>
+    <div id="fs-panel-cpi" style="display:none">
+      <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">CPI — Peak-crop NDVI</div>
+      <div style="font-size:9px;color:#9FE1CB;margin-bottom:8px">Per-pixel median from all crop-canopy observations (NDVI&gt;0.4)</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+        <span style="font-size:9px;color:#9FE1CB">Low</span>
+        <div style="flex:1;height:10px;border-radius:3px;background:linear-gradient(to right,#3f007d,#7e26a3,#9870ab,#d3bdd5,#d9f0d3,#7fbf7b,#1b7837)"></div>
+        <span style="font-size:9px;color:#9FE1CB">High</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:2px">
+        <span style="font-size:9px;color:#5a8a6a">0.4</span>
+        <span style="font-size:9px;color:#5a8a6a">0.7</span>
+        <span style="font-size:9px;color:#5a8a6a">1.0</span>
+      </div>
+      <div style="font-size:9px;color:#5a8a6a;margin-top:8px">Black = no crop-canopy observations</div>
+    </div>
   </div>
 </div>
 

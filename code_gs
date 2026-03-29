@@ -240,60 +240,135 @@ function buildProcessEvalscript_(thresholds) {
     '}';
 }
 
-// ── Fetch zone-coloured SHPI raster from Process API ─────────────────────────
+// ── Continuous SHPI raster evalscript (5-stop color scale matching ZONE_COLORS: red→orange→yellow→light-green→dark-green) ──
+function buildShpiRasterEvalscript_() {
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{\n' +
+    '    input:[{bands:["B02","B03","B04","B08","B11","B12","SCL"]}],\n' +
+    '    output:{bands:4,sampleType:"UINT8"},\n' +
+    '    mosaicking:"ORBIT"\n' +
+    '  };\n' +
+    '}\n' +
+    'function evaluatePixel(samples){\n' +
+    '  var bareS=samples.filter(function(s){\n' +
+    '    if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10)return false;\n' +
+    '    var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);\n' +
+    '    var lswi=(s.B08-s.B11)/(s.B08+s.B11+0.0001);\n' +
+    '    return ndvi<0.25&&lswi<0.0;\n' +
+    '  });\n' +
+    '  if(bareS.length===0)return[0,0,0,0];\n' +
+    '  function med(a,k){\n' +
+    '    var x=a.map(function(s){return s[k];}).sort(function(a,b){return a-b;});\n' +
+    '    var m=Math.floor(x.length/2);\n' +
+    '    return x.length%2?x[m]:(x[m-1]+x[m])/2;\n' +
+    '  }\n' +
+    '  var b2=med(bareS,"B02"),b3=med(bareS,"B03"),b4=med(bareS,"B04");\n' +
+    '  var b8=med(bareS,"B08"),b11=med(bareS,"B11"),b12=med(bareS,"B12");\n' +
+    '  var bsi=((b11+b4)-(b8+b2))/((b11+b4)+(b8+b2)+0.0001);\n' +
+    '  var bi=Math.sqrt((b4*b4+b3*b3+b2*b2)/3.0);\n' +
+    '  var ri=(b4*b4)/(b2*b3+0.0001);\n' +
+    '  var clay=b11/(b12+0.0001);\n' +
+    '  var carb=b11/(b8+0.0001);\n' +
+    '  var hue=Math.atan((b3-b4)/(b3+b4+0.0001));\n' +
+    '  var bsiN=Math.max(0,Math.min(1,(bsi+0.5)));\n' +
+    '  var biN=Math.max(0,Math.min(1,bi/0.3));\n' +
+    '  var riN=Math.max(0,Math.min(1,ri/5.0));\n' +
+    '  var clayN=Math.max(0,Math.min(1,(clay-0.8)/0.6));\n' +
+    '  var carbN=Math.max(0,Math.min(1,(carb-0.5)/1.5));\n' +
+    '  var hueN=Math.max(0,Math.min(1,(hue+0.5)));\n' +
+    '  var shpi=(1-biN)*0.25+(1-bsiN)*0.20+clayN*0.20+riN*0.15+carbN*0.10+hueN*0.10;\n' +
+    // 5-stop color scale matching ZONE_COLORS: red(0)→orange(0.25)→yellow(0.5)→light-green(0.75)→dark-green(1)
+    '  var stops=[[215,48,39],[252,141,89],[254,224,139],[145,207,96],[26,152,80]];\n' +
+    '  var t=shpi*4;\n' +
+    '  var i=Math.min(3,Math.floor(t)),f=t-i;\n' +
+    '  var c=[Math.round(stops[i][0]+(stops[i+1][0]-stops[i][0])*f),' +
+    '         Math.round(stops[i][1]+(stops[i+1][1]-stops[i][1])*f),' +
+    '         Math.round(stops[i][2]+(stops[i+1][2]-stops[i][2])*f)];\n' +
+    '  return[c[0],c[1],c[2],200];\n' +
+    '}';
+}
+
+// ── Continuous CPI (peak-crop NDVI) raster evalscript (7-stop color scale: purple→blue→light-purple→light-green→dark-green) ────
+function buildCpiRasterEvalscript_() {
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{\n' +
+    '    input:[{bands:["B04","B08","SCL"]}],\n' +
+    '    output:{bands:4,sampleType:"UINT8"},\n' +
+    '    mosaicking:"ORBIT"\n' +
+    '  };\n' +
+    '}\n' +
+    'function evaluatePixel(samples){\n' +
+    '  var cropS=samples.filter(function(s){\n' +
+    '    if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10)return false;\n' +
+    '    var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);\n' +
+    '    return ndvi>0.4;\n' +
+    '  });\n' +
+    '  if(cropS.length===0)return[0,0,0,0];\n' +
+    '  var ndvis=cropS.map(function(s){return(s.B08-s.B04)/(s.B08+s.B04+0.0001);});\n' +
+    '  ndvis.sort(function(a,b){return a-b;});\n' +
+    '  var m=Math.floor(ndvis.length/2);\n' +
+    '  var medNdvi=ndvis.length%2?ndvis[m]:(ndvis[m-1]+ndvis[m])/2;\n' +
+    // Normalize NDVI 0.4→1.0 to 0→1 range, then apply purple→blue→cyan colorscale
+    '  var t=Math.max(0,Math.min(1,(medNdvi-0.4)/0.6));\n' +
+    '  var stops=[[63,0,125],[116,43,164],[153,112,171],[211,189,213],[217,240,211],[127,191,123],[27,120,55]];\n' +
+    '  var seg=t*(stops.length-1);\n' +
+    '  var i=Math.min(stops.length-2,Math.floor(seg)),f=seg-i;\n' +
+    '  var c=[Math.round(stops[i][0]+(stops[i+1][0]-stops[i][0])*f),' +
+    '         Math.round(stops[i][1]+(stops[i+1][1]-stops[i][1])*f),' +
+    '         Math.round(stops[i][2]+(stops[i+1][2]-stops[i][2])*f)];\n' +
+    '  return[c[0],c[1],c[2],200];\n' +
+    '}';
+}
+
+// ── Generic Process API raster fetch ─────────────────────────────────────────
 // Returns base64-encoded PNG string, or null on failure
-function fetchRasterOverlay_(bbox, yearStart, yearEnd, token, thresholds) {
+function fetchProcessRaster_(bbox, yearStart, yearEnd, token, evalscript, label) {
   try {
     var from = yearStart + '-01-01T00:00:00Z';
     var to   = yearEnd   + '-12-31T23:59:59Z';
-
-    // Proportional pixel dimensions, capped at 512 on the longer side
     var lngSpan = bbox[2] - bbox[0];
     var latSpan = bbox[3] - bbox[1];
     var maxPx = 512;
     var W, H;
     if (lngSpan >= latSpan) {
-      W = maxPx;
-      H = Math.max(1, Math.round(maxPx * latSpan / lngSpan));
+      W = maxPx; H = Math.max(1, Math.round(maxPx * latSpan / lngSpan));
     } else {
-      H = maxPx;
-      W = Math.max(1, Math.round(maxPx * lngSpan / latSpan));
+      H = maxPx; W = Math.max(1, Math.round(maxPx * lngSpan / latSpan));
     }
-    Logger.log('Process API raster size: ' + W + 'x' + H);
-
     var payload = {
       input: {
-        bounds: {
-          bbox: bbox,
-          properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' }
-        },
+        bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
         data: [{ dataFilter: { timeRange: { from: from, to: to } }, type: 'sentinel-2-l2a' }]
       },
       output: {
-        width: W,
-        height: H,
+        width: W, height: H,
         responses: [{ identifier: 'default', format: { type: 'image/png' } }]
       },
-      evalscript: buildProcessEvalscript_(thresholds)
+      evalscript: evalscript
     };
-
     var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
-      method:             'post',
-      contentType:        'application/json',
-      headers:            { Authorization: 'Bearer ' + token },
-      payload:            JSON.stringify(payload),
-      muteHttpExceptions: true
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(payload), muteHttpExceptions: true
     });
-    Logger.log('Process API status: ' + resp.getResponseCode());
+    Logger.log(label + ' raster status: ' + resp.getResponseCode());
     if (resp.getResponseCode() !== 200) {
-      Logger.log('Process API error: ' + resp.getContentText().substring(0, 400));
+      Logger.log(label + ' raster error: ' + resp.getContentText().substring(0, 200));
       return null;
     }
     return Utilities.base64Encode(resp.getContent());
   } catch(e) {
-    Logger.log('fetchRasterOverlay_ error: ' + e.message);
+    Logger.log(label + ' raster error: ' + e.message);
     return null;
   }
+}
+
+// ── Fetch zone-coloured SHPI raster from Process API ─────────────────────────
+// Returns base64-encoded PNG string, or null on failure
+function fetchRasterOverlay_(bbox, yearStart, yearEnd, token, thresholds) {
+  return fetchProcessRaster_(bbox, yearStart, yearEnd, token, buildProcessEvalscript_(thresholds), 'Zones');
 }
 
 // ── Pearson correlation coefficient ───────────────────────────
@@ -324,19 +399,25 @@ function runAnalysis(params) {
     var results = fetchBandStats_(bbox, yearStart, yearEnd, token);
 
     // Fetch real SHPI zone-coloured raster from Process API using the computed thresholds
-    var rasterB64 = null;
+    var rasterB64 = null, shpiRasterB64 = null, cpiRasterB64 = null;
     if (results.validation.shpi_thresholds) {
-      Logger.log('Fetching Process API raster...');
-      rasterB64 = fetchRasterOverlay_(bbox, yearStart, yearEnd, token, results.validation.shpi_thresholds);
-      Logger.log('Raster fetch ' + (rasterB64 ? 'OK (' + Math.round(rasterB64.length / 1024) + ' KB base64)' : 'FAILED'));
+      Logger.log('Fetching Process API rasters (Zones + SHPI + CPI)...');
+      rasterB64     = fetchRasterOverlay_(bbox, yearStart, yearEnd, token, results.validation.shpi_thresholds);
+      shpiRasterB64 = fetchProcessRaster_(bbox, yearStart, yearEnd, token, buildShpiRasterEvalscript_(), 'SHPI');
+      cpiRasterB64  = fetchProcessRaster_(bbox, yearStart, yearEnd, token, buildCpiRasterEvalscript_(), 'CPI');
+      Logger.log('Zones: ' + (rasterB64 ? 'OK' : 'FAILED') +
+                 ' SHPI: '  + (shpiRasterB64 ? 'OK' : 'FAILED') +
+                 ' CPI: '   + (cpiRasterB64  ? 'OK' : 'FAILED'));
     }
 
     return {
-      success:        true,
-      bbox:           bbox,
-      zone_stats:     results.zoneStats,
-      validation:     results.validation,
-      raster_png_b64: rasterB64,
+      success:           true,
+      bbox:              bbox,
+      zone_stats:        results.zoneStats,
+      validation:        results.validation,
+      raster_png_b64:    rasterB64,
+      shpi_png_b64:      shpiRasterB64,
+      cpi_png_b64:       cpiRasterB64,
       meta: {
         resolution_m: resolution,
         year_range:   yearStart + '-' + yearEnd,
