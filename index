@@ -86,6 +86,11 @@ input:focus,select:focus{border-color:#F5A623}
 #results-fs-map{position:absolute;inset:0}
 #results-fs-topbar{position:absolute;top:12px;left:12px;z-index:1001;display:flex;align-items:center;gap:8px;background:#13241ecc;border:1px solid #2E6B4F;border-radius:6px;padding:6px 10px}
 #results-fs-panel{position:absolute;top:12px;right:12px;background:#13241e;border:1px solid #2E6B4F;border-radius:8px;padding:12px 14px;z-index:1001;min-width:230px;max-height:calc(100vh - 30px);overflow-y:auto}
+/* Swipe / curtain handle */
+#fs-swipe-handle{display:none;position:absolute;top:0;bottom:0;width:3px;background:#F5A623;cursor:ew-resize;z-index:1600;touch-action:none}
+#fs-swipe-knob{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:32px;height:32px;background:#F5A623;color:#0f1a17;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;user-select:none;box-shadow:0 2px 8px #0007;pointer-events:none}
+#fs-swipe-label-l{position:absolute;top:50%;transform:translateY(-50%);right:calc(100% + 8px);font-size:10px;font-weight:700;color:#fff;background:#0006;padding:2px 5px;border-radius:3px;white-space:nowrap;pointer-events:none}
+#fs-swipe-label-r{position:absolute;top:50%;transform:translateY(-50%);left:calc(100% + 8px);font-size:10px;font-weight:700;color:#fff;background:#0006;padding:2px 5px;border-radius:3px;white-space:nowrap;pointer-events:none}
 .fs-tbl{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
 .fs-tbl th{padding:4px 6px;background:#1a3d30;color:#9FE1CB;text-align:left;font-weight:600}
 .fs-tbl td{padding:4px 6px;border-bottom:1px solid #1a3020}
@@ -1013,9 +1018,63 @@ function toggleResultsFullscreen_() {
     // Build zone area table
     buildFsZoneAreaTable_(data.zone_stats)
   }
+  // Initialise the swipe/curtain handle
+  initSwipeHandle_()
 }
 
-// ── Zone area table for fullscreen panel ──────────────────────
+// ── Swipe curtain for fullscreen zone map ─────────────────────
+function initSwipeHandle_() {
+  var container = document.getElementById('results-fs-container')
+  var mapEl     = document.getElementById('results-fs-map')
+  var handle    = document.getElementById('fs-swipe-handle')
+  if (!handle) return
+  if (!resultsRasterLayerFs) { handle.style.display = 'none'; return }
+
+  // Position handle at 50% width initially
+  var w = mapEl.offsetWidth || window.innerWidth
+  handle.style.left = (w / 2) + 'px'
+  handle.style.display = 'block'
+  updateSwipeClip_(w / 2)
+
+  // Remove any previous listeners by replacing the handle with a clone
+  var newHandle = handle.cloneNode(true)
+  handle.parentNode.replaceChild(newHandle, handle)
+  handle = newHandle
+
+  var dragging = false
+  function onDragStart(e) { dragging = true; e.preventDefault(); e.stopPropagation() }
+  function onDragMove(e) {
+    if (!dragging) return
+    var rect = mapEl.getBoundingClientRect()
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX
+    var x = Math.max(0, Math.min(clientX - rect.left, rect.width))
+    handle.style.left = x + 'px'
+    updateSwipeClip_(x)
+    if (e.touches) e.preventDefault()
+  }
+  function onDragEnd() { dragging = false }
+
+  handle.addEventListener('mousedown', onDragStart)
+  container.addEventListener('mousemove', onDragMove)
+  container.addEventListener('mouseup', onDragEnd)
+  container.addEventListener('mouseleave', onDragEnd)
+  handle.addEventListener('touchstart', onDragStart, { passive: false })
+  container.addEventListener('touchmove', onDragMove, { passive: false })
+  container.addEventListener('touchend', onDragEnd)
+}
+
+function updateSwipeClip_(xPos) {
+  if (!resultsRasterLayerFs) return
+  var img = resultsRasterLayerFs._image
+  if (!img) return
+  var mapEl = document.getElementById('results-fs-map')
+  var w = mapEl ? mapEl.offsetWidth || window.innerWidth : window.innerWidth
+  // Clip right-side percentage = (map width - handle x) / map width
+  // so the raster is fully visible left of the handle and hidden right of it
+  var pct = ((w - xPos) / w * 100).toFixed(2)
+  img.style.clipPath = 'inset(0 ' + pct + '% 0 0)'
+}
+
 function buildFsZoneAreaTable_(zoneStat) {
   var tbl        = document.getElementById('results-fs-table')
   var totalHa    = roi ? computeAreaHa_(roi) : 0
@@ -1968,6 +2027,11 @@ function clearMonthlyLayer_() {
 <!-- Fullscreen results map -->
 <div id="results-fs-container">
   <div id="results-fs-map"></div>
+  <div id="fs-swipe-handle">
+    <div id="fs-swipe-label-l">Zones</div>
+    <div id="fs-swipe-knob">⇔</div>
+    <div id="fs-swipe-label-r">Basemap</div>
+  </div>
   <div id="results-fs-topbar">
     <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
     <input type="range" id="rasterOpacityFs" min="10" max="100" value="80"
