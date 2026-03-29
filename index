@@ -208,6 +208,7 @@ canvas{display:block}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script>
 // ── State ─────────────────────────────────────────────────────
 let roi        = null
@@ -291,6 +292,7 @@ map.on(L.Draw.Event.CREATED, e => {
   roi = e.layer.toGeoJSON().geometry
   setROIStatus('✓ ROI set from drawn shape')
   document.getElementById('runBtn').disabled = false
+  updateAreaDisplay_()
 })
 
 // ── GeoJSON upload ────────────────────────────────────────────
@@ -314,6 +316,7 @@ document.getElementById('gjInput').addEventListener('change', e => {
       else roi = gj
       setROIStatus('✓ GeoJSON loaded: ' + file.name)
       document.getElementById('runBtn').disabled = false
+      updateAreaDisplay_()
     } catch(err) { alert('Invalid GeoJSON: ' + err.message) }
   }
   reader.readAsText(file)
@@ -326,6 +329,7 @@ function clearROI() {
   document.getElementById('runBtn').disabled = true
   document.getElementById('roiStatus').classList.remove('show')
   document.getElementById('results').classList.remove('show')
+  updateAreaDisplay_()
 }
 
 function setROIStatus(msg) {
@@ -712,6 +716,156 @@ function renderResultsMap_(zoneStat) {
 
   // Fit to ROI
   resultsMap.fitBounds([[minLat, minLng], [maxLat, maxLng]], { padding: [6, 6] })
+}
+
+// ── Shapefile download + area display controls ────────────────
+// Custom download-SHP button (topleft, below draw toolbar)
+var ShpDownloadCtrl = L.Control.extend({
+  options: { position: 'topleft' },
+  onAdd: function () {
+    var div = L.DomUtil.create('div', 'leaflet-bar leaflet-control')
+    var a = L.DomUtil.create('a', '', div)
+    a.href = '#'
+    a.title = 'Download ROI as Shapefile (.zip)'
+    a.innerHTML = '⬇'
+    a.style.cssText = 'display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;font-weight:700;cursor:pointer'
+    L.DomEvent.on(a, 'click', L.DomEvent.stop).on(a, 'click', downloadShapefile_)
+    return div
+  }
+})
+new ShpDownloadCtrl().addTo(map)
+
+// Area display control (topright, below layer control)
+var AreaDisplayCtrl = L.Control.extend({
+  options: { position: 'topright' },
+  onAdd: function () {
+    this._div = L.DomUtil.create('div', '')
+    this._div.style.cssText = 'background:#13241e;border:1px solid #1e3d30;border-radius:6px;padding:5px 10px;font-size:11px;color:#9FE1CB;display:none;margin-top:4px'
+    return this._div
+  },
+  update: function (ha) {
+    if (ha === null || ha === undefined) { this._div.style.display = 'none'; return }
+    // < 10 000 ha → show in ha; ≥ 10 000 ha (100 km²) → show in km²
+    var label = ha >= 10000 ? (ha / 10000).toFixed(2) + ' km²' : Math.round(ha) + ' ha'
+    this._div.innerHTML = '📐 ' + label
+    this._div.style.display = 'block'
+  }
+})
+var areaDisplayCtrl = new AreaDisplayCtrl().addTo(map)
+
+// Compute geodesic area in hectares from a GeoJSON geometry
+function computeAreaHa_(geom) {
+  var R = 6371000  // Earth's mean radius in metres
+  var rings = geom.type === 'MultiPolygon'
+    ? geom.coordinates.map(function (p) { return p[0] })
+    : [geom.coordinates[0]]
+  var total = 0
+  rings.forEach(function (ring) {
+    var a = 0
+    for (var i = 0; i < ring.length - 1; i++) {
+      var p1 = ring[i], p2 = ring[i + 1]
+      a += (p2[0] - p1[0]) * Math.PI / 180 *
+           (2 + Math.sin(p1[1] * Math.PI / 180) + Math.sin(p2[1] * Math.PI / 180))
+    }
+    total += Math.abs(a) * R * R / 2
+  })
+  return total / 10000  // m² → ha
+}
+
+function updateAreaDisplay_() {
+  if (!roi) { areaDisplayCtrl.update(null); return }
+  areaDisplayCtrl.update(computeAreaHa_(roi))
+}
+
+// Write a minimal Shapefile ZIP (.shp + .shx + .dbf + .prj) and trigger download
+function downloadShapefile_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+
+  var rings = roi.type === 'MultiPolygon'
+    ? roi.coordinates.map(function (p) { return p[0] })
+    : [roi.coordinates[0]]
+
+  var bb = geomBbox_(roi)
+  var minX = bb[0], minY = bb[1], maxX = bb[2], maxY = bb[3]
+
+  var numParts  = rings.length
+  var numPoints = rings.reduce(function (s, r) { return s + r.length }, 0)
+
+  // SHP record content size (bytes)
+  var contentBytes = 4 + 32 + 4 + 4 + numParts * 4 + numPoints * 16
+  var contentWords = contentBytes / 2
+  var fileLenWords = (100 + 8 + contentBytes) / 2
+
+  // ── SHP ──────────────────────────────────────────────────────
+  var shpBuf = new ArrayBuffer(100 + 8 + contentBytes)
+  var s = new DataView(shpBuf)
+  s.setInt32(0, 9994, false)                       // file code
+  s.setInt32(24, fileLenWords, false)              // file length (16-bit words, big-endian)
+  s.setInt32(28, 1000, true)                       // version
+  s.setInt32(32, 5, true)                          // shape type: Polygon
+  s.setFloat64(36, minX, true); s.setFloat64(44, minY, true)
+  s.setFloat64(52, maxX, true); s.setFloat64(60, maxY, true)
+  s.setInt32(100, 1, false)                        // record number
+  s.setInt32(104, contentWords, false)             // content length
+  var o = 108
+  s.setInt32(o, 5, true); o += 4                   // shape type
+  s.setFloat64(o, minX, true); o += 8; s.setFloat64(o, minY, true); o += 8
+  s.setFloat64(o, maxX, true); o += 8; s.setFloat64(o, maxY, true); o += 8
+  s.setInt32(o, numParts, true);  o += 4
+  s.setInt32(o, numPoints, true); o += 4
+  var ptOff = 0
+  rings.forEach(function (r) { s.setInt32(o, ptOff, true); o += 4; ptOff += r.length })
+  rings.forEach(function (r) { r.forEach(function (pt) {
+    s.setFloat64(o, pt[0], true); o += 8
+    s.setFloat64(o, pt[1], true); o += 8
+  }) })
+
+  // ── SHX ──────────────────────────────────────────────────────
+  var shxBuf = new ArrayBuffer(108)
+  var x = new DataView(shxBuf)
+  x.setInt32(0, 9994, false); x.setInt32(24, 54, false)
+  x.setInt32(28, 1000, true); x.setInt32(32, 5, true)
+  x.setFloat64(36, minX, true); x.setFloat64(44, minY, true)
+  x.setFloat64(52, maxX, true); x.setFloat64(60, maxY, true)
+  x.setInt32(100, 50, false)          // record offset in 16-bit words
+  x.setInt32(104, contentWords, false)
+
+  // ── PRJ (WGS84) ───────────────────────────────────────────────
+  var prj = 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
+
+  // ── DBF (1 record, field "ID"=1) ──────────────────────────────
+  var dbfBuf = new ArrayBuffer(65 + 11)   // header(32) + field(32) + term(1) + record(11)
+  var d = new DataView(dbfBuf)
+  var db = new Uint8Array(dbfBuf)
+  d.setUint8(0, 3)   // dBASE III+ without memo file
+  d.setUint8(1, 26)  // last update year (2026 → 26)
+  d.setUint8(2, 3)   // last update month
+  d.setUint8(3, 28)  // last update day
+  d.setInt32(4, 1, true)    // number of records
+  d.setInt16(8, 65, true)   // header size in bytes (32 + 1×32 + 1 terminator)
+  d.setInt16(10, 11, true)  // record size in bytes (1 deletion flag + 10-char ID)
+  // Field descriptor for field "ID" (numeric, 10 chars wide)
+  db[32] = 73; db[33] = 68  // field name bytes: 'I' = 73, 'D' = 68
+  db[43] = 78               // field type: 'N' = 78 (numeric)
+  db[48] = 10               // field length: 10 characters
+  db[64] = 0x0D             // header terminator (carriage return)
+  db[65] = 0x20             // deletion flag: 0x20 = not deleted
+  db[66] = 49               // ID value: '1' = ASCII 49
+  for (var i = 67; i < 76; i++) db[i] = 32  // right-pad with spaces (ASCII 32)
+
+  // ── ZIP ───────────────────────────────────────────────────────
+  var fn = 'roi_' + new Date().toISOString().slice(0, 10)
+  var zip = new JSZip()
+  zip.file(fn + '.shp', shpBuf)
+  zip.file(fn + '.shx', shxBuf)
+  zip.file(fn + '.dbf', dbfBuf)
+  zip.file(fn + '.prj', prj)
+  zip.generateAsync({ type: 'blob' }).then(function (blob) {
+    var a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = fn + '.zip'
+    a.click()
+  })
 }
 
 // ── Save to Sheet ─────────────────────────────────────────────
