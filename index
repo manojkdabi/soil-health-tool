@@ -1816,6 +1816,17 @@ function fmtWaybackDate_(dateStr) {
          ' (Wk ' + wk + ')'
 }
 
+function esriExtractDate_(entry) {
+  // Try known date field names first
+  var raw = entry.releaseDate || entry.imageDate || entry.itemDate || ''
+  // Fallback: extract YYYY-MM-DD from the title string (e.g. "World Imagery (Wayback 2023-11-07T...)")
+  if (!raw && entry.title) {
+    var m = entry.title.match(/(\d{4}-\d{2}-\d{2})/)
+    if (m) raw = m[1]
+  }
+  return raw
+}
+
 function loadEsriReleases_() {
   var sel = document.getElementById('esriReleaseSelect')
   var msg = document.getElementById('monLoading')
@@ -1824,16 +1835,21 @@ function loadEsriReleases_() {
     .then(function (r) { return r.json() })
     .then(function (cfg) {
       esriWaybackReleases = cfg
-      // sort by release date descending
+      // sort by release date descending; fall back to numeric id ascending when no date
       var releases = Object.keys(cfg).sort(function (a, b) {
-        var da = cfg[a].releaseDate || cfg[a].imageDate || ''
-        var db = cfg[b].releaseDate || cfg[b].imageDate || ''
-        return da && db ? new Date(db) - new Date(da) : da ? -1 : 1
+        var da = esriExtractDate_(cfg[a])
+        var db = esriExtractDate_(cfg[b])
+        if (da && db) return new Date(db) - new Date(da)
+        if (da) return -1
+        if (db) return 1
+        return Number(b) - Number(a)
       })
-      sel.innerHTML = '<option value="">— choose a date —</option>'
+      sel.innerHTML = '<option value="">— choose a release date —</option>'
       releases.forEach(function (id) {
-        var rawDate = cfg[id].releaseDate || cfg[id].imageDate || ''
-        var label   = rawDate ? fmtWaybackDate_(rawDate) : (cfg[id].releaseDateLabel || id)
+        var rawDate = esriExtractDate_(cfg[id])
+        var datePart = rawDate ? fmtWaybackDate_(rawDate) : (cfg[id].releaseDateLabel || '')
+        // Always show the date alongside the numeric ID so users can correlate
+        var label = datePart ? (datePart + ' · #' + id) : ('#' + id)
         var opt = document.createElement('option')
         opt.value = id
         opt.textContent = label
