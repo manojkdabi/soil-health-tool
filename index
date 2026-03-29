@@ -897,23 +897,23 @@ function toggleMenu_(id) {
 }
 // Build upload menu at body level (avoids sidebar overflow-y clip)
 ;(function () {
-  var m = document.createElement('div')
-  m.id = 'uploadMenu'
-  m.className = 'ctx-menu'
-  m.style.position = 'fixed'
-  m.style.zIndex = '99999'
-  m.innerHTML =
+  var menu = document.createElement('div')
+  menu.id = 'uploadMenu'
+  menu.className = 'ctx-menu'
+  menu.style.position = 'fixed'
+  menu.style.zIndex = '99999'
+  menu.innerHTML =
     '<div class="ctx-menu-item" onclick="closeMenus_();document.getElementById(\'gjInput\').click()">📄 Upload GeoJSON (.geojson, .json)</div>' +
     '<div class="ctx-menu-item" onclick="closeMenus_();document.getElementById(\'shpInput\').click()">🗺 Upload Shapefile (.zip)</div>'
-  document.body.appendChild(m)
+  document.body.appendChild(menu)
 })()
 function showUploadMenu_(e) {
   e.stopPropagation()
   var btn = document.getElementById('uploadBtn')
-  var r = btn.getBoundingClientRect()
-  var m = document.getElementById('uploadMenu')
-  m.style.left = r.left + 'px'
-  m.style.top = (r.bottom + 4) + 'px'
+  var rect = btn.getBoundingClientRect()
+  var menu = document.getElementById('uploadMenu')
+  menu.style.left = rect.left + 'px'
+  menu.style.top = (rect.bottom + 4) + 'px'
   toggleMenu_('uploadMenu')
 }
 function closeMenus_() {
