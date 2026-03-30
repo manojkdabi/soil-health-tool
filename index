@@ -654,13 +654,11 @@ function runAnalysis() {
     .runAnalysis(params)
 }
 
-function decodeRasterAndAnalyse_(rawData) {
+// Shared pixel-decoding helper — calls callback(result) when done, callback(null) on error.
+// Does NOT update any UI. Used by both single-run and batch-run paths.
+function decodeRasterToResult_(rawData, callback) {
   var img = new Image()
-  img.onerror = function() {
-    showOverlay(false)
-    setProgress(false)
-    alert('Failed to decode raster image. Please try again.')
-  }
+  img.onerror = function(e) { console.error('decodeRasterToResult_: image load error', e); callback(null) }
   img.onload = function() {
     var W = img.naturalWidth, H = img.naturalHeight
     var canvas = document.createElement('canvas')
@@ -816,7 +814,7 @@ function decodeRasterAndAnalyse_(rawData) {
       return dataUrl.replace(/^data:image\/png;base64,/, '')
     }
 
-    var result = {
+    callback({
       success:        true,
       bbox:           rawData.bbox,
       zone_stats:     zoneStats,
@@ -834,8 +832,20 @@ function decodeRasterAndAnalyse_(rawData) {
       shpi_png_b64:   canvasToB64_(shpiCanvas),
       cpi_png_b64:    canvasToB64_(cpiCanvas),
       meta: Object.assign({}, rawData.meta, { width: W, height: H })
-    }
+    })
+  }
+  img.src = 'data:image/png;base64,' + rawData.raster_png_b64
+}
 
+// Single-run path: decode PNG and render results in the UI
+function decodeRasterAndAnalyse_(rawData) {
+  decodeRasterToResult_(rawData, function(result) {
+    if (!result) {
+      showOverlay(false)
+      setProgress(false)
+      alert('Failed to decode raster image. Please try again.')
+      return
+    }
     lastResult = result
     if (currentRoiId) {
       var cache = loadResultsCache_()
@@ -847,8 +857,7 @@ function decodeRasterAndAnalyse_(rawData) {
     renderResults(result)
     setProgress(true, 100, 'Complete!')
     setTimeout(function() { showOverlay(false); setProgress(false) }, 500)
-  }
-  img.src = 'data:image/png;base64,' + rawData.raster_png_b64
+  })
 }
 
 // ── Render results ────────────────────────────────────────────
@@ -1802,17 +1811,27 @@ function runAllROIs_() {
     google.script.run
       .withSuccessHandler(function(data) {
         if (data.success) {
-          var cache = loadResultsCache_()
-          cache[item.id] = data
-          saveResultsCache_(cache)
-          if (dot)  dot.className = 'batch-prog-dot done'
-          if (stat) { stat.textContent = '✓ Done'; stat.style.color = '#7FE07F' }
+          // Decode the raw PNG into zone_stats/validation before caching
+          decodeRasterToResult_(data, function(result) {
+            if (result) {
+              var cache = loadResultsCache_()
+              cache[item.id] = result
+              saveResultsCache_(cache)
+              if (dot)  dot.className = 'batch-prog-dot done'
+              if (stat) { stat.textContent = '✓ Done'; stat.style.color = '#7FE07F' }
+            } else {
+              if (dot)  dot.className = 'batch-prog-dot failed'
+              if (stat) { stat.textContent = '✗ Decode error'; stat.style.color = '#f07070' }
+            }
+            i++
+            setTimeout(runNext, BATCH_DELAY_MS)
+          })
         } else {
           if (dot)  dot.className = 'batch-prog-dot failed'
           if (stat) { stat.textContent = '✗ Failed'; stat.style.color = '#f07070' }
+          i++
+          setTimeout(runNext, BATCH_DELAY_MS)
         }
-        i++
-        setTimeout(runNext, BATCH_DELAY_MS)
       })
       .withFailureHandler(function() {
         if (dot)  dot.className = 'batch-prog-dot failed'
