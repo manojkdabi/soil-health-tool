@@ -15,6 +15,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;ba
 .hdr-logo{width:28px;height:28px;background:#F5A623;border-radius:4px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#3A1800}
 .hdr h1{font-size:14px;font-weight:600;color:#fff}
 .hdr p{font-size:11px;color:#9FE1CB;margin-left:auto}
+.ver-pill{display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.04em;line-height:1.6}
+.ver-pill-be{background:#1e3d30;color:#F5A623;border:1px solid #F5A623}
+.ver-pill-fe{background:#1e3d30;color:#9FE1CB;border:1px solid #9FE1CB}
 
 /* Layout */
 .main{display:flex;flex:1;overflow:hidden}
@@ -37,6 +40,12 @@ input:focus,select:focus{border-color:#F5A623}
 /* Upload zone */
 .upload{border:1.5px dashed #2E6B4F;border-radius:6px;padding:10px;text-align:center;cursor:pointer;font-size:11.5px;color:#5a8a6a;transition:.15s;margin-bottom:6px}
 .upload:hover{border-color:#F5A623;color:#F5A623}
+
+/* Context menus */
+.ctx-menu{position:absolute;background:#13241e;border:1px solid #2E6B4F;border-radius:6px;padding:4px 0;z-index:9999;min-width:200px;box-shadow:0 4px 14px rgba(0,0,0,.55);display:none}
+.ctx-menu.open{display:block}
+.ctx-menu-item{display:block;padding:8px 14px;font-size:12px;color:#9FE1CB;cursor:pointer;white-space:nowrap}
+.ctx-menu-item:hover{background:#1e3d30;color:#F5A623}
 
 /* Buttons */
 .btn{width:100%;padding:10px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;margin-top:4px}
@@ -66,6 +75,32 @@ input:focus,select:focus{border-color:#F5A623}
 .ztbl{width:100%;border-collapse:collapse;font-size:11px}
 .ztbl th{padding:5px 6px;background:#1a3d30;color:#9FE1CB;text-align:left;font-weight:600}
 .ztbl td{padding:5px 6px;border-bottom:1px solid #1a3020}
+#results-map{height:220px;border-radius:6px;overflow:hidden;border:1px solid #2E6B4F;margin-top:2px}
+/* Results map controls (opacity + fullscreen toggle) */
+#results-map-ctrls{display:none;align-items:center;gap:6px;margin-bottom:4px;padding:0 2px}
+#rasterOpacity{flex:1;height:4px;accent-color:#F5A623;cursor:pointer}
+.rm-ctrl-btn{background:#1e3d30;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:13px;line-height:1.4}
+.rm-ctrl-btn:hover{background:#2E6B4F;color:#F5A623}
+/* Fullscreen results map overlay */
+#results-fs-container{display:none;position:fixed;inset:0;z-index:20000;background:#0f1a17}
+#results-fs-map{position:absolute;inset:0}
+#results-fs-topbar{position:absolute;top:12px;left:12px;z-index:1001;display:flex;align-items:center;gap:8px;background:#13241ecc;border:1px solid #2E6B4F;border-radius:6px;padding:6px 10px}
+#results-fs-panel{position:absolute;top:12px;right:12px;background:#13241e;border:1px solid #2E6B4F;border-radius:8px;padding:12px 14px;z-index:1001;min-width:230px;max-height:calc(100vh - 30px);overflow-y:auto}
+/* Swipe / curtain handle */
+#fs-swipe-handle{display:none;position:absolute;top:0;bottom:0;width:3px;background:#F5A623;cursor:ew-resize;z-index:1600;touch-action:none}
+#fs-swipe-knob{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:32px;height:32px;background:#F5A623;color:#0f1a17;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;user-select:none;box-shadow:0 2px 8px #0007;pointer-events:none}
+#fs-swipe-label-l{position:absolute;top:50%;transform:translateY(-50%);right:calc(100% + 8px);font-size:10px;font-weight:700;color:#fff;background:#0006;padding:2px 5px;border-radius:3px;white-space:nowrap;pointer-events:none}
+#fs-swipe-label-r{position:absolute;top:50%;transform:translateY(-50%);left:calc(100% + 8px);font-size:10px;font-weight:700;color:#fff;background:#0006;padding:2px 5px;border-radius:3px;white-space:nowrap;pointer-events:none}
+/* Radio toggle for Zones / SHPI / CPI in fullscreen map */
+#fs-layer-toggle{display:flex;gap:4px;align-items:center}
+#fs-layer-toggle label{display:flex;align-items:center;gap:3px;cursor:pointer;font-size:10px;color:#9FE1CB;padding:2px 6px;border-radius:4px;border:1px solid transparent;user-select:none;transition:background .15s,border-color .15s}
+#fs-layer-toggle label:hover{background:#1a3d30}
+#fs-layer-toggle input[type=radio]{display:none}
+#fs-layer-toggle input[type=radio]:checked+span{color:#F5A623}
+#fs-layer-toggle label:has(input:checked){border-color:#F5A623;background:#1e3d30}
+
+.fs-tbl th{padding:4px 6px;background:#1a3d30;color:#9FE1CB;text-align:left;font-weight:600}
+.fs-tbl td{padding:4px 6px;border-bottom:1px solid #1a3020}
 .zdot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
 
 /* Zone legend */
@@ -82,6 +117,17 @@ input:focus,select:focus{border-color:#F5A623}
 @keyframes spin{to{transform:rotate(360deg)}}
 .ov-msg{color:#9FE1CB;font-size:13px;font-weight:500;text-align:center;max-width:240px;line-height:1.5}
 
+/* Monthly imagery section */
+.mon-section{margin-top:4px}
+.mon-row{display:flex;gap:4px;align-items:center;margin-top:4px}
+.mon-row select,.mon-row input[type=number]{flex:1;background:#0f1a17;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:3px 5px;font-size:11px}
+.mon-row button{background:#1e3d30;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;white-space:nowrap}
+.mon-row button:hover{background:#2E6B4F;color:#F5A623}
+.mon-hint{font-size:9px;color:#5a8a6a;margin-top:3px;line-height:1.4}
+.mon-loading{font-size:9px;color:#F5A623;margin-top:3px;display:none}
+/* Boundary layer status */
+.bound-badge{font-size:9px;color:#9FE1CB;background:#1a3d30;border:1px solid #2E6B4F;border-radius:3px;padding:1px 5px;margin-left:4px;display:none}
+
 /* Leaflet overrides */
 .leaflet-container{background:#e8e0d8!important}
 .leaflet-draw-toolbar a{background-color:#1A3C34!important;border-color:#2E6B4F!important}
@@ -94,17 +140,63 @@ input:focus,select:focus{border-color:#F5A623}
 /* Chart */
 .chart-wrap{height:120px;margin-top:4px}
 canvas{display:block}
+/* Chart fullscreen overlay */
+.chart-fs-overlay{display:none;position:fixed;inset:0;z-index:20200;background:#0f1a17;flex-direction:column}
+.chart-fs-overlay.open{display:flex}
+.chart-fs-topbar{display:flex;align-items:center;gap:8px;background:#13241e;border-bottom:1px solid #2E6B4F;padding:10px 16px;flex-shrink:0}
+.chart-fs-title{font-size:13px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;flex:1}
+.chart-fs-body{flex:1;padding:24px 32px;position:relative;min-height:0}
+/* Expand button next to chart headings */
+.chart-heading-row{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+.chart-heading-row h3{margin:0}
+.chart-expand-btn{background:#1e3d30;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:13px;line-height:1.4;flex-shrink:0}
+.chart-expand-btn:hover{background:#2E6B4F;color:#F5A623}
 
 /* Footer */
 .footer{background:#0d1e18;border-top:1px solid #1e3d30;padding:4px 16px;font-size:10px;color:#3a6a4a;flex-shrink:0}
+
+/* ROI Library */
+.lib-empty{text-align:center;font-size:11px;color:#3a6a4a;padding:8px 0}
+.lib-item{background:#1a3d30;border:1px solid #2E6B4F;border-radius:5px;padding:8px 10px;margin-bottom:6px}
+.lib-item-name{font-size:12px;font-weight:600;color:#e8f4ee;margin-bottom:2px}
+.lib-item-meta{font-size:10px;color:#5a8a6a;display:flex;gap:10px;margin-bottom:4px}
+.lib-item-actions{display:flex;gap:5px}
+.lib-btn{flex:1;padding:4px 6px;border:1px solid #2E6B4F;border-radius:4px;background:#0f1a17;color:#9FE1CB;font-size:10px;cursor:pointer;text-align:center}
+.lib-btn:hover{background:#2E6B4F;color:#F5A623}
+.lib-btn-load{border-color:#F5A623;color:#F5A623}.lib-btn-load:hover{background:#F5A623;color:#3A1800}
+.lib-btn-del{border-color:#6d2a2a;color:#f07070}.lib-btn-del:hover{background:#6d2a2a}
+.lib-btn-cached{border-color:#3a6d3a;color:#7FE07F}.lib-btn-cached:hover{background:#3a6d3a}
+
+/* Batch run */
+.batch-progress{display:none;margin-top:8px;padding:8px 10px;background:#1a3d30;border:1px solid #2E6B4F;border-radius:5px}
+.batch-progress.show{display:block}
+.batch-prog-item{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px;color:#9FE1CB}
+.batch-prog-dot{width:8px;height:8px;border-radius:50%;background:#2E6B4F;flex-shrink:0}
+.batch-prog-dot.running{background:#F5A623;animation:pulse_ 1s infinite}
+.batch-prog-dot.done{background:#7FE07F}.batch-prog-dot.failed{background:#f07070}
+@keyframes pulse_{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* Compare section */
+.compare-section{display:none;padding:14px 16px;border-top:2px solid #F5A623}
+.compare-section.show{display:block}
+.cmp-table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:6px}
+.cmp-table th{padding:5px 5px;background:#1a3d30;color:#9FE1CB;text-align:left;font-weight:600}
+.cmp-table td{padding:4px 5px;border-bottom:1px solid #1a3020}
+.roi-color-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.cmp-tabs{display:flex;gap:4px;margin-bottom:8px}
+.cmp-tab{flex:1;padding:4px 6px;background:#1e3d30;border:1px solid #2E6B4F;border-radius:4px;color:#9FE1CB;font-size:10px;cursor:pointer;text-align:center}
+.cmp-tab.active{background:#F5A623;color:#3A1800;border-color:#F5A623;font-weight:600}
+.cmp-chart-wrap{height:130px;margin-top:4px}
 </style>
 </head>
 <body>
 
 <div class="hdr">
   <div class="hdr-logo">SH</div>
-  <div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
+    <span class="ver-pill ver-pill-be">BE1.1.0</span>
+    <span class="ver-pill ver-pill-fe">FE1.1.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -118,12 +210,22 @@ canvas{display:block}
       <h3>Step 1 · Study Area</h3>
       <p class="hint">Draw a polygon on the map or upload a GeoJSON file. Keep area under ~5,000 km².</p>
       <div id="roiStatus" class="roi-ok"></div>
-      <label class="upload" onclick="document.getElementById('gjInput').click()">
-        <input type="file" id="gjInput" accept=".geojson,.json" style="display:none">
-        📁 Upload GeoJSON file
-      </label>
+      <input type="file" id="gjInput" accept=".geojson,.json" style="display:none">
+      <input type="file" id="shpInput" accept=".zip" style="display:none">
+      <div class="upload" id="uploadBtn" onclick="showUploadMenu_(event)">📁 Upload ROI</div>
       <div style="text-align:center;font-size:10px;color:#3a6a4a;margin:4px 0">— or draw on map —</div>
       <button class="btn btn-sec" onclick="clearROI()">✕ Clear ROI</button>
+      <button class="btn btn-sec" style="margin-top:4px" onclick="saveCurrentROI_()">💾 Save ROI to Library</button>
+    </div>
+
+    <!-- ROI Library -->
+    <div class="sb" id="libSection">
+      <h3 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px" onclick="toggleLibrary_()">
+        <span>📚 ROI Library</span>
+        <span id="libCount" style="font-size:10px;color:#9FE1CB;font-weight:400;text-transform:none;letter-spacing:0;flex:1"></span>
+        <span id="libToggleIcon" style="font-size:10px">▼</span>
+      </h3>
+      <div id="libList"></div>
     </div>
 
     <!-- Step 2: Config -->
@@ -139,10 +241,58 @@ canvas{display:block}
         <option value="60" selected>60 m — recommended for POC</option>
         <option value="30">30 m — precise, slower</option>
       </select>
-      <label class="field">Kharif months (comma-separated)</label>
-      <input type="text" id="kharifMonths" value="7,8,9,10">
-      <label class="field">Rabi months (comma-separated)</label>
-      <input type="text" id="rabiMonths" value="12,1,2,3">
+    </div>
+
+    <!-- Monthly Satellite Imagery -->
+    <div class="sb mon-section">
+      <h3 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px" onclick="toggleMonSection_()">
+        <span>🛰 Monthly Imagery</span>
+        <span id="monToggleIcon" style="font-size:10px;margin-left:auto">▶</span>
+      </h3>
+      <div id="monBody" style="display:none">
+        <p class="hint" style="margin:0 0 6px">View satellite imagery for any month. Uses ESRI Wayback (no setup) or Sentinel-2 via your SH/CDS instance ID.</p>
+        <label class="field">Source</label>
+        <select id="monSource" onchange="onMonSourceChange_()">
+          <option value="esri">🌍 ESRI Wayback (free, no login)</option>
+          <option value="sh">🛰 Sentinel-2 WMS (requires Instance ID)</option>
+        </select>
+
+        <!-- ESRI Wayback controls -->
+        <div id="esriWaybackCtrl">
+          <label class="field">Select date</label>
+          <div class="mon-row">
+            <select id="esriReleaseSelect" style="flex:2">
+              <option value="">— load dates —</option>
+            </select>
+            <button onclick="loadEsriRelease_()">▶ Apply</button>
+          </div>
+          <div class="mon-hint">Dates are ESRI's update cycles (not exact calendar months).</div>
+          <div id="esriReleaseMsg" class="mon-hint" style="color:#9FE1CB"></div>
+        </div>
+
+        <!-- Sentinel Hub WMS controls -->
+        <div id="shWmsCtrl" style="display:none">
+          <label class="field">Instance ID (from CDS/SH dashboard)</label>
+          <input type="text" id="shInstanceId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="width:100%;background:#0f1a17;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:4px 6px;font-size:10px;box-sizing:border-box">
+          <label class="field" style="margin-top:6px">Month / Year</label>
+          <div class="mon-row">
+            <select id="shMonth">
+              <option value="01">January</option><option value="02">February</option>
+              <option value="03">March</option><option value="04">April</option>
+              <option value="05">May</option><option value="06">June</option>
+              <option value="07">July</option><option value="08">August</option>
+              <option value="09">September</option><option value="10">October</option>
+              <option value="11">November</option><option value="12">December</option>
+            </select>
+            <input type="number" id="shYear" value="2023" min="2017" max="2025" style="max-width:64px">
+            <button onclick="applyShWms_()">▶ Apply</button>
+          </div>
+          <div class="mon-hint">Requires a WMS Configuration created in your Copernicus Browser account (sh.dataspace.copernicus.eu → Dashboard → Configurations). Paste the Configuration ID above.</div>
+        </div>
+
+        <button class="btn btn-sec" style="margin-top:6px;width:100%" onclick="clearMonthlyLayer_()">✕ Clear Monthly Imagery</button>
+        <div id="monLoading" class="mon-loading">Loading release list…</div>
+      </div>
     </div>
 
     <!-- Step 3: Run -->
@@ -150,9 +300,16 @@ canvas{display:block}
       <button class="btn btn-run" id="runBtn" onclick="runAnalysis()" disabled>
         ▶ Run Phase 1 Analysis
       </button>
+      <button class="btn btn-sec" id="runAllBtn" style="margin-top:6px" onclick="runAllROIs_()">
+        ▶▶ Run All Saved ROIs
+      </button>
       <div class="progress" id="progress">
         <div class="prog-msg" id="progMsg">Initialising...</div>
         <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+      </div>
+      <div class="batch-progress" id="batchProgress">
+        <div style="font-size:10px;font-weight:700;color:#F5A623;margin-bottom:6px">Batch Progress</div>
+        <div id="batchItems"></div>
       </div>
     </div>
 
@@ -162,14 +319,59 @@ canvas{display:block}
       <div class="banner" id="banner"></div>
       <div id="dataSourceBadge" style="text-align:center;font-size:10px;padding:3px 8px;border-radius:4px;display:none"></div>
       <div class="stat-grid" id="statGrid"></div>
-      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:4px">Mean CPI per zone</h3>
+      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:4px">Mean CPI per zone</h3><button class="chart-expand-btn" onclick="openChartFs_('cpiChart')" title="Fullscreen">⛶</button></div>
       <div class="chart-wrap"><canvas id="cpiChart"></canvas></div>
       <table class="ztbl">
         <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
         <tbody id="zoneTbody"></tbody>
       </table>
+      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:6px">SHPI vs CPI correlation</h3><button class="chart-expand-btn" onclick="openChartFs_('shpiCpiScatter')" title="Fullscreen">⛶</button></div>
+      <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
+      <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
+      <details id="ciTablePanel" style="margin:4px 0 6px;font-size:9px;color:#9FE1CB">
+        <summary style="cursor:pointer;color:#F5A623;font-weight:700;font-size:9px;letter-spacing:.05em;padding:2px 0">▸ Zone Confidence Intervals &amp; Effect Sizes (vs Zone 1)</summary>
+        <div style="overflow-x:auto;overflow-y:auto;max-height:200px;margin-top:4px">
+          <table id="ciTable" style="width:100%;border-collapse:collapse;font-size:8.5px">
+            <thead><tr style="color:#F5A623">
+              <th style="padding:2px 4px;text-align:left">Zone</th>
+              <th style="padding:2px 4px;text-align:right">N</th>
+              <th style="padding:2px 4px;text-align:right">Mean CPI</th>
+              <th style="padding:2px 4px;text-align:right">SE</th>
+              <th style="padding:2px 4px;text-align:right">95% CI</th>
+              <th style="padding:2px 4px;text-align:right">Cohen's d</th>
+              <th style="padding:2px 4px;text-align:right">p-value</th>
+            </tr></thead>
+            <tbody id="ciTbody"></tbody>
+          </table>
+        </div>
+      </details>
+      <div id="results-map-ctrls">
+        <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
+        <input type="range" id="rasterOpacity" min="10" max="100" value="80" oninput="updateRasterOpacity_(this.value, 'rasterOpacityVal', false)">
+        <span id="rasterOpacityVal" style="font-size:10px;color:#F5A623;width:30px">80%</span>
+        <button class="rm-ctrl-btn" onclick="toggleResultsFullscreen_()" title="Fullscreen">⛶</button>
+      </div>
+      <div id="results-map"></div>
       <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
       <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
+    </div>
+
+    <!-- Compare ROIs section -->
+    <div id="compareSection" class="compare-section">
+      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-bottom:8px">📊 Compare ROIs</h3>
+      <button class="btn btn-sec" style="margin-bottom:8px" onclick="openCompareMap_()">🗺 View Comparison Map</button>
+      <div style="overflow-x:auto">
+        <table class="cmp-table" id="cmpTable"></table>
+      </div>
+      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:8px;margin-bottom:2px">CPI by Zone (all ROIs)</h3><button class="chart-expand-btn" onclick="openChartFs_('cmpBarChart')" title="Fullscreen">⛶</button></div>
+      <div class="cmp-chart-wrap"><canvas id="cmpBarChart"></canvas></div>
+      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:8px;margin-bottom:4px">SHPI vs CPI — all ROIs</h3><button class="chart-expand-btn" onclick="openChartFs_('cmpScatterChart')" title="Fullscreen">⛶</button></div>
+      <div class="cmp-tabs">
+        <div class="cmp-tab active" id="cmpTabZones" onclick="setCmpScatterMode_('zones')">Per-zone</div>
+        <div class="cmp-tab" id="cmpTabSummary" onclick="setCmpScatterMode_('summary')">Per-ROI summary</div>
+      </div>
+      <div class="cmp-chart-wrap" style="height:150px"><canvas id="cmpScatterChart"></canvas></div>
+      <div id="cmpScatterLabel" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
     </div>
 
   </div>
@@ -182,11 +384,16 @@ canvas{display:block}
     </div>
     <div class="legend">
       <p>Soil Health</p>
-      <div class="leg-row"><span class="leg-swatch" style="background:#d73027"></span><span class="leg-lbl">Zone 1 — Low</span></div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#fc8d59"></span><span class="leg-lbl">Zone 2</span></div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#fee08b"></span><span class="leg-lbl">Zone 3 — Mid</span></div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#91cf60"></span><span class="leg-lbl">Zone 4</span></div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#1a9850"></span><span class="leg-lbl">Zone 5 — High</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#a50026"></span><span class="leg-lbl">Zone 1 — Low</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#d73027"></span><span class="leg-lbl">Zone 2</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#f46d43"></span><span class="leg-lbl">Zone 3</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#fdae61"></span><span class="leg-lbl">Zone 4</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#fee090"></span><span class="leg-lbl">Zone 5 — Mid</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#d9ef8b"></span><span class="leg-lbl">Zone 6</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#a6d96a"></span><span class="leg-lbl">Zone 7</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#66bd63"></span><span class="leg-lbl">Zone 8</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#1a9850"></span><span class="leg-lbl">Zone 9</span></div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#006837"></span><span class="leg-lbl">Zone 10 — High</span></div>
     </div>
   </div>
 </div>
@@ -198,12 +405,81 @@ canvas{display:block}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script>
 // ── State ─────────────────────────────────────────────────────
 let roi        = null
 let lastResult = null
-let chart      = null
-const ZONE_COLORS = ['#d73027','#fc8d59','#fee08b','#91cf60','#1a9850']
+let chart        = null
+let scatterChart = null
+// Inline Chart.js plugin for SE error bars — stored at module level so openChartFs_ can reuse it
+const scatterErrBarsPlugin_ = {
+  id: 'errBars',
+  afterDatasetsDraw(chart) {
+    chart.data.datasets.forEach(function(ds, dsi) {
+      if (ds.label !== 'Zone means') return
+      var meta = chart.getDatasetMeta(dsi)
+      var ctx2 = chart.ctx
+      ds.data.forEach(function(pt, j) {
+        if (!pt.se_cpi || pt.se_cpi === 0) return
+        var elem = meta.data[j]
+        if (!elem) return
+        var px = elem.x
+        var yLo = chart.scales.y.getPixelForValue(pt.y - pt.se_cpi)
+        var yHi = chart.scales.y.getPixelForValue(pt.y + pt.se_cpi)
+        var capW = 4
+        ctx2.save()
+        ctx2.strokeStyle = '#ffffffcc'
+        ctx2.lineWidth = 1.5
+        ctx2.beginPath()
+        ctx2.moveTo(px, yLo); ctx2.lineTo(px, yHi)
+        ctx2.moveTo(px - capW, yHi); ctx2.lineTo(px + capW, yHi)
+        ctx2.moveTo(px - capW, yLo); ctx2.lineTo(px + capW, yLo)
+        ctx2.stroke()
+        ctx2.restore()
+      })
+    })
+  }
+}
+let resultsMap = null
+let resultsRasterLayer = null  // the L.imageOverlay for the Process API raster
+let resultsMapFs = null        // fullscreen map Leaflet instance
+let resultsRasterLayerFs = null // raster layer in fullscreen map
+let currentFsLayer = 'zones'   // 'zones' | 'shpi' | 'cpi'
+let currentRoiId = null        // UUID of the library ROI currently loaded (null if drawn/ad-hoc)
+let cmpBarChart = null
+let cmpScatterChart = null
+let cmpScatterMode = 'zones'   // 'zones' | 'summary'
+let compareMapFs = null
+let chartFsInstances = {}      // chart-id → Chart instance for fullscreen canvases
+const ZONE_COLORS         = ['#a50026','#d73027','#f46d43','#fdae61','#fee090','#d9ef8b','#a6d96a','#66bd63','#1a9850','#006837']
+const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','#ff9f43','#54a0ff','#5f27cd','#ee5a24','#0abde3']
+const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
+const MAX_ROIS_FOR_LEGEND = 6     // hide chart legend when more ROIs than this (to avoid clutter)
+const EPSILON_DENOM       = 1e-10 // numerical stability guard against near-zero denominators in regression
+
+function formatPixelCount(px) {
+  return px >= 1000 ? (px / 1000).toFixed(1) + 'k' : String(Math.round(px))
+}
+
+function percentile_(arr, p) {
+  // arr must be sorted ascending
+  var idx = (p / 100) * (arr.length - 1)
+  var lo  = Math.floor(idx)
+  var hi  = Math.ceil(idx)
+  if (lo === hi) return arr[lo]
+  return arr[lo] + (arr[hi] - arr[lo]) * (idx - lo)
+}
+
+function pearson_(xs, ys) {
+  var n  = xs.length
+  var mx = xs.reduce(function(a, b) { return a + b }, 0) / n
+  var my = ys.reduce(function(a, b) { return a + b }, 0) / n
+  var cov = xs.reduce(function(s, x, i) { return s + (x - mx) * (ys[i] - my) }, 0)
+  var sdx = Math.sqrt(xs.reduce(function(s, x) { return s + (x - mx) * (x - mx) }, 0))
+  var sdy = Math.sqrt(ys.reduce(function(s, y) { return s + (y - my) * (y - my) }, 0))
+  return (sdx > 0 && sdy > 0) ? cov / (sdx * sdy) : 0
+}
 
 // ── Map init ──────────────────────────────────────────────────
 const map = L.map('map', { center: [20.5, 78.9], zoom: 5 })
@@ -244,17 +520,71 @@ const esriLabels = L.tileLayer(
 esriSatellite.addTo(map)
 esriLabels.addTo(map)
 
-// Layer control
-L.control.layers(
+// ── Admin boundary layers (loaded on-demand) ──────────────────
+var boundaryLayers = {
+  state:    L.layerGroup(),
+  district: L.layerGroup(),
+  tehsil:   L.layerGroup()
+}
+var boundaryLoaded = { state: false, district: false, tehsil: false }
+var BOUNDARY_URLS = {
+  state:    'https://raw.githubusercontent.com/datameet/maps/master/States/Admin2.geojson',
+  district: 'https://raw.githubusercontent.com/datameet/maps/master/Districts/India_Districts-simplified.geojson',
+  tehsil:   'https://raw.githubusercontent.com/datameet/maps/master/Tehsils/India_Tehsils-simplified.geojson'
+}
+var BOUNDARY_STYLE = {
+  state:    { color: '#F5A623', weight: 1.5, fillOpacity: 0,  opacity: 0.8 },
+  district: { color: '#9FE1CB', weight: 0.8, fillOpacity: 0,  opacity: 0.7 },
+  tehsil:   { color: '#a0c0ff', weight: 0.5, fillOpacity: 0,  opacity: 0.6 }
+}
+
+function loadBoundaryLayer_(key) {
+  if (boundaryLoaded[key]) return
+  fetch(BOUNDARY_URLS[key])
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      return r.json()
+    })
+    .then(function (gj) {
+      boundaryLoaded[key] = true
+      L.geoJSON(gj, {
+        style: BOUNDARY_STYLE[key],
+        onEachFeature: function (feature, layer) {
+          var p = feature.properties || {}
+          var name = p.NAME_2 || p.NAME_1 || p.DISTRICT || p.ST_NM || p.NAME || ''
+          if (name) layer.bindTooltip(name, { sticky: true, className: 'bound-tooltip' })
+        }
+      }).addTo(boundaryLayers[key])
+    })
+    .catch(function (err) {
+      console.warn('Boundary load failed (' + key + '):', err)
+    })
+}
+
+// Layer control (with boundary overlays)
+var layerCtrl = L.control.layers(
   {
     '🛰 Satellite (ESRI)': esriSatellite,
     '🗺 Topographic (ESRI)': esriTopo,
     '🏙 Street Map (ESRI)': esriStreet,
     '🌍 OpenStreetMap': osmStandard,
   },
-  { '🏷 Place Labels': esriLabels },
+  {
+    '🏷 Place Labels': esriLabels,
+    '🏛 State Boundaries (India)': boundaryLayers.state,
+    '📍 District Boundaries (India)': boundaryLayers.district,
+    '🗺 Subdistrict Boundaries (India)': boundaryLayers.tehsil
+  },
   { position: 'topright', collapsed: false }
 ).addTo(map)
+
+// Load boundary GeoJSON when overlay is turned on
+map.on('overlayadd', function (e) {
+  var name = e.name
+  if (name === '🏛 State Boundaries (India)')       loadBoundaryLayer_('state')
+  if (name === '📍 District Boundaries (India)')    loadBoundaryLayer_('district')
+  if (name === '🗺 Subdistrict Boundaries (India)') loadBoundaryLayer_('tehsil')
+})
 
 window.L = L  // make available for leaflet-draw
 
@@ -272,9 +602,11 @@ map.addControl(drawCtrl)
 map.on(L.Draw.Event.CREATED, e => {
   drawn.clearLayers()
   drawn.addLayer(e.layer)
-  roi = e.layer.toGeoJSON().geometry
+  roi          = e.layer.toGeoJSON().geometry
+  currentRoiId = null
   setROIStatus('✓ ROI set from drawn shape')
   document.getElementById('runBtn').disabled = false
+  updateAreaDisplay_()
 })
 
 // ── GeoJSON upload ────────────────────────────────────────────
@@ -297,7 +629,9 @@ document.getElementById('gjInput').addEventListener('change', e => {
       else if (gj.type === 'Feature') roi = gj.geometry
       else roi = gj
       setROIStatus('✓ GeoJSON loaded: ' + file.name)
+      currentRoiId = null
       document.getElementById('runBtn').disabled = false
+      updateAreaDisplay_()
     } catch(err) { alert('Invalid GeoJSON: ' + err.message) }
   }
   reader.readAsText(file)
@@ -306,10 +640,13 @@ document.getElementById('gjInput').addEventListener('change', e => {
 
 function clearROI() {
   drawn.clearLayers()
-  roi = null
+  roi          = null
+  currentRoiId = null
   document.getElementById('runBtn').disabled = true
   document.getElementById('roiStatus').classList.remove('show')
   document.getElementById('results').classList.remove('show')
+  updateAreaDisplay_()
+  renderLibraryPanel_()
 }
 
 function setROIStatus(msg) {
@@ -325,35 +662,29 @@ function runAnalysis() {
   const yearStart    = parseInt(document.getElementById('yearStart').value, 10)
   const yearEnd      = parseInt(document.getElementById('yearEnd').value, 10)
   const resolution   = parseInt(document.getElementById('resolution').value, 10)
-  const kharifMonths = document.getElementById('kharifMonths').value.split(',').map(Number).filter(Boolean)
-  const rabiMonths   = document.getElementById('rabiMonths').value.split(',').map(Number).filter(Boolean)
-
-  const currentYear = new Date().getFullYear()
+    const currentYear = new Date().getFullYear()
   if (isNaN(yearStart) || isNaN(yearEnd)) { alert('Year start and end must be valid numbers.'); return }
   if (yearStart < 2015 || yearEnd > currentYear) { alert('Years must be between 2015 and ' + currentYear + '.'); return }
   if (yearEnd <= yearStart) { alert('Year end must be after year start.'); return }
   if (isNaN(resolution) || resolution < 10 || resolution > 1000) { alert('Resolution must be between 10 and 1000 metres.'); return }
-  const validMonth = m => Number.isInteger(m) && m >= 1 && m <= 12
-  if (!kharifMonths.every(validMonth)) { alert('Kharif months must be integers between 1 and 12.'); return }
-  if (!rabiMonths.every(validMonth)) { alert('Rabi months must be integers between 1 and 12.'); return }
 
-  showOverlay(true, 'Connecting to Sentinel Hub...')
-  setProgress(true, 10, 'Fetching dry season composite (Track A)...')
+  showOverlay(true, 'Fetching satellite archive (all months, all years)...')
+  setProgress(true, 10, 'Fetching satellite archive (all months, all years)...')
   document.getElementById('runBtn').disabled = true
   document.getElementById('results').classList.remove('show')
 
-  const params = { geojson: roi, yearStart, yearEnd, resolution, kharifMonths, rabiMonths }
+  const params = { geojson: roi, yearStart, yearEnd, resolution }
 
   // Progress animation
   let pct = 10
   const timer = setInterval(() => {
     pct = Math.min(pct + 4, 88)
     const msgs = [
-      'Fetching dry season composite (Track A)...',
-      'Fetching Kharif NDVI (Track B)...',
-      'Fetching Rabi NDVI (Track B)...',
-      'Computing SHPI & CPI...',
-      'Classifying zones...',
+      'Fetching satellite archive (all months, all years)...',
+      'Computing bare soil composite per pixel...',
+      'Computing crop performance per pixel...',
+      'Decoding SHPI and CPI raster...',
+      'Classifying zones and computing statistics...',
       'Running validation...',
     ]
     const idx = Math.min(Math.floor((pct - 10) / 13), msgs.length - 1)
@@ -365,13 +696,14 @@ function runAnalysis() {
   google.script.run
     .withSuccessHandler(data => {
       clearInterval(timer)
-      setProgress(true, 100, 'Complete!')
-      showOverlay(false)
+      setProgress(true, 95, 'Decoding SHPI and CPI raster...')
+      showOverlay(true, 'Decoding SHPI and CPI raster...')
       document.getElementById('runBtn').disabled = false
       if (data.success) {
-        lastResult = data
-        renderResults(data)
+        decodeRasterAndAnalyse_(data)
       } else {
+        setProgress(false)
+        showOverlay(false)
         alert('Analysis failed: ' + data.error)
       }
     })
@@ -385,6 +717,231 @@ function runAnalysis() {
     .runAnalysis(params)
 }
 
+// Shared pixel-decoding helper — calls callback(result) when done, callback(null) on error.
+// Does NOT update any UI. Used by both single-run and batch-run paths.
+function decodeRasterToResult_(rawData, callback) {
+  var img = new Image()
+  img.onerror = function(e) { console.error('decodeRasterToResult_: image load error', e); callback(null) }
+  img.onload = function() {
+    var W = img.naturalWidth, H = img.naturalHeight
+    var canvas = document.createElement('canvas')
+    canvas.width = W; canvas.height = H
+    var ctx = canvas.getContext('2d')
+    ctx.drawImage(img, 0, 0)
+    var pixels = ctx.getImageData(0, 0, W, H).data
+
+    var shpiPixels = [], ndviPixels = [], pixelPairs = []
+    var zoneMap = new Array(W * H).fill(0)  // zone assignment per pixel (0=invalid)
+
+    for (var i = 0; i < W * H; i++) {
+      var R = pixels[i * 4]     // shpiBand
+      var G = pixels[i * 4 + 1] // ndviBand
+      var B = pixels[i * 4 + 2] // mask
+      if (B === 0) continue     // invalid pixel
+      var shpi = R === 255 ? null : R / 254
+      var ndvi = G === 255 ? null : G / 254
+      if (shpi !== null) shpiPixels.push({ idx: i, val: shpi })
+      if (ndvi !== null) ndviPixels.push({ idx: i, val: ndvi })
+      if (shpi !== null && ndvi !== null) pixelPairs.push({ idx: i, shpi: shpi, ndvi: ndvi })
+    }
+
+    // Compute SHPI percentile thresholds from ALL valid SHPI pixels
+    var shpiSorted = shpiPixels.map(function(p) { return p.val }).sort(function(a,b) { return a-b })
+    var thresholds
+    if (shpiSorted.length >= 10) {
+      thresholds = [10,20,30,40,50,60,70,80,90].map(function(pct) { return percentile_(shpiSorted, pct) })
+    } else {
+      thresholds = [0.10,0.20,0.30,0.40,0.50,0.60,0.70,0.80,0.90]
+    }
+    var p10=thresholds[0], p20=thresholds[1], p30=thresholds[2], p40=thresholds[3],
+        p50=thresholds[4], p60=thresholds[5], p70=thresholds[6], p80=thresholds[7], p90=thresholds[8]
+
+    function assignZone_(v) {
+      if (v < p10) return 1; if (v < p20) return 2; if (v < p30) return 3
+      if (v < p40) return 4; if (v < p50) return 5; if (v < p60) return 6
+      if (v < p70) return 7; if (v < p80) return 8; if (v < p90) return 9
+      return 10
+    }
+
+    // Assign zones to ALL valid SHPI pixels (for display raster)
+    shpiPixels.forEach(function(p) {
+      zoneMap[p.idx] = assignZone_(p.val)
+    })
+
+    // Zone stats from pixelPairs (pixels with BOTH SHPI and NDVI)
+    var zones = [[],[],[],[],[],[],[],[],[],[]]
+    pixelPairs.forEach(function(p) {
+      zones[assignZone_(p.shpi) - 1].push(p)
+    })
+
+    function mean_(arr, key) {
+      if (!arr.length) return 0
+      return arr.reduce(function(s, p) { return s + p[key] }, 0) / arr.length
+    }
+    function std_(arr, key, m) {
+      if (arr.length < 2) return 0
+      var variance = arr.reduce(function(s, p) { return s + (p[key] - m) * (p[key] - m) }, 0) / arr.length
+      return Math.sqrt(variance)
+    }
+
+    var zoneStats = zones.map(function(zPairs, idx) {
+      var ms = mean_(zPairs, 'shpi'), mn = mean_(zPairs, 'ndvi')
+      return {
+        zone:        idx + 1,
+        label:       'Zone ' + (idx + 1),
+        pixel_count: zPairs.length,
+        mean_shpi:   Math.round(ms * 1000) / 1000,
+        std_shpi:    Math.round(std_(zPairs, 'shpi', ms) * 1000) / 1000,
+        mean_cpi:    Math.round(mn * 1000) / 1000,
+        std_cpi:     Math.round(std_(zPairs, 'ndvi', mn) * 1000) / 1000,
+        data_source: 'real'
+      }
+    })
+
+    // Build a pixel-level sample (up to 2000 pts) for the scatter plot
+    var MAX_SCATTER_PX = 2000
+    var pixelSample = []
+    if (pixelPairs.length > 0) {
+      var step = Math.max(1, Math.floor(pixelPairs.length / MAX_SCATTER_PX))
+      for (var ki = 0; ki < pixelPairs.length; ki += step) {
+        var pp = pixelPairs[ki]
+        var pz = assignZone_(pp.shpi) - 1
+        pixelSample.push({ x: pp.shpi, y: pp.ndvi, z: pz })
+      }
+    }
+
+    // Pearson r / R² computed from pixel-level sample (more robust than zone means)
+    var xs = pixelSample.map(function(p) { return p.x })
+    var ys = pixelSample.map(function(p) { return p.y })
+    var pr = pearson_(xs, ys)
+    var r2 = Math.round(pr * pr * 1000) / 1000
+    pr = Math.round(pr * 1000) / 1000
+    // mono / ratio still use zone means (they describe the ordinal zone pattern)
+    var zoneMeanCpi = zoneStats.map(function(zs) { return zs.mean_cpi })
+    var mono = zoneMeanCpi.every(function(v, i) { return i === 0 || v >= zoneMeanCpi[i - 1] })
+    var ratio = zoneMeanCpi[0] > 0.01 ? Math.round(zoneMeanCpi[9] / zoneMeanCpi[0] * 100) / 100 : null
+
+    // Generate display rasters using offscreen canvases
+    var dispCanvas = document.createElement('canvas')
+    dispCanvas.width = W; dispCanvas.height = H
+    var dctx = dispCanvas.getContext('2d')
+    var dispData = dctx.createImageData(W, H)
+    var dd = dispData.data
+
+    var shpiCanvas = document.createElement('canvas')
+    shpiCanvas.width = W; shpiCanvas.height = H
+    var sctx = shpiCanvas.getContext('2d')
+    var shpiImgData = sctx.createImageData(W, H)
+    var sd = shpiImgData.data
+    var shpiStops = [[215,48,39],[252,141,89],[254,224,139],[145,207,96],[26,152,80]]
+
+    var cpiCanvas = document.createElement('canvas')
+    cpiCanvas.width = W; cpiCanvas.height = H
+    var cctx = cpiCanvas.getContext('2d')
+    var cpiImgData = cctx.createImageData(W, H)
+    var cd = cpiImgData.data
+    var cpiStops = [[63,0,125],[116,43,164],[153,112,171],[211,189,213],[217,240,211],[127,191,123],[27,120,55]]
+
+    function hexToRgbArr_(hex) {
+      var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16)
+      return [r,g,b]
+    }
+
+    for (var j = 0; j < W * H; j++) {
+      var R2 = pixels[j * 4], G2 = pixels[j * 4 + 1], B2 = pixels[j * 4 + 2]
+      var base = j * 4
+
+      // Zone display raster
+      var zn = zoneMap[j]
+      if (zn > 0) {
+        var zc = hexToRgbArr_(ZONE_COLORS[zn - 1])
+        dd[base] = zc[0]; dd[base+1] = zc[1]; dd[base+2] = zc[2]; dd[base+3] = 180
+      } else {
+        dd[base] = 0; dd[base+1] = 0; dd[base+2] = 0; dd[base+3] = 0
+      }
+
+      // SHPI gradient raster
+      if (B2 > 0 && R2 !== 255) {
+        var sv = R2 / 254, st = sv * 4
+        var si = Math.min(3, Math.floor(st)), sf = st - si
+        sd[base]   = Math.round(shpiStops[si][0] + (shpiStops[si+1][0] - shpiStops[si][0]) * sf)
+        sd[base+1] = Math.round(shpiStops[si][1] + (shpiStops[si+1][1] - shpiStops[si][1]) * sf)
+        sd[base+2] = Math.round(shpiStops[si][2] + (shpiStops[si+1][2] - shpiStops[si][2]) * sf)
+        sd[base+3] = 200
+      } else {
+        sd[base] = 0; sd[base+1] = 0; sd[base+2] = 0; sd[base+3] = 0
+      }
+
+      // CPI gradient raster: normalize NDVI 0.4→1.0 to 0→1, clamp below 0.4 to lowest colour
+      if (B2 > 0 && G2 !== 255) {
+        var cv = G2 / 254, cn = Math.max(0, Math.min(1, (cv - 0.4) / 0.6))
+        var cseg = cn * (cpiStops.length - 1)
+        var ci = Math.min(cpiStops.length - 2, Math.floor(cseg)), cf = cseg - ci
+        cd[base]   = Math.round(cpiStops[ci][0] + (cpiStops[ci+1][0] - cpiStops[ci][0]) * cf)
+        cd[base+1] = Math.round(cpiStops[ci][1] + (cpiStops[ci+1][1] - cpiStops[ci][1]) * cf)
+        cd[base+2] = Math.round(cpiStops[ci][2] + (cpiStops[ci+1][2] - cpiStops[ci][2]) * cf)
+        cd[base+3] = 200
+      } else {
+        cd[base] = 0; cd[base+1] = 0; cd[base+2] = 0; cd[base+3] = 0
+      }
+    }
+
+    dctx.putImageData(dispData, 0, 0)
+    sctx.putImageData(shpiImgData, 0, 0)
+    cctx.putImageData(cpiImgData, 0, 0)
+
+    function canvasToB64_(c) {
+      var dataUrl = c.toDataURL('image/png')
+      return dataUrl.replace(/^data:image\/png;base64,/, '')
+    }
+
+    callback({
+      success:        true,
+      bbox:           rawData.bbox,
+      zone_stats:     zoneStats,
+      pixel_sample:   pixelSample,
+      validation: {
+        pearson_r:       pr,
+        r_squared:       r2,
+        is_monotonic:    mono,
+        cpi_ratio:       ratio,
+        confirmed:       pr > 0.60 && mono,
+        n_zones:         10,
+        data_source:     'real',
+        shpi_thresholds: thresholds
+      },
+      raster_png_b64: canvasToB64_(dispCanvas),
+      shpi_png_b64:   canvasToB64_(shpiCanvas),
+      cpi_png_b64:    canvasToB64_(cpiCanvas),
+      meta: Object.assign({}, rawData.meta, { width: W, height: H })
+    })
+  }
+  img.src = 'data:image/png;base64,' + rawData.raster_png_b64
+}
+
+// Single-run path: decode PNG and render results in the UI
+function decodeRasterAndAnalyse_(rawData) {
+  decodeRasterToResult_(rawData, function(result) {
+    if (!result) {
+      showOverlay(false)
+      setProgress(false)
+      alert('Failed to decode raster image. Please try again.')
+      return
+    }
+    lastResult = result
+    if (currentRoiId) {
+      var cache = loadResultsCache_()
+      cache[currentRoiId] = result
+      saveResultsCache_(cache)
+      renderLibraryPanel_()
+      maybeShowCompareSection_()
+    }
+    renderResults(result)
+    setProgress(true, 100, 'Complete!')
+    setTimeout(function() { showOverlay(false); setProgress(false) }, 500)
+  })
+}
+
 // ── Render results ────────────────────────────────────────────
 function renderResults(data) {
   const v = data.validation
@@ -393,7 +950,7 @@ function renderResults(data) {
   // Banner
   const banner = document.getElementById('banner')
   if (v.confirmed) {
-    banner.textContent = '✓ Hypothesis confirmed — CPI increases Zone 1→5'
+    banner.textContent = '✓ Hypothesis confirmed — CPI increases Zone 1→10'
     banner.className   = 'banner banner-yes'
   } else {
     banner.textContent = '⚠ Hypothesis not confirmed — check data coverage'
@@ -419,9 +976,9 @@ function renderResults(data) {
   const statGrid = document.getElementById('statGrid')
   statGrid.innerHTML = ''
   const stats = [
-    { val: v.spearman_rho,  lbl: 'Spearman ρ' },
-    { val: v.spearman_p <= 0.001 ? '<0.001' : v.spearman_p, lbl: 'p-value' },
-    { val: v.cpi_ratio ? v.cpi_ratio + '×' : '—', lbl: 'CPI Z5/Z1 ratio' },
+    { val: v.pearson_r,  lbl: 'Pearson r' },
+    { val: v.r_squared,  lbl: 'R²' },
+    { val: v.cpi_ratio ? v.cpi_ratio + '×' : '—', lbl: 'CPI Z10/Z1 ratio' },
     { val: v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
   ]
   stats.forEach(s => {
@@ -476,7 +1033,8 @@ function renderResults(data) {
     tdZone.appendChild(document.createTextNode('Zone ' + zs.zone))
 
     const tdPx = document.createElement('td')
-    tdPx.textContent = (zs.pixel_count / 1000).toFixed(1) + 'k'
+    tdPx.textContent = zs.pixel_count === 0 ? '—' : formatPixelCount(zs.pixel_count)
+    if (zs.pixel_count === 0) tdPx.title = 'No bare-soil pixels — fallback SHPI value used'
 
     const tdShpi = document.createElement('td')
     tdShpi.textContent = zs.mean_shpi
@@ -493,8 +1051,1361 @@ function renderResults(data) {
     tbody.appendChild(tr)
   })
 
+  // ── SHPI vs CPI scatter plot — zone means only (10 bin markers) ──────────
+  // Only include zones with actual CPI data (pixel_count > 0)
+  const zWithData = z.filter(zs => zs.pixel_count > 0)
+
+  // Regression computed from zone means
+  const scatterX = zWithData.map(zs => zs.mean_shpi)
+  const scatterY = zWithData.map(zs => zs.mean_cpi)
+  const n = scatterX.length
+  const sx = scatterX.reduce((a, b) => a + b, 0)
+  const sy = scatterY.reduce((a, b) => a + b, 0)
+  const sxy = scatterX.reduce((a, x, i) => a + x * scatterY[i], 0)
+  const sxx = scatterX.reduce((a, x) => a + x * x, 0)
+  const denom = n * sxx - sx * sx
+  const slope = Math.abs(denom) > 1e-10 ? (n * sxy - sx * sy) / denom : 0
+  const intercept = (sy - slope * sx) / n
+  const yMean = sy / n
+  const ssTot = scatterY.reduce((a, y) => a + (y - yMean) ** 2, 0)
+  const ssRes = scatterX.reduce((a, x, i) => a + (scatterY[i] - (slope * x + intercept)) ** 2, 0)
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0
+  const xMin = Math.min(...scatterX), xMax = Math.max(...scatterX)
+  const lineData = [{ x: xMin, y: slope * xMin + intercept }, { x: xMax, y: slope * xMax + intercept }]
+  const intSign = intercept >= 0 ? ' + ' : ' - '
+  document.getElementById('scatterEq').textContent =
+    'y = ' + slope.toFixed(3) + 'x' + intSign + Math.abs(intercept).toFixed(3) +
+    '   R² = ' + r2.toFixed(3) + '  n=' + n + ' zones'
+
+  // Zone-mean bin markers with SE error-bar data attached
+  const zoneBinDataset = {
+    type: 'scatter',
+    label: 'Zone means',
+    data: zWithData.map(zs => {
+      var se_c = zs.pixel_count > 1 ? zs.std_cpi / Math.sqrt(zs.pixel_count) : 0
+      return { x: zs.mean_shpi, y: zs.mean_cpi, zone: zs.zone,
+               se_cpi: Math.round(se_c * 10000) / 10000 }
+    }),
+    backgroundColor: zWithData.map(zs => {
+      var c = hexToRgb_(ZONE_COLORS[Math.max(0, Math.min(ZONE_COLORS.length - 1, zs.zone - 1))])
+      return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.9)'
+    }),
+    borderColor: '#fff',
+    borderWidth: 1,
+    pointRadius: 7,
+    pointHoverRadius: 9,
+    pointStyle: 'circle',
+    order: 0,
+  }
+
+  // Inline Chart.js plugin that draws vertical SE error bars — uses module-level scatterErrBarsPlugin_
+
+  if (scatterChart) { scatterChart.destroy(); scatterChart = null }
+  const sctx = document.getElementById('shpiCpiScatter').getContext('2d')
+  scatterChart = new Chart(sctx, {
+    plugins: [scatterErrBarsPlugin_],
+    data: {
+      datasets: [
+        zoneBinDataset,
+        {
+          type: 'line',
+          label: 'Fit',
+          data: lineData,
+          borderColor: '#F5A623',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              if (ctx.dataset.label === 'Zone means') {
+                var zone = ctx.raw.zone || (ctx.dataIndex + 1)
+                var seStr = ctx.raw.se_cpi ? '  SE±' + ctx.raw.se_cpi.toFixed(3) : ''
+                return 'Z' + zone + '  SHPI=' + ctx.raw.x.toFixed(3) + '  CPI=' + ctx.raw.y.toFixed(3) + seStr
+              }
+              return null
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 9 } },
+          ticks: { color: '#9FE1CB', font: { size: 9 } },
+          grid: { color: '#1e3d30' }
+        },
+        y: {
+          title: { display: true, text: 'CPI', color: '#9FE1CB', font: { size: 9 } },
+          ticks: { color: '#9FE1CB', font: { size: 9 } },
+          grid: { color: '#1e3d30' }
+        }
+      }
+    }
+  });
+
+  // ── CI table: zone stats vs Zone 1, with Welch t-test p-value and Cohen's d ──
+  ;(function() {
+    // Standard normal CDF approximation (Horner's method, accurate to ~1e-7).
+    // Using normal approximation for the t-distribution — valid here because each
+    // decile zone contains hundreds–thousands of pixels (n >> 30 in all practical cases).
+    function normCdf_(x) {
+      var t = 1 / (1 + 0.2316419 * Math.abs(x))
+      var d = 0.3989423 * Math.exp(-x * x / 2)
+      var p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.7814779 + t * (-1.8212560 + t * 1.3302744))))
+      return x > 0 ? 1 - p : p
+    }
+    // Welch t-test two-tailed p-value between two groups (normal approximation)
+    function welchP_(m1, s1, n1, m2, s2, n2) {
+      if (n1 < 2 || n2 < 2) return NaN
+      var se = Math.sqrt(s1 * s1 / n1 + s2 * s2 / n2)
+      if (se === 0) return 0
+      var t = Math.abs(m2 - m1) / se
+      return 2 * normCdf_(-t)
+    }
+    // Cohen's d with pooled within-group SD (classic effect size, degrees-of-freedom weighted)
+    function cohenD_(m1, s1, n1, m2, s2, n2) {
+      if (n1 < 2 || n2 < 2) return NaN
+      var pooledVar = ((n1 - 1) * s1 * s1 + (n2 - 1) * s2 * s2) / (n1 + n2 - 2)
+      var pooled = Math.sqrt(pooledVar)
+      if (pooled === 0) return 0
+      return (m2 - m1) / pooled
+    }
+    function pStr_(p) {
+      if (isNaN(p)) return '—'
+      if (p < 0.001) return '<0.001'
+      return p.toFixed(3)
+    }
+    function dStr_(d) {
+      if (isNaN(d)) return '—'
+      var abs = Math.abs(d), sign = d >= 0 ? '+' : '-'
+      var mag = abs < 0.2 ? 'negligible' : abs < 0.5 ? 'small' : abs < 0.8 ? 'medium' : 'large'
+      return sign + abs.toFixed(2) + ' (' + mag + ')'
+    }
+
+    var ref = z.find(function(zs) { return zs.zone === 1 && zs.pixel_count > 1 })
+    var tbody = document.getElementById('ciTbody')
+    if (!tbody) return
+    tbody.innerHTML = ''
+    z.forEach(function(zs) {
+      if (zs.pixel_count < 1) return
+      var se = zs.pixel_count > 1 ? zs.std_cpi / Math.sqrt(zs.pixel_count) : 0
+      var ci95lo = (zs.mean_cpi - 1.96 * se).toFixed(3)
+      var ci95hi = (zs.mean_cpi + 1.96 * se).toFixed(3)
+      var pVal = (ref && zs.zone !== 1) ? welchP_(ref.mean_cpi, ref.std_cpi, ref.pixel_count, zs.mean_cpi, zs.std_cpi, zs.pixel_count) : NaN
+      var d    = (ref && zs.zone !== 1) ? cohenD_(ref.mean_cpi, ref.std_cpi, ref.pixel_count, zs.mean_cpi, zs.std_cpi, zs.pixel_count) : NaN
+      var tr = document.createElement('tr')
+      var refStyle = zs.zone === 1 ? 'color:#F5A623;font-weight:700' : ''
+      tr.style.cssText = refStyle
+      var hex = ZONE_COLORS[Math.max(0, Math.min(9, zs.zone - 1))]
+      tr.innerHTML =
+        '<td style="padding:2px 4px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + hex + ';margin-right:3px"></span>Z' + zs.zone + '</td>' +
+        '<td style="padding:2px 4px;text-align:right">' + formatPixelCount(zs.pixel_count) + '</td>' +
+        '<td style="padding:2px 4px;text-align:right">' + zs.mean_cpi.toFixed(3) + '</td>' +
+        '<td style="padding:2px 4px;text-align:right">±' + se.toFixed(3) + '</td>' +
+        '<td style="padding:2px 4px;text-align:right">[' + ci95lo + ', ' + ci95hi + ']</td>' +
+        '<td style="padding:2px 4px;text-align:right">' + (zs.zone === 1 ? 'ref' : dStr_(d)) + '</td>' +
+        '<td style="padding:2px 4px;text-align:right">' + (zs.zone === 1 ? 'ref' : pStr_(pVal)) + '</td>'
+      tbody.appendChild(tr)
+    })
+  })()
+
   document.getElementById('results').classList.add('show')
+  document.getElementById('results-map-ctrls').style.display = 'flex'
+
+  // Zone map — rendered after 'show' so the container has layout
+  setTimeout(function() { renderResultsMap_(data) }, 50)
 }
+
+// ── Results Map ───────────────────────────────────────────────
+function geomBbox_(geom) {
+  var coords = geom.type === 'MultiPolygon'
+    ? geom.coordinates.reduce(function(a, poly) { return a.concat(poly[0]) }, [])
+    : geom.coordinates[0]
+  return coords.reduce(function(b, c) {
+    return [Math.min(b[0], c[0]), Math.min(b[1], c[1]), Math.max(b[2], c[0]), Math.max(b[3], c[1])]
+  }, [Infinity, Infinity, -Infinity, -Infinity])
+}
+
+function hexToRgb_(hex) {
+  var r = parseInt(hex.slice(1, 3), 16)
+  var g = parseInt(hex.slice(3, 5), 16)
+  var b = parseInt(hex.slice(5, 7), 16)
+  return [r, g, b]
+}
+
+// Inverse-distance weighted colour from zone SHPI centroids
+function idwColor_(px, py, centroids) {
+  var eps = 1e-10
+  var wSum = 0, rW = 0, gW = 0, bW = 0
+  for (var k = 0; k < centroids.length; k++) {
+    var dx = px - centroids[k].x, dy = py - centroids[k].y
+    var d2 = dx * dx + dy * dy
+    var w = 1 / (d2 + eps)
+    wSum += w
+    rW += w * centroids[k].r
+    gW += w * centroids[k].g
+    bW += w * centroids[k].b
+  }
+  return [Math.round(rW / wSum), Math.round(gW / wSum), Math.round(bW / wSum)]
+}
+
+// Convert a single outer ring (array of [lng,lat]) to canvas pixel coords
+function ringToPixels_(ring, minLng, minLat, lngScale, latScale, W, H) {
+  return ring.map(function(c) {
+    return [(c[0] - minLng) * lngScale, H - (c[1] - minLat) * latScale]
+  })
+}
+
+// ── Render results map: real Process API raster or IDW fallback ───────────────
+function renderResultsMap_(data) {
+  if (!roi) return
+  var zoneStat   = data.zone_stats
+  var rasterB64  = data.raster_png_b64 || null
+  var container  = document.getElementById('results-map')
+
+  if (!resultsMap) {
+    resultsMap = L.map(container, { zoomControl: true, attributionControl: false })
+    var mainBaseLayers0 = [esriSatellite, esriTopo, esriStreet, osmStandard]
+    var activeBase0 = mainBaseLayers0.find(function(l) { return map.hasLayer(l) }) || esriSatellite
+    L.tileLayer(activeBase0._url, Object.assign({}, activeBase0.options)).addTo(resultsMap)
+    if (monthlyLayer && map.hasLayer(monthlyLayer)) {
+      L.tileLayer(monthlyLayer._url, Object.assign({}, monthlyLayer.options)).addTo(resultsMap)
+    }
+  } else {
+    resultsMap.eachLayer(function(lyr) {
+      if (!(lyr instanceof L.TileLayer)) resultsMap.removeLayer(lyr)
+    })
+    resultsRasterLayer = null
+  }
+
+  var bb     = geomBbox_(roi)
+  var minLng = bb[0], minLat = bb[1], maxLng = bb[2], maxLat = bb[3]
+  var bounds = [[minLat, minLng], [maxLat, maxLng]]
+
+  if (rasterB64) {
+    // Real zone-coloured raster from the Sentinel Hub Process API
+    var opacity = (document.getElementById('rasterOpacity').value || 80) / 100
+    resultsRasterLayer = L.imageOverlay(
+      'data:image/png;base64,' + rasterB64,
+      bounds,
+      { opacity: opacity }
+    ).addTo(resultsMap)
+  } else {
+    // Fallback: IDW canvas heatmap (geometric approximation)
+    renderIdwHeatmap_(resultsMap, zoneStat, minLng, minLat, maxLng, maxLat)
+  }
+
+  // ROI polygon outline on top
+  L.geoJSON(roi, {
+    style: { color: '#F5A623', weight: 2, fillOpacity: 0, dashArray: '4 3' }
+  }).addTo(resultsMap)
+
+  resultsMap.fitBounds(bounds, { padding: [6, 6] })
+}
+
+// ── IDW canvas heatmap (fallback when Process API raster is unavailable) ──────
+function renderIdwHeatmap_(mapInst, zoneStat, minLng, minLat, maxLng, maxLat) {
+  var W = 200, H = Math.max(1, Math.round(200 * (maxLat - minLat) / (maxLng - minLng)))
+  var lngScale = W / (maxLng - minLng)
+  var latScale = H / (maxLat - minLat)
+
+  var latStep = (maxLat - minLat) / zoneStat.length
+  var centroids = zoneStat.map(function(zs, i) {
+    var rgb = hexToRgb_(ZONE_COLORS[i])
+    return { x: W / 2, y: H - (i + 0.5) * latStep * latScale, r: rgb[0], g: rgb[1], b: rgb[2] }
+  })
+
+  var rings = roi.type === 'MultiPolygon'
+    ? roi.coordinates.map(function(p) { return p[0] })
+    : [roi.coordinates[0]]
+
+  var canvas = document.createElement('canvas')
+  canvas.width = W; canvas.height = H
+  var ctx = canvas.getContext('2d')
+
+  var offscreen = document.createElement('canvas')
+  offscreen.width = W; offscreen.height = H
+  var octx = offscreen.getContext('2d')
+  var imgData = octx.createImageData(W, H)
+  var d = imgData.data
+  for (var py = 0; py < H; py++) {
+    for (var px = 0; px < W; px++) {
+      var rgb = idwColor_(px, py, centroids)
+      var idx = (py * W + px) * 4
+      d[idx] = rgb[0]; d[idx+1] = rgb[1]; d[idx+2] = rgb[2]; d[idx+3] = Math.round(0.65*255)
+    }
+  }
+  octx.putImageData(imgData, 0, 0)
+
+  ctx.save()
+  rings.forEach(function(ring) {
+    var pts = ringToPixels_(ring, minLng, minLat, lngScale, latScale, W, H)
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1])
+    for (var j = 1; j < pts.length; j++) ctx.lineTo(pts[j][0], pts[j][1])
+    ctx.closePath()
+  })
+  ctx.clip(); ctx.drawImage(offscreen, 0, 0); ctx.restore()
+
+  L.imageOverlay(canvas.toDataURL(), [[minLat, minLng], [maxLat, maxLng]]).addTo(mapInst)
+}
+
+// ── Update raster layer opacity ───────────────────────────────
+function updateRasterOpacity_(val, labelId, isFullscreen) {
+  document.getElementById(labelId).textContent = val + '%'
+  var opacity = val / 100
+  if (!isFullscreen && resultsRasterLayer)   resultsRasterLayer.setOpacity(opacity)
+  if (isFullscreen  && resultsRasterLayerFs) resultsRasterLayerFs.setOpacity(opacity)
+}
+
+// ── Fullscreen results map toggle ──────────────────────────────────────────────
+function toggleResultsFullscreen_() {
+  var fsContainer = document.getElementById('results-fs-container')
+  var isOpen = fsContainer.style.display !== 'none'
+
+  if (isOpen) {
+    fsContainer.style.display = 'none'
+    if (resultsMapFs) { resultsMapFs.remove(); resultsMapFs = null; resultsRasterLayerFs = null }
+    return
+  }
+
+  // Reset radio to Zones when opening
+  currentFsLayer = 'zones'
+  document.querySelectorAll('input[name=fsLayer]').forEach(function(r) { r.checked = r.value === 'zones' })
+
+  // Open fullscreen
+  fsContainer.style.display = 'block'
+  var fsMapEl = document.getElementById('results-fs-map')
+  if (resultsMapFs) { resultsMapFs.remove(); resultsMapFs = null; resultsRasterLayerFs = null }
+  resultsMapFs = L.map(fsMapEl, { zoomControl: true, attributionControl: false })
+  // Mirror the main map's active base layer (whichever tile layer is currently on the map)
+  var mainBaseLayers = [esriSatellite, esriTopo, esriStreet, osmStandard]
+  var activeBase = mainBaseLayers.find(function(l) { return map.hasLayer(l) }) || esriSatellite
+  L.tileLayer(activeBase._url, Object.assign({}, activeBase.options)).addTo(resultsMapFs)
+  // Also mirror the monthly imagery overlay if one is active on the main map
+  if (monthlyLayer && map.hasLayer(monthlyLayer)) {
+    L.tileLayer(monthlyLayer._url, Object.assign({}, monthlyLayer.options)).addTo(resultsMapFs)
+  }
+
+  if (lastResult && roi) {
+    var data   = lastResult
+    var bb     = geomBbox_(roi)
+    var minLng = bb[0], minLat = bb[1], maxLng = bb[2], maxLat = bb[3]
+    var bounds = [[minLat, minLng], [maxLat, maxLng]]
+
+    // Disable unavailable radio options
+    document.querySelector('input[name=fsLayer][value=shpi]').disabled = !data.shpi_png_b64
+    document.querySelector('input[name=fsLayer][value=cpi]').disabled  = !data.cpi_png_b64
+
+    if (data.raster_png_b64) {
+      var opacityFs = (document.getElementById('rasterOpacityFs').value || 80) / 100
+      resultsRasterLayerFs = L.imageOverlay(
+        'data:image/png;base64,' + data.raster_png_b64,
+        bounds,
+        { opacity: opacityFs }
+      ).addTo(resultsMapFs)
+    } else {
+      renderIdwHeatmap_(resultsMapFs, data.zone_stats, minLng, minLat, maxLng, maxLat)
+    }
+
+    L.geoJSON(roi, {
+      style: { color: '#F5A623', weight: 2, fillOpacity: 0, dashArray: '4 3' }
+    }).addTo(resultsMapFs)
+
+    resultsMapFs.fitBounds(bounds, { padding: [20, 20] })
+
+    // Build zone area table
+    buildFsZoneAreaTable_(data.zone_stats)
+  }
+  // Initialise the swipe/curtain handle
+  initSwipeHandle_()
+}
+
+// ── Swipe curtain for fullscreen zone map ─────────────────────
+function initSwipeHandle_() {
+  var container = document.getElementById('results-fs-container')
+  var mapEl     = document.getElementById('results-fs-map')
+  var handle    = document.getElementById('fs-swipe-handle')
+  if (!handle) return
+  if (!resultsRasterLayerFs) { handle.style.display = 'none'; return }
+
+  // Position handle at 50% width initially
+  var w = mapEl.offsetWidth || window.innerWidth
+  handle.style.left = (w / 2) + 'px'
+  handle.style.display = 'block'
+  updateSwipeClip_(w / 2)
+
+  // Remove any previous listeners by replacing the handle with a clone
+  var newHandle = handle.cloneNode(true)
+  handle.parentNode.replaceChild(newHandle, handle)
+  handle = newHandle
+
+  var dragging = false
+  function onDragStart(e) { dragging = true; e.preventDefault(); e.stopPropagation() }
+  function onDragMove(e) {
+    if (!dragging) return
+    var rect = mapEl.getBoundingClientRect()
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX
+    var x = Math.max(0, Math.min(clientX - rect.left, rect.width))
+    handle.style.left = x + 'px'
+    updateSwipeClip_(x)
+    if (e.touches) e.preventDefault()
+  }
+  function onDragEnd() { dragging = false }
+
+  handle.addEventListener('mousedown', onDragStart)
+  container.addEventListener('mousemove', onDragMove)
+  container.addEventListener('mouseup', onDragEnd)
+  container.addEventListener('mouseleave', onDragEnd)
+  handle.addEventListener('touchstart', onDragStart, { passive: false })
+  container.addEventListener('touchmove', onDragMove, { passive: false })
+  container.addEventListener('touchend', onDragEnd)
+}
+
+function updateSwipeClip_(xPos) {
+  if (!resultsRasterLayerFs) return
+  var img = resultsRasterLayerFs._image
+  if (!img) return
+  var mapEl = document.getElementById('results-fs-map')
+  var w = mapEl ? mapEl.offsetWidth || window.innerWidth : window.innerWidth
+  // Clip right-side percentage = (map width - handle x) / map width
+  // so the raster is fully visible left of the handle and hidden right of it
+  var pct = ((w - xPos) / w * 100).toFixed(2)
+  img.style.clipPath = 'inset(0 ' + pct + '% 0 0)'
+}
+
+// ── Switch the fullscreen map overlay between Zones / SHPI / CPI ──────────────
+function switchFsLayer_(layerName) {
+  if (!resultsMapFs || !lastResult || !roi) return
+  currentFsLayer = layerName
+
+  var data   = lastResult
+  var bb     = geomBbox_(roi)
+  var bounds = [[bb[1], bb[0]], [bb[3], bb[2]]]
+
+  // Pick the correct base64 PNG
+  var b64
+  if      (layerName === 'shpi') b64 = data.shpi_png_b64
+  else if (layerName === 'cpi')  b64 = data.cpi_png_b64
+  else                           b64 = data.raster_png_b64
+
+  // Remove old overlay
+  if (resultsRasterLayerFs) {
+    resultsMapFs.removeLayer(resultsRasterLayerFs)
+    resultsRasterLayerFs = null
+  }
+
+  if (b64) {
+    var opacityFs = (document.getElementById('rasterOpacityFs').value || 80) / 100
+    resultsRasterLayerFs = L.imageOverlay(
+      'data:image/png;base64,' + b64,
+      bounds,
+      { opacity: opacityFs }
+    ).addTo(resultsMapFs)
+  }
+
+  // Toggle panel sections
+  document.getElementById('fs-panel-zones').style.display = layerName === 'zones' ? '' : 'none'
+  document.getElementById('fs-panel-shpi').style.display  = layerName === 'shpi'  ? '' : 'none'
+  document.getElementById('fs-panel-cpi').style.display   = layerName === 'cpi'   ? '' : 'none'
+
+  // Re-initialise swipe handle for the new layer
+  initSwipeHandle_()
+}
+
+function buildFsZoneAreaTable_(zoneStat) {
+  var tbl        = document.getElementById('results-fs-table')
+  var totalHa    = roi ? computeAreaHa_(roi) : 0
+  var totalPx    = zoneStat.reduce(function(s, z) { return s + (z.pixel_count || 0) }, 0)
+  // Fewer than this many bare-soil pixels makes area estimation unreliable; use equal 20% split instead
+  var MIN_PX_FOR_AREA = 5
+  var useEqual   = totalPx < MIN_PX_FOR_AREA
+
+  var html = '<tr><th style="padding:4px 6px">Zone</th>' +
+             '<th style="padding:4px 6px;text-align:right">Area (ha)</th>' +
+             '<th style="padding:4px 6px;text-align:right">% of ROI</th></tr>'
+
+  zoneStat.forEach(function(z, i) {
+    var pct = useEqual ? 20 : (totalPx > 0 ? z.pixel_count / totalPx * 100 : 20)
+    var ha  = totalHa * pct / 100
+    html += '<tr>' +
+      '<td style="padding:4px 6px">' +
+        '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + ZONE_COLORS[i] + ';margin-right:5px;vertical-align:middle"></span>' +
+        z.label + '</td>' +
+      '<td style="padding:4px 6px;text-align:right;color:#F5A623">' + Math.round(ha) + '</td>' +
+      '<td style="padding:4px 6px;text-align:right;color:#9FE1CB">' + pct.toFixed(1) + '%</td>' +
+      '</tr>'
+  })
+
+  tbl.innerHTML = html
+}
+
+// ── Shapefile download + area display controls ────────────────
+// Custom download button with context menu (topleft, below draw toolbar)
+var ShpDownloadCtrl = L.Control.extend({
+  options: { position: 'topleft' },
+  onAdd: function () {
+    var div = L.DomUtil.create('div', 'leaflet-bar leaflet-control')
+    div.style.position = 'relative'
+    var a = L.DomUtil.create('a', '', div)
+    a.href = '#'
+    a.title = 'Download ROI'
+    a.innerHTML = '⬇'
+    a.style.cssText = 'display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;font-weight:700;cursor:pointer'
+    var menu = L.DomUtil.create('div', 'ctx-menu', div)
+    menu.id = 'dlMenu'
+    menu.style.left = '34px'
+    menu.style.top = '0'
+    var item1 = L.DomUtil.create('div', 'ctx-menu-item', menu)
+    item1.innerHTML = '🗺 Shapefile (.zip)'
+    var item2 = L.DomUtil.create('div', 'ctx-menu-item', menu)
+    item2.innerHTML = '📄 GeoJSON (.geojson)'
+    L.DomEvent.on(a, 'click', L.DomEvent.stop)
+    L.DomEvent.on(a, 'click', function () { toggleMenu_('dlMenu') })
+    L.DomEvent.on(item1, 'click', L.DomEvent.stop)
+    L.DomEvent.on(item1, 'click', function () { closeMenus_(); downloadShapefile_() })
+    L.DomEvent.on(item2, 'click', L.DomEvent.stop)
+    L.DomEvent.on(item2, 'click', function () { closeMenus_(); downloadGeoJSON_() })
+    return div
+  }
+})
+new ShpDownloadCtrl().addTo(map)
+
+// Area display control (topright, below layer control)
+var AreaDisplayCtrl = L.Control.extend({
+  options: { position: 'topright' },
+  onAdd: function () {
+    this._div = L.DomUtil.create('div', '')
+    this._div.style.cssText = 'background:#13241e;border:1px solid #1e3d30;border-radius:6px;padding:5px 10px;font-size:11px;color:#9FE1CB;display:none;margin-top:4px'
+    return this._div
+  },
+  update: function (ha) {
+    if (ha === null || ha === undefined) { this._div.style.display = 'none'; return }
+    // < 10 000 ha → show in ha; ≥ 10 000 ha (100 km²) → show in km²
+    var label = ha >= 10000 ? (ha / 10000).toFixed(2) + ' km²' : Math.round(ha) + ' ha'
+    this._div.innerHTML = '📐 ' + label
+    this._div.style.display = 'block'
+  }
+})
+var areaDisplayCtrl = new AreaDisplayCtrl().addTo(map)
+
+// Compute geodesic area in hectares from a GeoJSON geometry
+function computeAreaHa_(geom) {
+  var R = 6371000  // Earth's mean radius in metres
+  var rings = geom.type === 'MultiPolygon'
+    ? geom.coordinates.map(function (p) { return p[0] })
+    : [geom.coordinates[0]]
+  var total = 0
+  rings.forEach(function (ring) {
+    var a = 0
+    for (var i = 0; i < ring.length - 1; i++) {
+      var p1 = ring[i], p2 = ring[i + 1]
+      a += (p2[0] - p1[0]) * Math.PI / 180 *
+           (2 + Math.sin(p1[1] * Math.PI / 180) + Math.sin(p2[1] * Math.PI / 180))
+    }
+    total += Math.abs(a) * R * R / 2
+  })
+  return total / 10000  // m² → ha
+}
+
+function updateAreaDisplay_() {
+  if (!roi) { areaDisplayCtrl.update(null); return }
+  areaDisplayCtrl.update(computeAreaHa_(roi))
+}
+
+// Write a minimal Shapefile ZIP (.shp + .shx + .dbf + .prj) and trigger download
+function downloadShapefile_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+
+  var rings = roi.type === 'MultiPolygon'
+    ? roi.coordinates.map(function (p) { return p[0] })
+    : [roi.coordinates[0]]
+
+  var bb = geomBbox_(roi)
+  var minX = bb[0], minY = bb[1], maxX = bb[2], maxY = bb[3]
+
+  var numParts  = rings.length
+  var numPoints = rings.reduce(function (s, r) { return s + r.length }, 0)
+
+  // SHP record content size (bytes)
+  var contentBytes = 4 + 32 + 4 + 4 + numParts * 4 + numPoints * 16
+  var contentWords = contentBytes / 2
+  var fileLenWords = (100 + 8 + contentBytes) / 2
+
+  // ── SHP ──────────────────────────────────────────────────────
+  var shpBuf = new ArrayBuffer(100 + 8 + contentBytes)
+  var s = new DataView(shpBuf)
+  s.setInt32(0, 9994, false)                       // file code
+  s.setInt32(24, fileLenWords, false)              // file length (16-bit words, big-endian)
+  s.setInt32(28, 1000, true)                       // version
+  s.setInt32(32, 5, true)                          // shape type: Polygon
+  s.setFloat64(36, minX, true); s.setFloat64(44, minY, true)
+  s.setFloat64(52, maxX, true); s.setFloat64(60, maxY, true)
+  s.setInt32(100, 1, false)                        // record number
+  s.setInt32(104, contentWords, false)             // content length
+  var o = 108
+  s.setInt32(o, 5, true); o += 4                   // shape type
+  s.setFloat64(o, minX, true); o += 8; s.setFloat64(o, minY, true); o += 8
+  s.setFloat64(o, maxX, true); o += 8; s.setFloat64(o, maxY, true); o += 8
+  s.setInt32(o, numParts, true);  o += 4
+  s.setInt32(o, numPoints, true); o += 4
+  var ptOff = 0
+  rings.forEach(function (r) { s.setInt32(o, ptOff, true); o += 4; ptOff += r.length })
+  rings.forEach(function (r) { r.forEach(function (pt) {
+    s.setFloat64(o, pt[0], true); o += 8
+    s.setFloat64(o, pt[1], true); o += 8
+  }) })
+
+  // ── SHX ──────────────────────────────────────────────────────
+  var shxBuf = new ArrayBuffer(108)
+  var x = new DataView(shxBuf)
+  x.setInt32(0, 9994, false); x.setInt32(24, 54, false)
+  x.setInt32(28, 1000, true); x.setInt32(32, 5, true)
+  x.setFloat64(36, minX, true); x.setFloat64(44, minY, true)
+  x.setFloat64(52, maxX, true); x.setFloat64(60, maxY, true)
+  x.setInt32(100, 50, false)          // record offset in 16-bit words
+  x.setInt32(104, contentWords, false)
+
+  // ── PRJ (WGS84) ───────────────────────────────────────────────
+  var prj = 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
+
+  // ── DBF (1 record, field "ID"=1) ──────────────────────────────
+  var dbfBuf = new ArrayBuffer(65 + 11)   // header(32) + field(32) + term(1) + record(11)
+  var d = new DataView(dbfBuf)
+  var db = new Uint8Array(dbfBuf)
+  d.setUint8(0, 3)   // dBASE III+ without memo file
+  d.setUint8(1, 26)  // last update year (2026 → 26)
+  d.setUint8(2, 3)   // last update month
+  d.setUint8(3, 28)  // last update day
+  d.setInt32(4, 1, true)    // number of records
+  d.setInt16(8, 65, true)   // header size in bytes (32 + 1×32 + 1 terminator)
+  d.setInt16(10, 11, true)  // record size in bytes (1 deletion flag + 10-char ID)
+  // Field descriptor for field "ID" (numeric, 10 chars wide)
+  db[32] = 73; db[33] = 68  // field name bytes: 'I' = 73, 'D' = 68
+  db[43] = 78               // field type: 'N' = 78 (numeric)
+  db[48] = 10               // field length: 10 characters
+  db[64] = 0x0D             // header terminator (carriage return)
+  db[65] = 0x20             // deletion flag: 0x20 = not deleted
+  db[66] = 49               // ID value: '1' = ASCII 49
+  for (var i = 67; i < 76; i++) db[i] = 32  // right-pad with spaces (ASCII 32)
+
+  // ── ZIP ───────────────────────────────────────────────────────
+  var fn = 'roi_' + new Date().toISOString().slice(0, 10)
+  var zip = new JSZip()
+  zip.file(fn + '.shp', shpBuf)
+  zip.file(fn + '.shx', shxBuf)
+  zip.file(fn + '.dbf', dbfBuf)
+  zip.file(fn + '.prj', prj)
+  zip.generateAsync({ type: 'blob' }).then(function (blob) {
+    var a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = fn + '.zip'
+    a.click()
+  })
+}
+
+// ── Context menu helpers ──────────────────────────────────────
+function toggleMenu_(id) {
+  var m = document.getElementById(id)
+  if (!m) return
+  var open = m.classList.contains('open')
+  closeMenus_()
+  if (!open) m.classList.add('open')
+}
+// Build upload menu at body level (avoids sidebar overflow-y clip)
+;(function () {
+  var menu = document.createElement('div')
+  menu.id = 'uploadMenu'
+  menu.className = 'ctx-menu'
+  menu.style.position = 'fixed'
+  menu.style.zIndex = '99999'
+  menu.innerHTML =
+    '<div class="ctx-menu-item" onclick="closeMenus_();document.getElementById(\'gjInput\').click()">📄 Upload GeoJSON (.geojson, .json)</div>' +
+    '<div class="ctx-menu-item" onclick="closeMenus_();document.getElementById(\'shpInput\').click()">🗺 Upload Shapefile (.zip)</div>'
+  document.body.appendChild(menu)
+})()
+function showUploadMenu_(e) {
+  e.stopPropagation()
+  var btn = document.getElementById('uploadBtn')
+  var rect = btn.getBoundingClientRect()
+  var menu = document.getElementById('uploadMenu')
+  menu.style.left = rect.left + 'px'
+  menu.style.top = (rect.bottom + 4) + 'px'
+  toggleMenu_('uploadMenu')
+}
+function closeMenus_() {
+  document.querySelectorAll('.ctx-menu').forEach(function (m) { m.classList.remove('open') })
+}
+document.addEventListener('click', closeMenus_)
+
+// ── GeoJSON download ──────────────────────────────────────────
+function downloadGeoJSON_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+  var fn = 'roi_' + new Date().toISOString().slice(0, 10) + '.geojson'
+  var gj = JSON.stringify({ type: 'Feature', geometry: roi, properties: {} }, null, 2)
+  var blob = new Blob([gj], { type: 'application/geo+json' })
+  var a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = fn
+  a.click()
+}
+
+// ── Shapefile (.zip) upload ───────────────────────────────────
+document.getElementById('shpInput').addEventListener('change', function (e) {
+  var file = e.target.files[0]
+  if (!file) return
+  var reader = new FileReader()
+  reader.onload = function (ev) {
+    JSZip.loadAsync(ev.target.result).then(function (zip) {
+      var shpName = Object.keys(zip.files).find(function (n) { return n.toLowerCase().endsWith('.shp') })
+      if (!shpName) { alert('No .shp file found in the ZIP.'); return }
+      zip.file(shpName).async('arraybuffer').then(function (buf) {
+        var gj = shpToGeoJSON_(buf)
+        if (!gj) { alert('Could not parse shapefile — only Polygon shapes are supported.'); return }
+        drawn.clearLayers()
+        var layer = L.geoJSON(gj, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } }).addTo(drawn)
+        map.fitBounds(layer.getBounds())
+        var feat = gj.features[0]
+        roi = feat ? feat.geometry : gj
+        var extraMsg = gj.features.length > 1 ? ' (first of ' + gj.features.length + ' features used)' : ''
+        setROIStatus('✓ Shapefile loaded: ' + file.name + extraMsg)
+        currentRoiId = null
+        document.getElementById('runBtn').disabled = false
+        updateAreaDisplay_()
+      })
+    }).catch(function (err) { alert('Could not read ZIP: ' + err.message) })
+  }
+  reader.readAsArrayBuffer(file)
+  e.target.value = ''
+})
+
+// Parse a minimal Shapefile (.shp) ArrayBuffer → GeoJSON FeatureCollection
+// Supports shape type 5 (Polygon) only.
+function shpToGeoJSON_(buf) {
+  var v = new DataView(buf)
+  if (v.getInt32(0, false) !== 9994) return null        // not a shapefile
+  var shapeType = v.getInt32(32, true)
+  if (shapeType !== 5) return null                      // only Polygon supported
+  var features = []
+  var offset = 100
+  while (offset + 8 <= buf.byteLength) {
+    var contentLen = v.getInt32(offset + 4, false) * 2  // 16-bit words → bytes
+    offset += 8
+    if (offset + contentLen > buf.byteLength) break
+    var recType = v.getInt32(offset, true)
+    if (recType === 5) {
+      var numParts  = v.getInt32(offset + 36, true)
+      var numPoints = v.getInt32(offset + 40, true)
+      var partsStart  = offset + 44
+      var pointsStart = partsStart + numParts * 4
+      var parts = []
+      for (var i = 0; i < numParts; i++) parts.push(v.getInt32(partsStart + i * 4, true))
+      parts.push(numPoints)
+      var rings = []
+      for (var i = 0; i < numParts; i++) {
+        var ring = []
+        for (var j = parts[i]; j < parts[i + 1]; j++) {
+          ring.push([v.getFloat64(pointsStart + j * 16, true), v.getFloat64(pointsStart + j * 16 + 8, true)])
+        }
+        rings.push(ring)
+      }
+      features.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: rings }, properties: {} })
+    }
+    offset += contentLen
+  }
+  return features.length ? { type: 'FeatureCollection', features: features } : null
+}
+
+// ── ROI Library (Phase A+B) ───────────────────────────────────
+function uuid4_() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
+}
+
+function escHtml_(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+}
+
+function loadLibrary_() {
+  try { return JSON.parse(localStorage.getItem('shpRoiLibrary') || '[]') } catch(e) { return [] }
+}
+
+function saveLibrary_(lib) {
+  localStorage.setItem('shpRoiLibrary', JSON.stringify(lib))
+}
+
+function loadResultsCache_() {
+  try { return JSON.parse(localStorage.getItem('shpResultsCache') || '{}') } catch(e) { return {} }
+}
+
+function saveResultsCache_(cache) {
+  localStorage.setItem('shpResultsCache', JSON.stringify(cache))
+}
+
+function saveCurrentROI_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+  var name = prompt('Enter a name for this ROI:', 'ROI ' + new Date().toLocaleDateString())
+  if (!name) return
+  var lib = loadLibrary_()
+  var id  = uuid4_()
+  lib.push({ id: id, name: name, geojson: roi, savedAt: Date.now(), areaHa: Math.round(computeAreaHa_(roi)) })
+  saveLibrary_(lib)
+  currentRoiId = id
+  renderLibraryPanel_()
+  maybeShowCompareSection_()
+  setROIStatus('✓ Saved to library: ' + name)
+}
+
+function renderLibraryPanel_() {
+  var lib   = loadLibrary_()
+  var cache = loadResultsCache_()
+  var el    = document.getElementById('libList')
+  var cnt   = document.getElementById('libCount')
+  if (cnt) cnt.textContent = lib.length > 0 ? '(' + lib.length + ')' : ''
+  if (lib.length === 0) {
+    el.innerHTML = '<div class="lib-empty">No saved ROIs yet</div>'
+    return
+  }
+  el.innerHTML = lib.map(function(item) {
+    var hasResult = !!cache[item.id]
+    var date      = new Date(item.savedAt).toLocaleDateString()
+    var active    = currentRoiId === item.id ? ' style="border-color:#F5A623"' : ''
+    return '<div class="lib-item"' + active + '>' +
+      '<div class="lib-item-name">' + escHtml_(item.name) +
+        (hasResult ? '<span style="font-size:9px;color:#7FE07F;margin-left:5px">📊</span>' : '') +
+      '</div>' +
+      '<div class="lib-item-meta"><span>📐 ' + item.areaHa + ' ha</span><span>📅 ' + date + '</span></div>' +
+      '<div class="lib-item-actions">' +
+        '<button class="lib-btn lib-btn-load" onclick="loadROIFromLibrary_(\'' + item.id + '\')">🗺 Load</button>' +
+        (hasResult ? '<button class="lib-btn lib-btn-cached" onclick="viewCachedResult_(\'' + item.id + '\')">📊 Results</button>' : '') +
+        '<button class="lib-btn lib-btn-del" onclick="deleteROIFromLibrary_(\'' + item.id + '\')">🗑</button>' +
+      '</div>' +
+    '</div>'
+  }).join('')
+}
+
+function toggleLibrary_() {
+  var el   = document.getElementById('libList')
+  var icon = document.getElementById('libToggleIcon')
+  var vis  = el.style.display !== 'none'
+  el.style.display  = vis ? 'none' : 'block'
+  icon.textContent  = vis ? '▶' : '▼'
+}
+
+function loadROIFromLibrary_(id) {
+  var lib  = loadLibrary_()
+  var item = lib.find(function(r) { return r.id === id })
+  if (!item) return
+  drawn.clearLayers()
+  var layer = L.geoJSON(item.geojson, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } }).addTo(drawn)
+  map.fitBounds(layer.getBounds())
+  roi          = item.geojson
+  currentRoiId = id
+  setROIStatus('✓ Loaded: ' + item.name)
+  document.getElementById('runBtn').disabled = false
+  updateAreaDisplay_()
+  renderLibraryPanel_()
+  var cache = loadResultsCache_()
+  if (cache[id]) {
+    if (confirm('Cached results available for "' + item.name + '". View them now?')) {
+      viewCachedResult_(id)
+    }
+  }
+}
+
+function viewCachedResult_(id) {
+  var cache = loadResultsCache_()
+  if (!cache[id]) return
+  var lib  = loadLibrary_()
+  var item = lib.find(function(r) { return r.id === id })
+  if (item) {
+    roi          = item.geojson
+    currentRoiId = id
+    drawn.clearLayers()
+    var layer = L.geoJSON(item.geojson, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } }).addTo(drawn)
+    map.fitBounds(layer.getBounds())
+    updateAreaDisplay_()
+    renderLibraryPanel_()
+  }
+  lastResult = cache[id]
+  renderResults(cache[id])
+}
+
+function deleteROIFromLibrary_(id) {
+  if (!confirm('Delete this ROI from the library? Cached results will also be removed.')) return
+  var lib = loadLibrary_().filter(function(r) { return r.id !== id })
+  saveLibrary_(lib)
+  var cache = loadResultsCache_()
+  delete cache[id]
+  saveResultsCache_(cache)
+  if (currentRoiId === id) currentRoiId = null
+  renderLibraryPanel_()
+  maybeShowCompareSection_()
+}
+
+// ── Batch run (Phase C) ───────────────────────────────────────
+function runAllROIs_() {
+  var lib = loadLibrary_()
+  if (lib.length === 0) { alert('No saved ROIs in the library. Save at least one ROI first.'); return }
+
+  var yearStart    = parseInt(document.getElementById('yearStart').value, 10)
+  var yearEnd      = parseInt(document.getElementById('yearEnd').value, 10)
+  var resolution   = parseInt(document.getElementById('resolution').value, 10)
+
+  var batchDiv = document.getElementById('batchProgress')
+  batchDiv.classList.add('show')
+  var batchItems = document.getElementById('batchItems')
+  batchItems.innerHTML = lib.map(function(item) {
+    return '<div class="batch-prog-item" id="bpItem_' + item.id + '">' +
+      '<span class="batch-prog-dot" id="bpDot_' + item.id + '"></span>' +
+      '<span style="flex:1">' + escHtml_(item.name) + '</span>' +
+      '<span id="bpStat_' + item.id + '" style="font-size:10px;color:#5a8a6a">Queued</span>' +
+    '</div>'
+  }).join('')
+
+  document.getElementById('runAllBtn').disabled = true
+  document.getElementById('runBtn').disabled    = true
+
+  var i = 0
+  function runNext() {
+    if (i >= lib.length) {
+      document.getElementById('runAllBtn').disabled = false
+      document.getElementById('runBtn').disabled    = (roi === null)
+      renderLibraryPanel_()
+      maybeShowCompareSection_()
+      return
+    }
+    var item = lib[i]
+    var dot  = document.getElementById('bpDot_' + item.id)
+    var stat = document.getElementById('bpStat_' + item.id)
+    if (dot)  dot.className = 'batch-prog-dot running'
+    if (stat) { stat.textContent = 'Running…'; stat.style.color = '#F5A623' }
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (data.success) {
+          // Decode the raw PNG into zone_stats/validation before caching
+          decodeRasterToResult_(data, function(result) {
+            if (result) {
+              var cache = loadResultsCache_()
+              cache[item.id] = result
+              saveResultsCache_(cache)
+              if (dot)  dot.className = 'batch-prog-dot done'
+              if (stat) { stat.textContent = '✓ Done'; stat.style.color = '#7FE07F' }
+            } else {
+              if (dot)  dot.className = 'batch-prog-dot failed'
+              if (stat) { stat.textContent = '✗ Decode error'; stat.style.color = '#f07070' }
+            }
+            i++
+            setTimeout(runNext, BATCH_DELAY_MS)
+          })
+        } else {
+          if (dot)  dot.className = 'batch-prog-dot failed'
+          if (stat) { stat.textContent = '✗ Failed'; stat.style.color = '#f07070' }
+          i++
+          setTimeout(runNext, BATCH_DELAY_MS)
+        }
+      })
+      .withFailureHandler(function() {
+        if (dot)  dot.className = 'batch-prog-dot failed'
+        if (stat) { stat.textContent = '✗ Error'; stat.style.color = '#f07070' }
+        i++
+        setTimeout(runNext, BATCH_DELAY_MS)
+      })
+      .runAnalysis({ geojson: item.geojson, yearStart: yearStart, yearEnd: yearEnd,
+                     resolution: resolution })
+  }
+  runNext()
+}
+
+// ── Compare view (Phase D+E) ──────────────────────────────────
+function loadROIsWithResults_() {
+  var lib   = loadLibrary_()
+  var cache = loadResultsCache_()
+  return lib.filter(function(item) {
+    var entry = cache[item.id]
+    return !!entry && Array.isArray(entry.zone_stats) && entry.zone_stats.length > 0
+  })
+}
+
+function maybeShowCompareSection_() {
+  var rois    = loadROIsWithResults_()
+  var section = document.getElementById('compareSection')
+  if (rois.length >= 2) {
+    section.classList.add('show')
+    renderCompareView_()
+  } else {
+    section.classList.remove('show')
+  }
+}
+
+function renderCompareView_() {
+  var rois  = loadROIsWithResults_()
+  if (rois.length < 2) return
+  var cache = loadResultsCache_()
+
+  // Summary table
+  var html = '<tr><th>ROI</th><th>SHPI range</th><th>r</th><th>R²</th><th>CPI Z10/Z1</th></tr>'
+  rois.forEach(function(item, idx) {
+    var d      = cache[item.id]
+    if (!d || !Array.isArray(d.zone_stats) || !d.validation) return
+    var v      = d.validation
+    var z      = d.zone_stats
+    var sMin   = Math.min.apply(null, z.map(function(zs) { return zs.mean_shpi }))
+    var sMax   = Math.max.apply(null, z.map(function(zs) { return zs.mean_shpi }))
+    var color  = ROI_COLORS[idx % ROI_COLORS.length]
+    html += '<tr>' +
+      '<td><span class="roi-color-dot" style="background:' + color + '"></span>' + escHtml_(item.name) + '</td>' +
+      '<td>' + sMin.toFixed(2) + '–' + sMax.toFixed(2) + '</td>' +
+      '<td>' + (v.pearson_r !== undefined ? v.pearson_r : '—') + '</td>' +
+      '<td>' + (v.r_squared !== undefined ? v.r_squared : '—') + '</td>' +
+      '<td>' + (v.cpi_ratio !== undefined ? v.cpi_ratio + '×' : '—') + '</td>' +
+    '</tr>'
+  })
+  document.getElementById('cmpTable').innerHTML = html
+
+  // Grouped CPI bar chart
+  if (cmpBarChart) { cmpBarChart.destroy(); cmpBarChart = null }
+  var bctx = document.getElementById('cmpBarChart').getContext('2d')
+  cmpBarChart = new Chart(bctx, {
+    type: 'bar',
+    data: {
+      labels: ['Z1','Z2','Z3','Z4','Z5','Z6','Z7','Z8','Z9','Z10'],
+      datasets: rois.map(function(item, idx) {
+        var z = cache[item.id] && cache[item.id].zone_stats
+        if (!z) return null
+        return {
+          label: item.name,
+          data: z.map(function(zs) { return zs.mean_cpi }),
+          backgroundColor: ROI_COLORS[idx % ROI_COLORS.length] + 'cc',
+          borderColor:     ROI_COLORS[idx % ROI_COLORS.length],
+          borderWidth: 1, borderRadius: 3
+        }
+      }).filter(Boolean)
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: rois.length <= MAX_ROIS_FOR_LEGEND, labels: { color: '#9FE1CB', font: { size: 9 }, boxWidth: 10 } }
+      },
+      scales: {
+        x: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } },
+        y: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' }, max: 1 }
+      }
+    }
+  })
+
+  renderCmpScatterChart_(rois, cache)
+}
+
+function setCmpScatterMode_(mode) {
+  cmpScatterMode = mode
+  document.getElementById('cmpTabZones').classList.toggle('active', mode === 'zones')
+  document.getElementById('cmpTabSummary').classList.toggle('active', mode === 'summary')
+  var rois = loadROIsWithResults_()
+  if (rois.length >= 2) renderCmpScatterChart_(rois, loadResultsCache_())
+}
+
+function renderCmpScatterChart_(rois, cache) {
+  if (cmpScatterMode === 'summary') {
+    renderCmpScatterSummary_(rois, cache)
+  } else {
+    renderCmpScatterZones_(rois, cache)
+  }
+}
+
+function renderCmpScatterZones_(rois, cache) {
+  var datasets = []
+  rois.forEach(function(item, idx) {
+    var z     = cache[item.id] && cache[item.id].zone_stats
+    if (!z) return
+    // Only include zones with actual CPI data — empty zones have mean_shpi/cpi=0
+    var zFiltered = z.filter(function(zs) { return zs.pixel_count > 0 })
+    if (!zFiltered.length) return
+    var roiColor = ROI_COLORS[idx % ROI_COLORS.length]
+    // Colour each zone point by its zone index, use ROI colour as border
+    datasets.push({
+      type: 'scatter', label: item.name,
+      data: zFiltered.map(function(zs) { return { x: zs.mean_shpi, y: zs.mean_cpi } }),
+      backgroundColor: zFiltered.map(function(zs) {
+        var hex = ZONE_COLORS[Math.min(zs.zone - 1, ZONE_COLORS.length - 1)]
+        var c = hexToRgb_(hex)
+        return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.85)'
+      }),
+      borderColor: roiColor,
+      borderWidth: 2,
+      pointRadius: 6, pointHoverRadius: 8
+    })
+    var xs = zFiltered.map(function(zs) { return zs.mean_shpi })
+    var ys = zFiltered.map(function(zs) { return zs.mean_cpi })
+    var n = xs.length, sx = 0, sy = 0, sxy = 0, sxx = 0
+    xs.forEach(function(x,i){ sx+=x; sy+=ys[i]; sxy+=x*ys[i]; sxx+=x*x })
+    var denom = n*sxx-sx*sx
+    var slope = Math.abs(denom)>EPSILON_DENOM ? (n*sxy-sx*sy)/denom : 0
+    var icpt  = (sy-slope*sx)/n
+    var xMin  = Math.min.apply(null,xs), xMax = Math.max.apply(null,xs)
+    datasets.push({
+      type: 'line', label: item.name+' fit',
+      data: [{x:xMin,y:slope*xMin+icpt},{x:xMax,y:slope*xMax+icpt}],
+      borderColor: roiColor, borderWidth: 1, pointRadius: 0, fill: false,
+      tension: 0, borderDash: [3,3]
+    })
+  })
+  _applyCmpScatter(datasets, 'SHPI', 'CPI')
+  document.getElementById('cmpScatterLabel').textContent = ''
+}
+
+function renderCmpScatterSummary_(rois, cache) {
+  var pts = rois.map(function(item,idx) {
+    var z = cache[item.id] && cache[item.id].zone_stats
+    if (!z) return null
+    // Only average zones with actual data to avoid zero-valued empty zones skewing the mean
+    var zf = z.filter(function(zs) { return zs.pixel_count > 0 })
+    if (!zf.length) return null
+    var meanShpi = zf.reduce(function(a,zs){return a+zs.mean_shpi},0)/zf.length
+    var meanCpi  = zf.reduce(function(a,zs){return a+zs.mean_cpi},0)/zf.length
+    return { x: meanShpi, y: meanCpi, label: item.name, color: ROI_COLORS[idx%ROI_COLORS.length] }
+  }).filter(Boolean)
+  if (pts.length < 2) {
+    console.warn('renderCmpScatterSummary_: fewer than 2 valid ROIs with zone_stats — skipping summary scatter')
+    return
+  }
+  var xs = pts.map(function(p){return p.x}), ys = pts.map(function(p){return p.y})
+  var n = xs.length, sx=0,sy=0,sxy=0,sxx=0
+  xs.forEach(function(x,i){sx+=x;sy+=ys[i];sxy+=x*ys[i];sxx+=x*x})
+  var denom = n*sxx-sx*sx
+  var slope = Math.abs(denom)>EPSILON_DENOM?(n*sxy-sx*sy)/denom:0
+  var icpt  = (sy-slope*sx)/n
+  var xMin  = Math.min.apply(null,xs), xMax = Math.max.apply(null,xs)
+  var yMean = sy/n
+  var ssTot = ys.reduce(function(a,y){return a+(y-yMean)*(y-yMean)},0)
+  var ssRes = xs.reduce(function(a,x,i){return a+(ys[i]-(slope*x+icpt))*(ys[i]-(slope*x+icpt))},0)
+  var r2    = ssTot>0?1-ssRes/ssTot:0
+  var datasets = [
+    {
+      type: 'scatter', label: 'ROIs',
+      data: pts.map(function(p){return{x:p.x,y:p.y}}),
+      backgroundColor: pts.map(function(p){return p.color}),
+      pointRadius: 7, pointHoverRadius: 9
+    },
+    {
+      type: 'line', label: 'Global fit',
+      data: [{x:xMin,y:slope*xMin+icpt},{x:xMax,y:slope*xMax+icpt}],
+      borderColor: '#F5A623', borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0
+    }
+  ]
+  _applyCmpScatter(datasets, 'Mean SHPI', 'Mean CPI', pts)
+  var interceptSign = icpt >= 0 ? ' + ' : ' − '
+  document.getElementById('cmpScatterLabel').textContent =
+    'Global: y = ' + slope.toFixed(3) + 'x' + interceptSign + Math.abs(icpt).toFixed(3) + '   R² = ' + r2.toFixed(3)
+}
+
+function _applyCmpScatter(datasets, xLabel, yLabel, tooltipPts) {
+  if (cmpScatterChart) { cmpScatterChart.destroy(); cmpScatterChart = null }
+  var ctx = document.getElementById('cmpScatterChart').getContext('2d')
+  cmpScatterChart = new Chart(ctx, {
+    data: { datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              if (tooltipPts && ctx.datasetIndex === 0) {
+                var p = tooltipPts[ctx.dataIndex]
+                return p ? p.label + ' (' + ctx.raw.x.toFixed(3) + ', ' + ctx.raw.y.toFixed(3) + ')' : ''
+              }
+              // Per-zone mode: show "ROI — Z(n)"
+              if (!tooltipPts && ctx.dataset.type === 'scatter') {
+                return ctx.dataset.label + ' — Z' + (ctx.dataIndex + 1) +
+                  '  (' + ctx.raw.x.toFixed(3) + ', ' + ctx.raw.y.toFixed(3) + ')'
+              }
+              return null
+            }
+          }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: xLabel, color: '#9FE1CB', font: { size: 9 } },
+             ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } },
+        y: { title: { display: true, text: yLabel, color: '#9FE1CB', font: { size: 9 } },
+             ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } }
+      }
+    }
+  })
+}
+
+// ── Compare fullscreen map ───────────────────────────────────
+function openCompareMap_() {
+  var rois  = loadROIsWithResults_()
+  var cache = loadResultsCache_()
+  if (rois.length < 2) { alert('Need at least 2 ROIs with results.'); return }
+
+  var container = document.getElementById('compare-fs-container')
+  container.style.display = 'block'
+
+  var mapEl = document.getElementById('compare-fs-map')
+  if (compareMapFs) { compareMapFs.remove(); compareMapFs = null }
+  compareMapFs = L.map(mapEl, { zoomControl: true, attributionControl: false })
+  var mainBaseLayers2 = [esriSatellite, esriTopo, esriStreet, osmStandard]
+  var activeBase2 = mainBaseLayers2.find(function(l) { return map.hasLayer(l) }) || esriSatellite
+  L.tileLayer(activeBase2._url, Object.assign({}, activeBase2.options)).addTo(compareMapFs)
+  if (monthlyLayer && map.hasLayer(monthlyLayer)) {
+    L.tileLayer(monthlyLayer._url, Object.assign({}, monthlyLayer.options)).addTo(compareMapFs)
+  }
+
+  var allBounds = []
+  rois.forEach(function(item, idx) {
+    var color = ROI_COLORS[idx % ROI_COLORS.length]
+    var lyr   = L.geoJSON(item.geojson, {
+      style: { color: color, weight: 2, fillColor: color, fillOpacity: 0.2 }
+    }).addTo(compareMapFs)
+    allBounds.push(lyr.getBounds())
+
+    var d = cache[item.id]
+    if (d && d.raster_png_b64) {
+      var bb = geomBbox_(item.geojson)
+      L.imageOverlay('data:image/png;base64,' + d.raster_png_b64,
+        [[bb[1],bb[0]],[bb[3],bb[2]]], { opacity: 0.65 }).addTo(compareMapFs)
+    }
+  })
+
+  if (allBounds.length) {
+    var combined = allBounds[0]
+    for (var i = 1; i < allBounds.length; i++) combined.extend(allBounds[i])
+    compareMapFs.fitBounds(combined, { padding: [20, 20] })
+  }
+
+  // Legend
+  var legendEl = document.getElementById('compareMapLegend')
+  legendEl.innerHTML = '<div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">ROI Legend</div>' +
+    rois.map(function(item, idx) {
+      return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">' +
+        '<span style="display:inline-block;width:14px;height:10px;border-radius:2px;background:' + ROI_COLORS[idx%ROI_COLORS.length] + '"></span>' +
+        '<span style="font-size:11px;color:#9FE1CB">' + escHtml_(item.name) + '</span>' +
+      '</div>'
+    }).join('')
+}
+
+function closeCompareMap_() {
+  document.getElementById('compare-fs-container').style.display = 'none'
+  if (compareMapFs) { compareMapFs.remove(); compareMapFs = null }
+}
+
+// ── Chart fullscreen expand / collapse ───────────────────────
+// Map from source chart ID to the corresponding Chart.js instance variable
+function _getChartInstance(id) {
+  if (id === 'cpiChart') return chart
+  if (id === 'shpiCpiScatter') return scatterChart
+  if (id === 'cmpBarChart') return cmpBarChart
+  if (id === 'cmpScatterChart') return cmpScatterChart
+  return null
+}
+
+function openChartFs_(id) {
+  var src = _getChartInstance(id)
+  if (!src) return
+  var overlay = document.getElementById('chartFs-' + id)
+  if (!overlay) return
+  // Sync tab state for cmpScatterChart
+  if (id === 'cmpScatterChart') {
+    var isZones = cmpScatterMode === 'zones'
+    document.getElementById('cmpTabZones-fs').classList.toggle('active', isZones)
+    document.getElementById('cmpTabSummary-fs').classList.toggle('active', !isZones)
+    var lbl = document.getElementById('cmpScatterLabel')
+    var lblFs = document.getElementById('cmpScatterLabel-fs')
+    if (lblFs && lbl) lblFs.textContent = lbl.textContent
+  }
+  if (id === 'shpiCpiScatter') {
+    var eq = document.getElementById('scatterEq')
+    var eqFs = document.getElementById('scatterEq-fs')
+    if (eqFs && eq) eqFs.textContent = eq.textContent
+  }
+  // Destroy previous FS instance for this chart
+  if (chartFsInstances[id]) { chartFsInstances[id].destroy(); chartFsInstances[id] = null }
+  // Show overlay first so the canvas has a valid size when Chart.js measures it
+  overlay.classList.add('open')
+  var canvas = document.getElementById(id + '-fs')
+  if (!canvas) return
+  // Build enlarged scale options (each axis gets its own shallow copy)
+  var srcScales = src.config.options && src.config.options.scales || {}
+  var fsScales = {}
+  Object.keys(srcScales).forEach(function(k) {
+    var ax = srcScales[k]
+    fsScales[k] = Object.assign({}, ax, {
+      ticks: Object.assign({}, ax.ticks, { font: Object.assign({}, (ax.ticks && ax.ticks.font) || {}, { size: 13 }) }),
+      title: ax.title ? Object.assign({}, ax.title, { font: Object.assign({}, (ax.title && ax.title.font) || {}, { size: 13 }) }) : ax.title
+    })
+  })
+  var srcPlugins = (src.config.options && src.config.options.plugins) || {}
+  var fsPlugins = Object.assign({}, srcPlugins)
+  if (fsPlugins.legend) {
+    fsPlugins.legend = Object.assign({}, fsPlugins.legend, {
+      labels: Object.assign({}, fsPlugins.legend.labels, { font: Object.assign({}, (fsPlugins.legend.labels && fsPlugins.legend.labels.font) || {}, { size: 12 }) })
+    })
+  }
+  var fsOptions = Object.assign({}, src.config.options, {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: Object.keys(fsScales).length ? fsScales : srcScales,
+    plugins: fsPlugins
+  })
+  // Use requestAnimationFrame so the overlay is painted and canvas dimensions are set before Chart.js renders
+  requestAnimationFrame(function() {
+    // For the scatter chart, include the errBars plugin so SE bars render in fullscreen too
+    var fsPluginsList = id === 'shpiCpiScatter' ? [scatterErrBarsPlugin_] : []
+    chartFsInstances[id] = new Chart(canvas.getContext('2d'), {
+      type: src.config.type,
+      data: src.config.data,
+      plugins: fsPluginsList,
+      options: fsOptions
+    })
+  })
+}
+
+function closeChartFs_(id) {
+  var overlay = document.getElementById('chartFs-' + id)
+  if (overlay) overlay.classList.remove('open')
+  if (chartFsInstances[id]) { chartFsInstances[id].destroy(); chartFsInstances[id] = null }
+}
+
+// Re-sync fullscreen chart when mode tabs are switched
+function syncChartFs_(id) {
+  var overlay = document.getElementById('chartFs-' + id)
+  if (!overlay || !overlay.classList.contains('open')) return
+  // Sync tab active state
+  if (id === 'cmpScatterChart') {
+    var isZones = cmpScatterMode === 'zones'
+    document.getElementById('cmpTabZones-fs').classList.toggle('active', isZones)
+    document.getElementById('cmpTabSummary-fs').classList.toggle('active', !isZones)
+  }
+  // Small delay so the base chart has time to update after setCmpScatterMode_ runs
+  setTimeout(function() {
+    openChartFs_(id)
+    if (id === 'cmpScatterChart') {
+      var lbl = document.getElementById('cmpScatterLabel')
+      var lblFs = document.getElementById('cmpScatterLabel-fs')
+      if (lblFs && lbl) lblFs.textContent = lbl.textContent
+    }
+  }, 50)
+}
+
+// ── Library init ──────────────────────────────────────────────
+;(function initLibrary_() {
+  renderLibraryPanel_()
+  maybeShowCompareSection_()
+})()
 
 // ── Save to Sheet ─────────────────────────────────────────────
 function saveResult() {
@@ -527,6 +2438,281 @@ function setProgress(show, pct, msg) {
   if (pct !== undefined) document.getElementById('progFill').style.width = pct + '%'
   if (msg)               document.getElementById('progMsg').textContent  = msg
 }
+
+// ── Monthly Imagery (ESRI Wayback + SH WMS) ────────────────────
+var monthlyLayer = null
+var esriWaybackReleases = null  // cached release list
+
+function toggleMonSection_() {
+  var body = document.getElementById('monBody')
+  var icon = document.getElementById('monToggleIcon')
+  var shown = body.style.display !== 'none'
+  body.style.display = shown ? 'none' : 'block'
+  icon.textContent = shown ? '▶' : '▼'
+  if (!shown && !esriWaybackReleases) loadEsriReleases_()
+}
+
+function onMonSourceChange_() {
+  var src = document.getElementById('monSource').value
+  document.getElementById('esriWaybackCtrl').style.display = src === 'esri' ? 'block' : 'none'
+  document.getElementById('shWmsCtrl').style.display       = src === 'sh'   ? 'block' : 'none'
+}
+
+function fmtWaybackDate_(dateStr) {
+  // Parse a YYYY-MM-DD (or ISO datetime) string and return "07 Nov 2023 (Wk 45)"
+  if (!dateStr) return ''
+  // Strip time component if present (e.g. "2024-01-10T21:44:30.000Z" → "2024-01-10")
+  var datePart = dateStr.length > 10 ? dateStr.substring(0, 10) : dateStr
+  var d = new Date(datePart + 'T00:00:00Z') // parse as UTC to avoid timezone shift
+  if (isNaN(d.getTime())) return dateStr
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  var jan1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  var wk = Math.ceil(((d - jan1) / 86400000 + jan1.getUTCDay() + 1) / 7)
+  return d.getUTCDate() + ' ' + months[d.getUTCMonth()] + ' ' + d.getUTCFullYear() +
+         ' (Wk ' + wk + ')'
+}
+
+function esriExtractDate_(entry) {
+  if (!entry) return ''
+  // Handle case where entry is a primitive string (e.g. a GUID — scan for date pattern)
+  if (typeof entry === 'string') {
+    var ms = entry.match(/(\d{4}-\d{2}-\d{2})/)
+    return ms ? ms[1] : ''
+  }
+  if (typeof entry !== 'object') return ''
+  // Check known ESRI Wayback date field names first
+  var raw = entry.releaseDatetime || entry.releaseDate || entry.imageDate || entry.itemDate || ''
+  if (raw) return raw
+  // Scan ALL string-valued fields for a YYYY-MM-DD pattern
+  // (covers itemTitle: "World Imagery (Wayback 2024-01-10T...)", releaseDateLabel, etc.)
+  for (var key in entry) {
+    if (typeof entry[key] === 'string') {
+      var m = entry[key].match(/(\d{4}-\d{2}-\d{2})/)
+      if (m) return m[1]
+    }
+  }
+  return ''
+}
+
+function loadEsriReleases_() {
+  var sel = document.getElementById('esriReleaseSelect')
+  var msg = document.getElementById('monLoading')
+  msg.style.display = 'block'
+  fetch('https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json')
+    .then(function (r) { return r.json() })
+    .then(function (cfg) {
+      esriWaybackReleases = cfg
+      // Log a sample entry so we can inspect the actual field names in the browser console
+      var sampleIds = Object.keys(cfg)
+      if (sampleIds.length) {
+        var sample = cfg[sampleIds[0]]
+        console.log('[Wayback] config sample entry:', sampleIds[0], sample)
+        console.log('[Wayback] sample type:', typeof sample, '| keys:', typeof sample === 'object' ? Object.keys(sample).join(', ') : '(primitive)')
+        console.log('[Wayback] extracted date from sample:', esriExtractDate_(sample))
+      }
+      // sort by release date descending; fall back to numeric id descending when no date
+      var releases = Object.keys(cfg).sort(function (a, b) {
+        var da = esriExtractDate_(cfg[a])
+        var db = esriExtractDate_(cfg[b])
+        if (da && db) return new Date(db) - new Date(da)
+        if (da) return -1
+        if (db) return 1
+        return Number(b) - Number(a)
+      })
+      sel.innerHTML = '<option value="">— choose a release date —</option>'
+      releases.forEach(function (id) {
+        var entry = cfg[id]
+        var rawDate = esriExtractDate_(entry)
+        var datePart = ''
+        if (rawDate) {
+          datePart = fmtWaybackDate_(rawDate)
+        } else if (entry && typeof entry === 'object' && entry.releaseDateLabel) {
+          // releaseDateLabel is already human-readable (e.g. "Jan 10, 2024")
+          datePart = entry.releaseDateLabel
+        }
+        // Always show the date alongside the numeric ID so users can correlate
+        var label = datePart ? (datePart + ' · #' + id) : ('#' + id)
+        var opt = document.createElement('option')
+        opt.value = id
+        opt.textContent = label
+        sel.appendChild(opt)
+      })
+      msg.style.display = 'none'
+      document.getElementById('esriReleaseMsg').textContent = releases.length + ' releases loaded.'
+    })
+    .catch(function (err) {
+      msg.textContent = 'Could not load releases.'
+      console.error('ESRI Wayback config error:', err)
+    })
+}
+
+function loadEsriRelease_() {
+  var releaseId = document.getElementById('esriReleaseSelect').value
+  if (!releaseId) { alert('Please select a date first.'); return }
+  // Build new layer before removing old one to avoid blank-map flash
+  var newLayer = L.tileLayer(
+    'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/' +
+    releaseId + '/{z}/{y}/{x}',
+    { attribution: 'ESRI Wayback', maxZoom: 19, opacity: 0.9, keepBuffer: 0 }
+  )
+  if (monthlyLayer) { map.removeLayer(monthlyLayer) }
+  monthlyLayer = newLayer
+  monthlyLayer.addTo(map)
+  monthlyLayer.redraw()  // force fresh tile requests for the selected release
+  // bring drawn layer & results raster to front
+  drawn.bringToFront()
+  if (resultsRasterLayer) resultsRasterLayer.bringToFront()
+  var selEl = document.getElementById('esriReleaseSelect')
+  document.getElementById('esriReleaseMsg').textContent =
+    selEl.selectedOptions && selEl.selectedOptions.length
+      ? '✓ Showing imagery from: ' + selEl.selectedOptions[0].text
+      : '✓ Layer loaded.'
+}
+
+function applyShWms_() {
+  var instanceId = document.getElementById('shInstanceId').value.trim()
+  if (!instanceId) { alert('Please enter your Sentinel Hub / CDS Instance ID.'); return }
+  var month = document.getElementById('shMonth').value
+  var year  = document.getElementById('shYear').value
+  // date range: first to last day of month
+  var daysInMonth = new Date(year, parseInt(month), 0).getDate()
+  var timeParam = year + '-' + month + '-01/' + year + '-' + month + '-' + daysInMonth
+  clearMonthlyLayer_()
+  var wmsUrl = 'https://sh.dataspace.copernicus.eu/ogc/wms/' + instanceId
+  monthlyLayer = L.tileLayer.wms(wmsUrl, {
+    layers:      'TRUE-COLOR',
+    format:      'image/png',
+    transparent: true,
+    version:     '1.3.0',
+    time:        timeParam,
+    attribution: 'Sentinel-2 © ESA / Copernicus Data Space',
+    opacity:     0.9
+  })
+  monthlyLayer.addTo(map)
+  drawn.bringToFront()
+  if (resultsRasterLayer) resultsRasterLayer.bringToFront()
+}
+
+function clearMonthlyLayer_() {
+  if (monthlyLayer) { map.removeLayer(monthlyLayer); monthlyLayer = null }
+  document.getElementById('esriReleaseMsg').textContent = ''
+}
+
+// Tooltip CSS for boundary tooltips (inject dynamically)
+;(function () {
+  var s = document.createElement('style')
+  s.textContent = '.bound-tooltip{background:#13241e;border:1px solid #2E6B4F;color:#9FE1CB;font-size:10px;padding:2px 6px;border-radius:4px;box-shadow:none}'
+  document.head.appendChild(s)
+})()
 </script>
+
+<!-- Fullscreen results map -->
+<div id="results-fs-container">
+  <div id="results-fs-map"></div>
+  <div id="fs-swipe-handle">
+    <div id="fs-swipe-label-l">Overlay</div>
+    <div id="fs-swipe-knob">⇔</div>
+    <div id="fs-swipe-label-r">Basemap</div>
+  </div>
+  <div id="results-fs-topbar">
+    <div id="fs-layer-toggle">
+      <label><input type="radio" name="fsLayer" value="zones" checked onchange="switchFsLayer_(this.value)"><span>Zones</span></label>
+      <label><input type="radio" name="fsLayer" value="shpi" onchange="switchFsLayer_(this.value)"><span>SHPI</span></label>
+      <label><input type="radio" name="fsLayer" value="cpi" onchange="switchFsLayer_(this.value)"><span>CPI</span></label>
+    </div>
+    <span style="width:1px;height:16px;background:#2E6B4F;margin:0 2px;display:inline-block"></span>
+    <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
+    <input type="range" id="rasterOpacityFs" min="10" max="100" value="80"
+           style="width:80px;height:4px;accent-color:#F5A623;cursor:pointer"
+           oninput="updateRasterOpacity_(this.value, 'rasterOpacityFsVal', true)">
+    <span id="rasterOpacityFsVal" style="font-size:10px;color:#F5A623;width:30px">80%</span>
+    <button class="rm-ctrl-btn" onclick="toggleResultsFullscreen_()">✕ Close</button>
+  </div>
+  <div id="results-fs-panel">
+    <div id="fs-panel-zones">
+      <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em">Zone Areas</div>
+      <table id="results-fs-table" class="fs-tbl"></table>
+      <div style="font-size:9px;color:#5a8a6a;margin-top:8px">* Area estimated from bare-soil pixel counts</div>
+    </div>
+    <div id="fs-panel-shpi" style="display:none">
+      <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">SHPI — Bare-soil composite</div>
+      <div style="font-size:9px;color:#9FE1CB;margin-bottom:8px">Per-pixel median from all bare-soil observations (NDVI&lt;0.25, LSWI&lt;0)</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+        <span style="font-size:9px;color:#9FE1CB">Low</span>
+        <div style="flex:1;height:10px;border-radius:3px;background:linear-gradient(to right,#d73027,#fc8d59,#fee08b,#91cf60,#1a9850)"></div>
+        <span style="font-size:9px;color:#9FE1CB">High</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:2px">
+        <span style="font-size:9px;color:#5a8a6a">0</span>
+        <span style="font-size:9px;color:#5a8a6a">0.5</span>
+        <span style="font-size:9px;color:#5a8a6a">1.0</span>
+      </div>
+      <div style="font-size:9px;color:#5a8a6a;margin-top:8px">Black = no bare-soil observations</div>
+    </div>
+    <div id="fs-panel-cpi" style="display:none">
+      <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">CPI — Peak-crop NDVI</div>
+      <div style="font-size:9px;color:#9FE1CB;margin-bottom:8px">Per-pixel median from all crop-canopy observations (NDVI&gt;0.4)</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+        <span style="font-size:9px;color:#9FE1CB">Low</span>
+        <div style="flex:1;height:10px;border-radius:3px;background:linear-gradient(to right,#3f007d,#7e26a3,#9870ab,#d3bdd5,#d9f0d3,#7fbf7b,#1b7837)"></div>
+        <span style="font-size:9px;color:#9FE1CB">High</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:2px">
+        <span style="font-size:9px;color:#5a8a6a">0.4</span>
+        <span style="font-size:9px;color:#5a8a6a">0.7</span>
+        <span style="font-size:9px;color:#5a8a6a">1.0</span>
+      </div>
+      <div style="font-size:9px;color:#5a8a6a;margin-top:8px">Black = no crop-canopy observations</div>
+    </div>
+  </div>
+</div>
+
+<!-- Fullscreen compare map -->
+<div id="compare-fs-container" style="display:none;position:fixed;inset:0;z-index:20001;background:#0f1a17">
+  <div id="compare-fs-map" style="position:absolute;inset:0"></div>
+  <div style="position:absolute;top:12px;left:12px;z-index:1001;background:#13241ecc;border:1px solid #2E6B4F;border-radius:6px;padding:7px 12px;display:flex;align-items:center;gap:10px">
+    <span style="font-size:12px;font-weight:700;color:#F5A623">🗺 All ROIs — Comparison Map</span>
+    <button class="rm-ctrl-btn" onclick="closeCompareMap_()">✕ Close</button>
+  </div>
+  <div id="compareMapLegend" style="position:absolute;top:12px;right:12px;background:#13241e;border:1px solid #2E6B4F;border-radius:8px;padding:12px 14px;z-index:1001;min-width:160px;max-height:calc(100vh - 40px);overflow-y:auto">
+    <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">ROI Legend</div>
+  </div>
+</div>
+
+<!-- Chart fullscreen overlays -->
+<div id="chartFs-cpiChart" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">Mean CPI per zone</span>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('cpiChart')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="cpiChart-fs"></canvas></div>
+</div>
+<div id="chartFs-shpiCpiScatter" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">SHPI vs CPI correlation</span>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('shpiCpiScatter')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="shpiCpiScatter-fs"></canvas></div>
+  <div id="scatterEq-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-bottom:16px"></div>
+</div>
+<div id="chartFs-cmpBarChart" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">CPI by zone (all ROIs)</span>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('cmpBarChart')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="cmpBarChart-fs"></canvas></div>
+</div>
+<div id="chartFs-cmpScatterChart" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">SHPI vs CPI — all ROIs</span>
+    <div class="cmp-tabs" style="margin:0">
+      <div class="cmp-tab active" id="cmpTabZones-fs" onclick="setCmpScatterMode_('zones');syncChartFs_('cmpScatterChart')">Per-zone</div>
+      <div class="cmp-tab" id="cmpTabSummary-fs" onclick="setCmpScatterMode_('summary');syncChartFs_('cmpScatterChart')">Per-ROI summary</div>
+    </div>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('cmpScatterChart')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="cmpScatterChart-fs"></canvas></div>
+  <div id="cmpScatterLabel-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-bottom:16px"></div>
+</div>
 </body>
 </html>
