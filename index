@@ -1008,9 +1008,11 @@ function renderResults(data) {
   // ── SHPI vs CPI scatter plot with linear regression ──────────
   // Use pixel-level sample when available, fall back to zone means
   const pxSample = (data.pixel_sample && data.pixel_sample.length >= 10) ? data.pixel_sample : null
+  // For zone-fallback mode: only include zones with actual data
+  const zWithData = z.filter(zs => zs.pixel_count > 0)
   const scatterPts = pxSample
     ? pxSample
-    : z.map(zs => ({ x: zs.mean_shpi, y: zs.mean_cpi, z: zs.zone - 1 }))
+    : zWithData.map(zs => ({ x: zs.mean_shpi, y: zs.mean_cpi, z: zs.zone - 1 }))
 
   const scatterX = scatterPts.map(p => p.x)
   const scatterY = scatterPts.map(p => p.y)
@@ -1029,7 +1031,7 @@ function renderResults(data) {
   const xMin = Math.min(...scatterX), xMax = Math.max(...scatterX)
   const lineData = [{ x: xMin, y: slope * xMin + intercept }, { x: xMax, y: slope * xMax + intercept }]
   const intSign = intercept >= 0 ? ' + ' : ' - '
-  const nLabel = pxSample ? '  n=' + scatterPts.length + ' px' : '  n=10 zones'
+  const nLabel = pxSample ? '  n=' + scatterPts.length + ' px' : '  n=' + scatterPts.length + ' zones'
   document.getElementById('scatterEq').textContent =
     'y = ' + slope.toFixed(3) + 'x' + intSign + Math.abs(intercept).toFixed(3) +
     '   R² = ' + r2.toFixed(3) + nLabel
@@ -1044,13 +1046,14 @@ function renderResults(data) {
     return 'rgba(' + rr + ',' + gg + ',' + bb + ',' + alpha + ')'
   })
 
-  // Zone-mean bin markers (always shown; overlaid on pixel scatter when available)
+  // Zone-mean bin markers — only include zones with actual CPI data (pixel_count > 0)
+  // Zones with no pixelPairs have mean_shpi=0 & mean_cpi=0, which fall outside the chart range
   const zoneBinDataset = {
     type: 'scatter',
     label: 'Zone means',
-    data: z.map(zs => ({ x: zs.mean_shpi, y: zs.mean_cpi })),
-    backgroundColor: ZONE_COLORS.map(hex => {
-      var c = hexToRgb_(hex)
+    data: zWithData.map(zs => ({ x: zs.mean_shpi, y: zs.mean_cpi, zone: zs.zone })),
+    backgroundColor: zWithData.map(zs => {
+      var c = hexToRgb_(ZONE_COLORS[Math.max(0, Math.min(ZONE_COLORS.length - 1, zs.zone - 1))])
       return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.9)'
     }),
     borderColor: '#fff',
@@ -1097,8 +1100,8 @@ function renderResults(data) {
           callbacks: {
             label: function(ctx) {
               if (ctx.dataset.label === 'Zone means') {
-                var zi = ctx.dataIndex
-                return 'Z' + (zi + 1) + ' mean  SHPI=' + ctx.raw.x.toFixed(3) + '  CPI=' + ctx.raw.y.toFixed(3)
+                var zone = ctx.raw.zone || (ctx.dataIndex + 1)
+                return 'Z' + zone + ' mean  SHPI=' + ctx.raw.x.toFixed(3) + '  CPI=' + ctx.raw.y.toFixed(3)
               }
               return null
             }
@@ -2031,13 +2034,16 @@ function renderCmpScatterZones_(rois, cache) {
   rois.forEach(function(item, idx) {
     var z     = cache[item.id] && cache[item.id].zone_stats
     if (!z) return
+    // Only include zones with actual CPI data — empty zones have mean_shpi/cpi=0
+    var zFiltered = z.filter(function(zs) { return zs.pixel_count > 0 })
+    if (!zFiltered.length) return
     var roiColor = ROI_COLORS[idx % ROI_COLORS.length]
     // Colour each zone point by its zone index, use ROI colour as border
     datasets.push({
       type: 'scatter', label: item.name,
-      data: z.map(function(zs) { return { x: zs.mean_shpi, y: zs.mean_cpi } }),
-      backgroundColor: z.map(function(zs, i) {
-        var hex = ZONE_COLORS[Math.min(i, ZONE_COLORS.length - 1)]
+      data: zFiltered.map(function(zs) { return { x: zs.mean_shpi, y: zs.mean_cpi } }),
+      backgroundColor: zFiltered.map(function(zs) {
+        var hex = ZONE_COLORS[Math.min(zs.zone - 1, ZONE_COLORS.length - 1)]
         var c = hexToRgb_(hex)
         return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.85)'
       }),
@@ -2045,8 +2051,8 @@ function renderCmpScatterZones_(rois, cache) {
       borderWidth: 2,
       pointRadius: 6, pointHoverRadius: 8
     })
-    var xs = z.map(function(zs) { return zs.mean_shpi })
-    var ys = z.map(function(zs) { return zs.mean_cpi })
+    var xs = zFiltered.map(function(zs) { return zs.mean_shpi })
+    var ys = zFiltered.map(function(zs) { return zs.mean_cpi })
     var n = xs.length, sx = 0, sy = 0, sxy = 0, sxx = 0
     xs.forEach(function(x,i){ sx+=x; sy+=ys[i]; sxy+=x*ys[i]; sxx+=x*x })
     var denom = n*sxx-sx*sx
@@ -2068,8 +2074,11 @@ function renderCmpScatterSummary_(rois, cache) {
   var pts = rois.map(function(item,idx) {
     var z = cache[item.id] && cache[item.id].zone_stats
     if (!z) return null
-    var meanShpi = z.reduce(function(a,zs){return a+zs.mean_shpi},0)/z.length
-    var meanCpi  = z.reduce(function(a,zs){return a+zs.mean_cpi},0)/z.length
+    // Only average zones with actual data to avoid zero-valued empty zones skewing the mean
+    var zf = z.filter(function(zs) { return zs.pixel_count > 0 })
+    if (!zf.length) return null
+    var meanShpi = zf.reduce(function(a,zs){return a+zs.mean_shpi},0)/zf.length
+    var meanCpi  = zf.reduce(function(a,zs){return a+zs.mean_cpi},0)/zf.length
     return { x: meanShpi, y: meanCpi, label: item.name, color: ROI_COLORS[idx%ROI_COLORS.length] }
   }).filter(Boolean)
   if (pts.length < 2) {
