@@ -1044,6 +1044,23 @@ function renderResults(data) {
     return 'rgba(' + rr + ',' + gg + ',' + bb + ',' + alpha + ')'
   })
 
+  // Zone-mean bin markers (always shown; overlaid on pixel scatter when available)
+  const zoneBinDataset = {
+    type: 'scatter',
+    label: 'Zone means',
+    data: z.map(zs => ({ x: zs.mean_shpi, y: zs.mean_cpi })),
+    backgroundColor: ZONE_COLORS.map(hex => {
+      var c = hexToRgb_(hex)
+      return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.9)'
+    }),
+    borderColor: '#fff',
+    borderWidth: 1,
+    pointRadius: 7,
+    pointHoverRadius: 9,
+    pointStyle: 'circle',
+    order: 0,  // render on top
+  }
+
   if (scatterChart) scatterChart.destroy()
   const sctx = document.getElementById('shpiCpiScatter').getContext('2d')
   scatterChart = new Chart(sctx, {
@@ -1058,6 +1075,7 @@ function renderResults(data) {
           pointRadius: pxSample ? 2 : 7,
           pointHoverRadius: pxSample ? 4 : 9,
         },
+        ...(pxSample ? [zoneBinDataset] : []),
         {
           type: 'line',
           label: 'Fit',
@@ -1073,7 +1091,20 @@ function renderResults(data) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              if (ctx.dataset.label === 'Zone means') {
+                var zi = ctx.dataIndex
+                return 'Z' + (zi + 1) + ' mean  SHPI=' + ctx.raw.x.toFixed(3) + '  CPI=' + ctx.raw.y.toFixed(3)
+              }
+              return null
+            }
+          }
+        }
+      },
       scales: {
         x: {
           title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 9 } },
@@ -2000,11 +2031,19 @@ function renderCmpScatterZones_(rois, cache) {
   rois.forEach(function(item, idx) {
     var z     = cache[item.id] && cache[item.id].zone_stats
     if (!z) return
-    var color = ROI_COLORS[idx % ROI_COLORS.length]
+    var roiColor = ROI_COLORS[idx % ROI_COLORS.length]
+    // Colour each zone point by its zone index, use ROI colour as border
     datasets.push({
       type: 'scatter', label: item.name,
       data: z.map(function(zs) { return { x: zs.mean_shpi, y: zs.mean_cpi } }),
-      backgroundColor: color, pointRadius: 5, pointHoverRadius: 7
+      backgroundColor: z.map(function(zs, i) {
+        var hex = ZONE_COLORS[Math.min(i, ZONE_COLORS.length - 1)]
+        var c = hexToRgb_(hex)
+        return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.85)'
+      }),
+      borderColor: roiColor,
+      borderWidth: 2,
+      pointRadius: 6, pointHoverRadius: 8
     })
     var xs = z.map(function(zs) { return zs.mean_shpi })
     var ys = z.map(function(zs) { return zs.mean_cpi })
@@ -2017,7 +2056,7 @@ function renderCmpScatterZones_(rois, cache) {
     datasets.push({
       type: 'line', label: item.name+' fit',
       data: [{x:xMin,y:slope*xMin+icpt},{x:xMax,y:slope*xMax+icpt}],
-      borderColor: color, borderWidth: 1, pointRadius: 0, fill: false,
+      borderColor: roiColor, borderWidth: 1, pointRadius: 0, fill: false,
       tension: 0, borderDash: [3,3]
     })
   })
@@ -2082,6 +2121,11 @@ function _applyCmpScatter(datasets, xLabel, yLabel, tooltipPts) {
               if (tooltipPts && ctx.datasetIndex === 0) {
                 var p = tooltipPts[ctx.dataIndex]
                 return p ? p.label + ' (' + ctx.raw.x.toFixed(3) + ', ' + ctx.raw.y.toFixed(3) + ')' : ''
+              }
+              // Per-zone mode: show "ROI — Z(n)"
+              if (!tooltipPts && ctx.dataset.type === 'scatter') {
+                return ctx.dataset.label + ' — Z' + (ctx.dataIndex + 1) +
+                  '  (' + ctx.raw.x.toFixed(3) + ', ' + ctx.raw.y.toFixed(3) + ')'
               }
               return null
             }
