@@ -328,23 +328,7 @@ canvas{display:block}
       <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:6px">SHPI vs CPI correlation</h3><button class="chart-expand-btn" onclick="openChartFs_('shpiCpiScatter')" title="Fullscreen">⛶</button></div>
       <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
       <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
-      <details id="ciTablePanel" style="margin:4px 0 6px;font-size:9px;color:#9FE1CB">
-        <summary style="cursor:pointer;color:#F5A623;font-weight:700;font-size:9px;letter-spacing:.05em;padding:2px 0">▸ Zone Confidence Intervals &amp; Effect Sizes (vs Zone 1)</summary>
-        <div style="overflow-x:auto;overflow-y:auto;max-height:200px;margin-top:4px">
-          <table id="ciTable" style="width:100%;border-collapse:collapse;font-size:8.5px">
-            <thead><tr style="color:#F5A623">
-              <th style="padding:2px 4px;text-align:left">Zone</th>
-              <th style="padding:2px 4px;text-align:right">N</th>
-              <th style="padding:2px 4px;text-align:right">Mean CPI</th>
-              <th style="padding:2px 4px;text-align:right">SE</th>
-              <th style="padding:2px 4px;text-align:right">95% CI</th>
-              <th style="padding:2px 4px;text-align:right">Cohen's d</th>
-              <th style="padding:2px 4px;text-align:right">p-value</th>
-            </tr></thead>
-            <tbody id="ciTbody"></tbody>
-          </table>
-        </div>
-      </details>
+      <div id="corrSummary" style="margin:3px 0 5px;font-size:9px;color:#9FE1CB;text-align:center"></div>
       <div id="results-map-ctrls">
         <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
         <input type="range" id="rasterOpacity" min="10" max="100" value="80" oninput="updateRasterOpacity_(this.value, 'rasterOpacityVal', false)">
@@ -412,24 +396,24 @@ let roi        = null
 let lastResult = null
 let chart        = null
 let scatterChart = null
-// Inline Chart.js plugin for SE error bars — stored at module level so openChartFs_ can reuse it
-const scatterErrBarsPlugin_ = {
-  id: 'errBars',
+// Inline Chart.js plugin for SD error bars — stored at module level so openChartFs_ can reuse it
+const scatterSdBarsPlugin_ = {
+  id: 'sdBars',
   afterDatasetsDraw(chart) {
     chart.data.datasets.forEach(function(ds, dsi) {
       if (ds.label !== 'Zone means') return
       var meta = chart.getDatasetMeta(dsi)
       var ctx2 = chart.ctx
       ds.data.forEach(function(pt, j) {
-        if (!pt.se_cpi || pt.se_cpi === 0) return
+        if (!pt.sd_cpi || pt.sd_cpi === 0) return
         var elem = meta.data[j]
         if (!elem) return
         var px = elem.x
-        var yLo = chart.scales.y.getPixelForValue(pt.y - pt.se_cpi)
-        var yHi = chart.scales.y.getPixelForValue(pt.y + pt.se_cpi)
+        var yLo = chart.scales.y.getPixelForValue(pt.y - pt.sd_cpi)
+        var yHi = chart.scales.y.getPixelForValue(pt.y + pt.sd_cpi)
         var capW = 4
         ctx2.save()
-        ctx2.strokeStyle = '#ffffffcc'
+        ctx2.strokeStyle = '#ffffff99'
         ctx2.lineWidth = 1.5
         ctx2.beginPath()
         ctx2.moveTo(px, yLo); ctx2.lineTo(px, yHi)
@@ -1077,14 +1061,49 @@ function renderResults(data) {
     'y = ' + slope.toFixed(3) + 'x' + intSign + Math.abs(intercept).toFixed(3) +
     '   R² = ' + r2.toFixed(3) + '  n=' + n + ' zones'
 
-  // Zone-mean bin markers with SE error-bar data attached
+  // Spearman ρ: rank-based correlation across zone means
+  ;(function() {
+    if (n < 3) {
+      document.getElementById('corrSummary').textContent = 'n < 3 zones — correlation not computed'
+      return
+    }
+    function rankAvg_(arr) {
+      var sorted = arr.slice().sort(function(a, b) { return a - b })
+      return arr.map(function(v) {
+        var idx = []
+        sorted.forEach(function(s, i) { if (s === v) idx.push(i + 1) })
+        return idx.reduce(function(a, b) { return a + b }, 0) / idx.length
+      })
+    }
+    var rx = rankAvg_(scatterX), ry = rankAvg_(scatterY)
+    var rmx = rx.reduce(function(a, b) { return a + b }, 0) / n
+    var rmy = ry.reduce(function(a, b) { return a + b }, 0) / n
+    var rNum = rx.reduce(function(a, v, i) { return a + (v - rmx) * (ry[i] - rmy) }, 0)
+    var rdx = Math.sqrt(rx.reduce(function(a, v) { return a + (v - rmx) * (v - rmx) }, 0))
+    var rdy = Math.sqrt(ry.reduce(function(a, v) { return a + (v - rmy) * (v - rmy) }, 0))
+    var rho = (rdx * rdy > 0) ? rNum / (rdx * rdy) : 0
+    var tStat = rho * Math.sqrt(n - 2) / Math.sqrt(Math.max(1e-15, 1 - rho * rho))
+    // Standard normal CDF — Abramowitz & Stegun algorithm 26.2.17 (Horner's form, accurate to ~1e-7)
+    // d = (1/√2π)·exp(-x²/2) is the PDF; polynomial in t = 1/(1+0.2316419|x|) approximates the tail
+    function normCdf_(x) {
+      var t2 = 1 / (1 + 0.2316419 * Math.abs(x))
+      var d = 0.3989423 * Math.exp(-x * x / 2)   // 0.3989423 ≈ 1/√(2π)
+      var p = d * t2 * (0.3193815 + t2 * (-0.3565638 + t2 * (1.7814779 + t2 * (-1.8212560 + t2 * 1.3302744))))
+      return x > 0 ? 1 - p : p
+    }
+    var pVal = 2 * normCdf_(-Math.abs(tStat))
+    var pStr = pVal < 0.001 ? 'p < 0.001' : 'p = ' + pVal.toFixed(3)
+    document.getElementById('corrSummary').textContent =
+      'Spearman ρ = ' + rho.toFixed(3) + ',  ' + pStr + ',  R² = ' + r2.toFixed(3)
+  })()
+
+  // Zone-mean bin markers with SD error-bar data attached
   const zoneBinDataset = {
     type: 'scatter',
     label: 'Zone means',
     data: zWithData.map(zs => {
-      var se_c = zs.pixel_count > 1 ? zs.std_cpi / Math.sqrt(zs.pixel_count) : 0
       return { x: zs.mean_shpi, y: zs.mean_cpi, zone: zs.zone,
-               se_cpi: Math.round(se_c * 10000) / 10000 }
+               sd_cpi: Math.round((zs.std_cpi || 0) * 10000) / 10000 }
     }),
     backgroundColor: zWithData.map(zs => {
       var c = hexToRgb_(ZONE_COLORS[Math.max(0, Math.min(ZONE_COLORS.length - 1, zs.zone - 1))])
@@ -1098,12 +1117,12 @@ function renderResults(data) {
     order: 0,
   }
 
-  // Inline Chart.js plugin that draws vertical SE error bars — uses module-level scatterErrBarsPlugin_
+  // Chart.js plugin that draws vertical SD error bars — uses module-level scatterSdBarsPlugin_
 
   if (scatterChart) { scatterChart.destroy(); scatterChart = null }
   const sctx = document.getElementById('shpiCpiScatter').getContext('2d')
   scatterChart = new Chart(sctx, {
-    plugins: [scatterErrBarsPlugin_],
+    plugins: [scatterSdBarsPlugin_],
     data: {
       datasets: [
         zoneBinDataset,
@@ -1129,8 +1148,8 @@ function renderResults(data) {
             label: function(ctx) {
               if (ctx.dataset.label === 'Zone means') {
                 var zone = ctx.raw.zone || (ctx.dataIndex + 1)
-                var seStr = ctx.raw.se_cpi ? '  SE±' + ctx.raw.se_cpi.toFixed(3) : ''
-                return 'Z' + zone + '  SHPI=' + ctx.raw.x.toFixed(3) + '  CPI=' + ctx.raw.y.toFixed(3) + seStr
+                var sdStr = ctx.raw.sd_cpi ? '  SD±' + ctx.raw.sd_cpi.toFixed(3) : ''
+                return 'Z' + zone + '  SHPI=' + ctx.raw.x.toFixed(3) + '  CPI=' + ctx.raw.y.toFixed(3) + sdStr
               }
               return null
             }
@@ -1151,72 +1170,6 @@ function renderResults(data) {
       }
     }
   });
-
-  // ── CI table: zone stats vs Zone 1, with Welch t-test p-value and Cohen's d ──
-  ;(function() {
-    // Standard normal CDF approximation (Horner's method, accurate to ~1e-7).
-    // Using normal approximation for the t-distribution — valid here because each
-    // decile zone contains hundreds–thousands of pixels (n >> 30 in all practical cases).
-    function normCdf_(x) {
-      var t = 1 / (1 + 0.2316419 * Math.abs(x))
-      var d = 0.3989423 * Math.exp(-x * x / 2)
-      var p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.7814779 + t * (-1.8212560 + t * 1.3302744))))
-      return x > 0 ? 1 - p : p
-    }
-    // Welch t-test two-tailed p-value between two groups (normal approximation)
-    function welchP_(m1, s1, n1, m2, s2, n2) {
-      if (n1 < 2 || n2 < 2) return NaN
-      var se = Math.sqrt(s1 * s1 / n1 + s2 * s2 / n2)
-      if (se === 0) return 0
-      var t = Math.abs(m2 - m1) / se
-      return 2 * normCdf_(-t)
-    }
-    // Cohen's d with pooled within-group SD (classic effect size, degrees-of-freedom weighted)
-    function cohenD_(m1, s1, n1, m2, s2, n2) {
-      if (n1 < 2 || n2 < 2) return NaN
-      var pooledVar = ((n1 - 1) * s1 * s1 + (n2 - 1) * s2 * s2) / (n1 + n2 - 2)
-      var pooled = Math.sqrt(pooledVar)
-      if (pooled === 0) return 0
-      return (m2 - m1) / pooled
-    }
-    function pStr_(p) {
-      if (isNaN(p)) return '—'
-      if (p < 0.001) return '<0.001'
-      return p.toFixed(3)
-    }
-    function dStr_(d) {
-      if (isNaN(d)) return '—'
-      var abs = Math.abs(d), sign = d >= 0 ? '+' : '-'
-      var mag = abs < 0.2 ? 'negligible' : abs < 0.5 ? 'small' : abs < 0.8 ? 'medium' : 'large'
-      return sign + abs.toFixed(2) + ' (' + mag + ')'
-    }
-
-    var ref = z.find(function(zs) { return zs.zone === 1 && zs.pixel_count > 1 })
-    var tbody = document.getElementById('ciTbody')
-    if (!tbody) return
-    tbody.innerHTML = ''
-    z.forEach(function(zs) {
-      if (zs.pixel_count < 1) return
-      var se = zs.pixel_count > 1 ? zs.std_cpi / Math.sqrt(zs.pixel_count) : 0
-      var ci95lo = (zs.mean_cpi - 1.96 * se).toFixed(3)
-      var ci95hi = (zs.mean_cpi + 1.96 * se).toFixed(3)
-      var pVal = (ref && zs.zone !== 1) ? welchP_(ref.mean_cpi, ref.std_cpi, ref.pixel_count, zs.mean_cpi, zs.std_cpi, zs.pixel_count) : NaN
-      var d    = (ref && zs.zone !== 1) ? cohenD_(ref.mean_cpi, ref.std_cpi, ref.pixel_count, zs.mean_cpi, zs.std_cpi, zs.pixel_count) : NaN
-      var tr = document.createElement('tr')
-      var refStyle = zs.zone === 1 ? 'color:#F5A623;font-weight:700' : ''
-      tr.style.cssText = refStyle
-      var hex = ZONE_COLORS[Math.max(0, Math.min(9, zs.zone - 1))]
-      tr.innerHTML =
-        '<td style="padding:2px 4px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + hex + ';margin-right:3px"></span>Z' + zs.zone + '</td>' +
-        '<td style="padding:2px 4px;text-align:right">' + formatPixelCount(zs.pixel_count) + '</td>' +
-        '<td style="padding:2px 4px;text-align:right">' + zs.mean_cpi.toFixed(3) + '</td>' +
-        '<td style="padding:2px 4px;text-align:right">±' + se.toFixed(3) + '</td>' +
-        '<td style="padding:2px 4px;text-align:right">[' + ci95lo + ', ' + ci95hi + ']</td>' +
-        '<td style="padding:2px 4px;text-align:right">' + (zs.zone === 1 ? 'ref' : dStr_(d)) + '</td>' +
-        '<td style="padding:2px 4px;text-align:right">' + (zs.zone === 1 ? 'ref' : pStr_(pVal)) + '</td>'
-      tbody.appendChild(tr)
-    })
-  })()
 
   document.getElementById('results').classList.add('show')
   document.getElementById('results-map-ctrls').style.display = 'flex'
@@ -2364,7 +2317,7 @@ function openChartFs_(id) {
   // Use requestAnimationFrame so the overlay is painted and canvas dimensions are set before Chart.js renders
   requestAnimationFrame(function() {
     // For the scatter chart, include the errBars plugin so SE bars render in fullscreen too
-    var fsPluginsList = id === 'shpiCpiScatter' ? [scatterErrBarsPlugin_] : []
+    var fsPluginsList = id === 'shpiCpiScatter' ? [scatterSdBarsPlugin_] : []
     chartFsInstances[id] = new Chart(canvas.getContext('2d'), {
       type: src.config.type,
       data: src.config.data,
