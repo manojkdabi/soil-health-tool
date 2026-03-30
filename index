@@ -1979,7 +1979,10 @@ function renderCmpScatterSummary_(rois, cache) {
     var meanCpi  = z.reduce(function(a,zs){return a+zs.mean_cpi},0)/z.length
     return { x: meanShpi, y: meanCpi, label: item.name, color: ROI_COLORS[idx%ROI_COLORS.length] }
   }).filter(Boolean)
-  if (pts.length < 2) return
+  if (pts.length < 2) {
+    console.warn('renderCmpScatterSummary_: fewer than 2 valid ROIs with zone_stats — skipping summary scatter')
+    return
+  }
   var xs = pts.map(function(p){return p.x}), ys = pts.map(function(p){return p.y})
   var n = xs.length, sx=0,sy=0,sxy=0,sxx=0
   xs.forEach(function(x,i){sx+=x;sy+=ys[i];sxy+=x*ys[i];sxx+=x*x})
