@@ -140,6 +140,17 @@ input:focus,select:focus{border-color:#F5A623}
 /* Chart */
 .chart-wrap{height:120px;margin-top:4px}
 canvas{display:block}
+/* Chart fullscreen overlay */
+.chart-fs-overlay{display:none;position:fixed;inset:0;z-index:20200;background:#0f1a17;flex-direction:column}
+.chart-fs-overlay.open{display:flex}
+.chart-fs-topbar{display:flex;align-items:center;gap:8px;background:#13241e;border-bottom:1px solid #2E6B4F;padding:10px 16px;flex-shrink:0}
+.chart-fs-title{font-size:13px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;flex:1}
+.chart-fs-body{flex:1;padding:24px 32px;position:relative;min-height:0}
+/* Expand button next to chart headings */
+.chart-heading-row{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+.chart-heading-row h3{margin:0}
+.chart-expand-btn{background:#1e3d30;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:13px;line-height:1.4;flex-shrink:0}
+.chart-expand-btn:hover{background:#2E6B4F;color:#F5A623}
 
 /* Footer */
 .footer{background:#0d1e18;border-top:1px solid #1e3d30;padding:4px 16px;font-size:10px;color:#3a6a4a;flex-shrink:0}
@@ -308,13 +319,13 @@ canvas{display:block}
       <div class="banner" id="banner"></div>
       <div id="dataSourceBadge" style="text-align:center;font-size:10px;padding:3px 8px;border-radius:4px;display:none"></div>
       <div class="stat-grid" id="statGrid"></div>
-      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:4px">Mean CPI per zone</h3>
+      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:4px">Mean CPI per zone</h3><button class="chart-expand-btn" onclick="openChartFs_('cpiChart')" title="Fullscreen">⛶</button></div>
       <div class="chart-wrap"><canvas id="cpiChart"></canvas></div>
       <table class="ztbl">
         <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
         <tbody id="zoneTbody"></tbody>
       </table>
-      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:6px">SHPI vs CPI correlation</h3>
+      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:6px">SHPI vs CPI correlation</h3><button class="chart-expand-btn" onclick="openChartFs_('shpiCpiScatter')" title="Fullscreen">⛶</button></div>
       <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
       <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
       <div id="results-map-ctrls">
@@ -335,9 +346,9 @@ canvas{display:block}
       <div style="overflow-x:auto">
         <table class="cmp-table" id="cmpTable"></table>
       </div>
-      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:8px;margin-bottom:2px">CPI by Zone (all ROIs)</h3>
+      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:8px;margin-bottom:2px">CPI by Zone (all ROIs)</h3><button class="chart-expand-btn" onclick="openChartFs_('cmpBarChart')" title="Fullscreen">⛶</button></div>
       <div class="cmp-chart-wrap"><canvas id="cmpBarChart"></canvas></div>
-      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:8px;margin-bottom:4px">SHPI vs CPI — all ROIs</h3>
+      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:8px;margin-bottom:4px">SHPI vs CPI — all ROIs</h3><button class="chart-expand-btn" onclick="openChartFs_('cmpScatterChart')" title="Fullscreen">⛶</button></div>
       <div class="cmp-tabs">
         <div class="cmp-tab active" id="cmpTabZones" onclick="setCmpScatterMode_('zones')">Per-zone</div>
         <div class="cmp-tab" id="cmpTabSummary" onclick="setCmpScatterMode_('summary')">Per-ROI summary</div>
@@ -389,6 +400,7 @@ let cmpBarChart = null
 let cmpScatterChart = null
 let cmpScatterMode = 'zones'   // 'zones' | 'summary'
 let compareMapFs = null
+let chartFsInstances = {}      // chart-id → Chart instance for fullscreen canvases
 const ZONE_COLORS         = ['#d73027','#fc8d59','#fee08b','#91cf60','#1a9850']
 const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','#ff9f43','#54a0ff','#5f27cd','#ee5a24','#0abde3']
 const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
@@ -2101,6 +2113,101 @@ function closeCompareMap_() {
   if (compareMapFs) { compareMapFs.remove(); compareMapFs = null }
 }
 
+// ── Chart fullscreen expand / collapse ───────────────────────
+// Map from source chart ID to the corresponding Chart.js instance variable
+function _getChartInstance(id) {
+  if (id === 'cpiChart') return chart
+  if (id === 'shpiCpiScatter') return scatterChart
+  if (id === 'cmpBarChart') return cmpBarChart
+  if (id === 'cmpScatterChart') return cmpScatterChart
+  return null
+}
+
+function openChartFs_(id) {
+  var src = _getChartInstance(id)
+  if (!src) return
+  var overlay = document.getElementById('chartFs-' + id)
+  if (!overlay) return
+  // Sync tab state for cmpScatterChart
+  if (id === 'cmpScatterChart') {
+    var isZones = cmpScatterMode === 'zones'
+    document.getElementById('cmpTabZones-fs').classList.toggle('active', isZones)
+    document.getElementById('cmpTabSummary-fs').classList.toggle('active', !isZones)
+    var lbl = document.getElementById('cmpScatterLabel')
+    var lblFs = document.getElementById('cmpScatterLabel-fs')
+    if (lblFs && lbl) lblFs.textContent = lbl.textContent
+  }
+  if (id === 'shpiCpiScatter') {
+    var eq = document.getElementById('scatterEq')
+    var eqFs = document.getElementById('scatterEq-fs')
+    if (eqFs && eq) eqFs.textContent = eq.textContent
+  }
+  // Destroy previous FS instance for this chart
+  if (chartFsInstances[id]) { chartFsInstances[id].destroy(); chartFsInstances[id] = null }
+  // Show overlay first so the canvas has a valid size when Chart.js measures it
+  overlay.classList.add('open')
+  var canvas = document.getElementById(id + '-fs')
+  if (!canvas) return
+  // Build enlarged scale options (each axis gets its own shallow copy)
+  var srcScales = src.config.options && src.config.options.scales || {}
+  var fsScales = {}
+  Object.keys(srcScales).forEach(function(k) {
+    var ax = srcScales[k]
+    fsScales[k] = Object.assign({}, ax, {
+      ticks: Object.assign({}, ax.ticks, { font: Object.assign({}, (ax.ticks && ax.ticks.font) || {}, { size: 13 }) }),
+      title: ax.title ? Object.assign({}, ax.title, { font: Object.assign({}, (ax.title && ax.title.font) || {}, { size: 13 }) }) : ax.title
+    })
+  })
+  var srcPlugins = (src.config.options && src.config.options.plugins) || {}
+  var fsPlugins = Object.assign({}, srcPlugins)
+  if (fsPlugins.legend) {
+    fsPlugins.legend = Object.assign({}, fsPlugins.legend, {
+      labels: Object.assign({}, fsPlugins.legend.labels, { font: Object.assign({}, (fsPlugins.legend.labels && fsPlugins.legend.labels.font) || {}, { size: 12 }) })
+    })
+  }
+  var fsOptions = Object.assign({}, src.config.options, {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: Object.keys(fsScales).length ? fsScales : srcScales,
+    plugins: fsPlugins
+  })
+  // Use requestAnimationFrame so the overlay is painted and canvas dimensions are set before Chart.js renders
+  requestAnimationFrame(function() {
+    chartFsInstances[id] = new Chart(canvas.getContext('2d'), {
+      type: src.config.type,
+      data: src.config.data,
+      options: fsOptions
+    })
+  })
+}
+
+function closeChartFs_(id) {
+  var overlay = document.getElementById('chartFs-' + id)
+  if (overlay) overlay.classList.remove('open')
+  if (chartFsInstances[id]) { chartFsInstances[id].destroy(); chartFsInstances[id] = null }
+}
+
+// Re-sync fullscreen chart when mode tabs are switched
+function syncChartFs_(id) {
+  var overlay = document.getElementById('chartFs-' + id)
+  if (!overlay || !overlay.classList.contains('open')) return
+  // Sync tab active state
+  if (id === 'cmpScatterChart') {
+    var isZones = cmpScatterMode === 'zones'
+    document.getElementById('cmpTabZones-fs').classList.toggle('active', isZones)
+    document.getElementById('cmpTabSummary-fs').classList.toggle('active', !isZones)
+  }
+  // Small delay so the base chart has time to update after setCmpScatterMode_ runs
+  setTimeout(function() {
+    openChartFs_(id)
+    if (id === 'cmpScatterChart') {
+      var lbl = document.getElementById('cmpScatterLabel')
+      var lblFs = document.getElementById('cmpScatterLabel-fs')
+      if (lblFs && lbl) lblFs.textContent = lbl.textContent
+    }
+  }, 50)
+}
+
 // ── Library init ──────────────────────────────────────────────
 ;(function initLibrary_() {
   renderLibraryPanel_()
@@ -2377,6 +2484,42 @@ function clearMonthlyLayer_() {
   <div id="compareMapLegend" style="position:absolute;top:12px;right:12px;background:#13241e;border:1px solid #2E6B4F;border-radius:8px;padding:12px 14px;z-index:1001;min-width:160px;max-height:calc(100vh - 40px);overflow-y:auto">
     <div style="font-size:10px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">ROI Legend</div>
   </div>
+</div>
+
+<!-- Chart fullscreen overlays -->
+<div id="chartFs-cpiChart" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">Mean CPI per zone</span>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('cpiChart')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="cpiChart-fs"></canvas></div>
+</div>
+<div id="chartFs-shpiCpiScatter" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">SHPI vs CPI correlation</span>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('shpiCpiScatter')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="shpiCpiScatter-fs"></canvas></div>
+  <div id="scatterEq-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-bottom:16px"></div>
+</div>
+<div id="chartFs-cmpBarChart" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">CPI by zone (all ROIs)</span>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('cmpBarChart')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="cmpBarChart-fs"></canvas></div>
+</div>
+<div id="chartFs-cmpScatterChart" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">SHPI vs CPI — all ROIs</span>
+    <div class="cmp-tabs" style="margin:0">
+      <div class="cmp-tab active" id="cmpTabZones-fs" onclick="setCmpScatterMode_('zones');syncChartFs_('cmpScatterChart')">Per-zone</div>
+      <div class="cmp-tab" id="cmpTabSummary-fs" onclick="setCmpScatterMode_('summary');syncChartFs_('cmpScatterChart')">Per-ROI summary</div>
+    </div>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('cmpScatterChart')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="cmpScatterChart-fs"></canvas></div>
+  <div id="cmpScatterLabel-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-bottom:16px"></div>
 </div>
 </body>
 </html>
