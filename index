@@ -396,35 +396,6 @@ let roi        = null
 let lastResult = null
 let chart        = null
 let scatterChart = null
-// Inline Chart.js plugin for SD error bars — stored at module level so openChartFs_ can reuse it
-const scatterSdBarsPlugin_ = {
-  id: 'sdBars',
-  afterDatasetsDraw(chart) {
-    chart.data.datasets.forEach(function(ds, dsi) {
-      if (ds.label !== 'Zone means') return
-      var meta = chart.getDatasetMeta(dsi)
-      var ctx2 = chart.ctx
-      ds.data.forEach(function(pt, j) {
-        if (!pt.sd_cpi || pt.sd_cpi === 0) return
-        var elem = meta.data[j]
-        if (!elem) return
-        var px = elem.x
-        var yLo = chart.scales.y.getPixelForValue(pt.y - pt.sd_cpi)
-        var yHi = chart.scales.y.getPixelForValue(pt.y + pt.sd_cpi)
-        var capW = 4
-        ctx2.save()
-        ctx2.strokeStyle = '#ffffff99'
-        ctx2.lineWidth = 1.5
-        ctx2.beginPath()
-        ctx2.moveTo(px, yLo); ctx2.lineTo(px, yHi)
-        ctx2.moveTo(px - capW, yHi); ctx2.lineTo(px + capW, yHi)
-        ctx2.moveTo(px - capW, yLo); ctx2.lineTo(px + capW, yLo)
-        ctx2.stroke()
-        ctx2.restore()
-      })
-    })
-  }
-}
 let resultsMap = null
 let resultsRasterLayer = null  // the L.imageOverlay for the Process API raster
 let resultsMapFs = null        // fullscreen map Leaflet instance
@@ -1097,13 +1068,12 @@ function renderResults(data) {
       'Spearman ρ = ' + rho.toFixed(3) + ',  ' + pStr + ',  R² = ' + r2.toFixed(3)
   })()
 
-  // Zone-mean bin markers with SD error-bar data attached
+  // Zone-mean bin markers
   const zoneBinDataset = {
     type: 'scatter',
     label: 'Zone means',
     data: zWithData.map(zs => {
-      return { x: zs.mean_shpi, y: zs.mean_cpi, zone: zs.zone,
-               sd_cpi: Math.round((zs.std_cpi || 0) * 10000) / 10000 }
+      return { x: zs.mean_shpi, y: zs.mean_cpi, zone: zs.zone }
     }),
     backgroundColor: zWithData.map(zs => {
       var c = hexToRgb_(ZONE_COLORS[Math.max(0, Math.min(ZONE_COLORS.length - 1, zs.zone - 1))])
@@ -1117,12 +1087,11 @@ function renderResults(data) {
     order: 0,
   }
 
-  // Chart.js plugin that draws vertical SD error bars — uses module-level scatterSdBarsPlugin_
+  // No extra plugins needed for scatter
 
   if (scatterChart) { scatterChart.destroy(); scatterChart = null }
   const sctx = document.getElementById('shpiCpiScatter').getContext('2d')
   scatterChart = new Chart(sctx, {
-    plugins: [scatterSdBarsPlugin_],
     data: {
       datasets: [
         zoneBinDataset,
@@ -1148,8 +1117,7 @@ function renderResults(data) {
             label: function(ctx) {
               if (ctx.dataset.label === 'Zone means') {
                 var zone = ctx.raw.zone || (ctx.dataIndex + 1)
-                var sdStr = ctx.raw.sd_cpi ? '  SD±' + ctx.raw.sd_cpi.toFixed(3) : ''
-                return 'Z' + zone + '  SHPI=' + ctx.raw.x.toFixed(3) + '  CPI=' + ctx.raw.y.toFixed(3) + sdStr
+                return 'Z' + zone + '  SHPI=' + ctx.raw.x.toFixed(3) + '  CPI=' + ctx.raw.y.toFixed(3)
               }
               return null
             }
@@ -2317,7 +2285,7 @@ function openChartFs_(id) {
   // Use requestAnimationFrame so the overlay is painted and canvas dimensions are set before Chart.js renders
   requestAnimationFrame(function() {
     // For the scatter chart, include the errBars plugin so SE bars render in fullscreen too
-    var fsPluginsList = id === 'shpiCpiScatter' ? [scatterSdBarsPlugin_] : []
+    var fsPluginsList = []
     chartFsInstances[id] = new Chart(canvas.getContext('2d'), {
       type: src.config.type,
       data: src.config.data,
