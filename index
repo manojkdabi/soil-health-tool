@@ -184,8 +184,8 @@ canvas{display:block}
   <div class="hdr-logo">SH</div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
-    <span class="ver-pill ver-pill-be">BE1.0.11</span>
-    <span class="ver-pill ver-pill-fe">FE1.0.13</span>
+    <span class="ver-pill ver-pill-be">BE1.1.0</span>
+    <span class="ver-pill ver-pill-fe">FE1.1.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -399,6 +399,25 @@ function formatPixelCount(px) {
   return px >= 1000 ? (px / 1000).toFixed(1) + 'k' : String(Math.round(px))
 }
 
+function percentile_(arr, p) {
+  // arr must be sorted ascending
+  var idx = (p / 100) * (arr.length - 1)
+  var lo  = Math.floor(idx)
+  var hi  = Math.ceil(idx)
+  if (lo === hi) return arr[lo]
+  return arr[lo] + (arr[hi] - arr[lo]) * (idx - lo)
+}
+
+function pearson_(xs, ys) {
+  var n  = xs.length
+  var mx = xs.reduce(function(a, b) { return a + b }, 0) / n
+  var my = ys.reduce(function(a, b) { return a + b }, 0) / n
+  var cov = xs.reduce(function(s, x, i) { return s + (x - mx) * (ys[i] - my) }, 0)
+  var sdx = Math.sqrt(xs.reduce(function(s, x) { return s + (x - mx) * (x - mx) }, 0))
+  var sdy = Math.sqrt(ys.reduce(function(s, y) { return s + (y - my) * (y - my) }, 0))
+  return (sdx > 0 && sdy > 0) ? cov / (sdx * sdy) : 0
+}
+
 // ── Map init ──────────────────────────────────────────────────
 const map = L.map('map', { center: [20.5, 78.9], zoom: 5 })
 // Base layers
@@ -586,8 +605,8 @@ function runAnalysis() {
   if (yearEnd <= yearStart) { alert('Year end must be after year start.'); return }
   if (isNaN(resolution) || resolution < 10 || resolution > 1000) { alert('Resolution must be between 10 and 1000 metres.'); return }
 
-  showOverlay(true, 'Connecting to Sentinel Hub...')
-  setProgress(true, 10, 'Fetching bare-soil composite (Track A)...')
+  showOverlay(true, 'Fetching satellite archive (all months, all years)...')
+  setProgress(true, 10, 'Fetching satellite archive (all months, all years)...')
   document.getElementById('runBtn').disabled = true
   document.getElementById('results').classList.remove('show')
 
@@ -598,11 +617,11 @@ function runAnalysis() {
   const timer = setInterval(() => {
     pct = Math.min(pct + 4, 88)
     const msgs = [
-      'Fetching bare-soil composite (Track A)...',
-      'Fetching peak-crop NDVI (Track B)...',
-      'Fetching peak-crop NDVI per zone (Track B)...',
-      'Computing SHPI & CPI...',
-      'Classifying zones...',
+      'Fetching satellite archive (all months, all years)...',
+      'Computing bare soil composite per pixel...',
+      'Computing crop performance per pixel...',
+      'Decoding SHPI and CPI raster...',
+      'Classifying zones and computing statistics...',
       'Running validation...',
     ]
     const idx = Math.min(Math.floor((pct - 10) / 13), msgs.length - 1)
@@ -614,21 +633,14 @@ function runAnalysis() {
   google.script.run
     .withSuccessHandler(data => {
       clearInterval(timer)
-      setProgress(true, 100, 'Complete!')
-      showOverlay(false)
+      setProgress(true, 95, 'Decoding SHPI and CPI raster...')
+      showOverlay(true, 'Decoding SHPI and CPI raster...')
       document.getElementById('runBtn').disabled = false
       if (data.success) {
-        lastResult = data
-        // Cache result for current ROI (if it has a library ID)
-        if (currentRoiId) {
-          var cache = loadResultsCache_()
-          cache[currentRoiId] = data
-          saveResultsCache_(cache)
-          renderLibraryPanel_()
-          maybeShowCompareSection_()
-        }
-        renderResults(data)
+        decodeRasterAndAnalyse_(data)
       } else {
+        setProgress(false)
+        showOverlay(false)
         alert('Analysis failed: ' + data.error)
       }
     })
@@ -640,6 +652,203 @@ function runAnalysis() {
       alert('Error: ' + err.message)
     })
     .runAnalysis(params)
+}
+
+function decodeRasterAndAnalyse_(rawData) {
+  var img = new Image()
+  img.onerror = function() {
+    showOverlay(false)
+    setProgress(false)
+    alert('Failed to decode raster image. Please try again.')
+  }
+  img.onload = function() {
+    var W = img.naturalWidth, H = img.naturalHeight
+    var canvas = document.createElement('canvas')
+    canvas.width = W; canvas.height = H
+    var ctx = canvas.getContext('2d')
+    ctx.drawImage(img, 0, 0)
+    var pixels = ctx.getImageData(0, 0, W, H).data
+
+    var shpiPixels = [], ndviPixels = [], pixelPairs = []
+    var zoneMap = new Array(W * H).fill(0)  // zone assignment per pixel (0=invalid)
+
+    for (var i = 0; i < W * H; i++) {
+      var R = pixels[i * 4]     // shpiBand
+      var G = pixels[i * 4 + 1] // ndviBand
+      var B = pixels[i * 4 + 2] // mask
+      if (B === 0) continue     // invalid pixel
+      var shpi = R === 255 ? null : R / 254
+      var ndvi = G === 255 ? null : G / 254
+      if (shpi !== null) shpiPixels.push({ idx: i, val: shpi })
+      if (ndvi !== null) ndviPixels.push({ idx: i, val: ndvi })
+      if (shpi !== null && ndvi !== null) pixelPairs.push({ idx: i, shpi: shpi, ndvi: ndvi })
+    }
+
+    // Compute SHPI percentile thresholds from ALL valid SHPI pixels
+    var shpiSorted = shpiPixels.map(function(p) { return p.val }).sort(function(a,b) { return a-b })
+    var p20, p40, p60, p80
+    if (shpiSorted.length >= 5) {
+      p20 = percentile_(shpiSorted, 20)
+      p40 = percentile_(shpiSorted, 40)
+      p60 = percentile_(shpiSorted, 60)
+      p80 = percentile_(shpiSorted, 80)
+    } else {
+      p20 = 0.20; p40 = 0.35; p60 = 0.50; p80 = 0.65
+    }
+    var thresholds = [p20, p40, p60, p80]
+
+    // Assign zones to ALL valid SHPI pixels (for display raster)
+    shpiPixels.forEach(function(p) {
+      var z = p.val < p20 ? 1 : p.val < p40 ? 2 : p.val < p60 ? 3 : p.val < p80 ? 4 : 5
+      zoneMap[p.idx] = z
+    })
+
+    // Zone stats from pixelPairs (pixels with BOTH SHPI and NDVI)
+    var zones = [[], [], [], [], []]
+    pixelPairs.forEach(function(p) {
+      var z = p.shpi < p20 ? 0 : p.shpi < p40 ? 1 : p.shpi < p60 ? 2 : p.shpi < p80 ? 3 : 4
+      zones[z].push(p)
+    })
+
+    function mean_(arr, key) {
+      if (!arr.length) return 0
+      return arr.reduce(function(s, p) { return s + p[key] }, 0) / arr.length
+    }
+    function std_(arr, key, m) {
+      if (arr.length < 2) return 0
+      var variance = arr.reduce(function(s, p) { return s + (p[key] - m) * (p[key] - m) }, 0) / arr.length
+      return Math.sqrt(variance)
+    }
+
+    var zoneStats = zones.map(function(zPairs, idx) {
+      var ms = mean_(zPairs, 'shpi'), mn = mean_(zPairs, 'ndvi')
+      return {
+        zone:        idx + 1,
+        label:       'Zone ' + (idx + 1),
+        pixel_count: zPairs.length,
+        mean_shpi:   Math.round(ms * 1000) / 1000,
+        std_shpi:    Math.round(std_(zPairs, 'shpi', ms) * 1000) / 1000,
+        mean_cpi:    Math.round(mn * 1000) / 1000,
+        std_cpi:     Math.round(std_(zPairs, 'ndvi', mn) * 1000) / 1000,
+        data_source: 'real'
+      }
+    })
+
+    var xs = zoneStats.map(function(z) { return z.mean_shpi })
+    var ys = zoneStats.map(function(z) { return z.mean_cpi })
+    var pr = pearson_(xs, ys)
+    var r2 = Math.round(pr * pr * 1000) / 1000
+    pr = Math.round(pr * 1000) / 1000
+    var mono = ys.every(function(v, i) { return i === 0 || v >= ys[i - 1] })
+    var ratio = ys[0] > 0.01 ? Math.round(ys[4] / ys[0] * 100) / 100 : null
+
+    // Generate display rasters using offscreen canvases
+    var dispCanvas = document.createElement('canvas')
+    dispCanvas.width = W; dispCanvas.height = H
+    var dctx = dispCanvas.getContext('2d')
+    var dispData = dctx.createImageData(W, H)
+    var dd = dispData.data
+
+    var shpiCanvas = document.createElement('canvas')
+    shpiCanvas.width = W; shpiCanvas.height = H
+    var sctx = shpiCanvas.getContext('2d')
+    var shpiImgData = sctx.createImageData(W, H)
+    var sd = shpiImgData.data
+    var shpiStops = [[215,48,39],[252,141,89],[254,224,139],[145,207,96],[26,152,80]]
+
+    var cpiCanvas = document.createElement('canvas')
+    cpiCanvas.width = W; cpiCanvas.height = H
+    var cctx = cpiCanvas.getContext('2d')
+    var cpiImgData = cctx.createImageData(W, H)
+    var cd = cpiImgData.data
+    var cpiStops = [[63,0,125],[116,43,164],[153,112,171],[211,189,213],[217,240,211],[127,191,123],[27,120,55]]
+
+    function hexToRgbArr_(hex) {
+      var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16)
+      return [r,g,b]
+    }
+
+    for (var j = 0; j < W * H; j++) {
+      var R2 = pixels[j * 4], G2 = pixels[j * 4 + 1], B2 = pixels[j * 4 + 2]
+      var base = j * 4
+
+      // Zone display raster
+      var zn = zoneMap[j]
+      if (zn > 0) {
+        var zc = hexToRgbArr_(ZONE_COLORS[zn - 1])
+        dd[base] = zc[0]; dd[base+1] = zc[1]; dd[base+2] = zc[2]; dd[base+3] = 180
+      } else {
+        dd[base] = 0; dd[base+1] = 0; dd[base+2] = 0; dd[base+3] = 0
+      }
+
+      // SHPI gradient raster
+      if (B2 > 0 && R2 !== 255) {
+        var sv = R2 / 254, st = sv * 4
+        var si = Math.min(3, Math.floor(st)), sf = st - si
+        sd[base]   = Math.round(shpiStops[si][0] + (shpiStops[si+1][0] - shpiStops[si][0]) * sf)
+        sd[base+1] = Math.round(shpiStops[si][1] + (shpiStops[si+1][1] - shpiStops[si][1]) * sf)
+        sd[base+2] = Math.round(shpiStops[si][2] + (shpiStops[si+1][2] - shpiStops[si][2]) * sf)
+        sd[base+3] = 200
+      } else {
+        sd[base] = 0; sd[base+1] = 0; sd[base+2] = 0; sd[base+3] = 0
+      }
+
+      // CPI gradient raster: normalize NDVI 0.4→1.0 to 0→1, clamp below 0.4 to lowest colour
+      if (B2 > 0 && G2 !== 255) {
+        var cv = G2 / 254, cn = Math.max(0, Math.min(1, (cv - 0.4) / 0.6))
+        var cseg = cn * (cpiStops.length - 1)
+        var ci = Math.min(cpiStops.length - 2, Math.floor(cseg)), cf = cseg - ci
+        cd[base]   = Math.round(cpiStops[ci][0] + (cpiStops[ci+1][0] - cpiStops[ci][0]) * cf)
+        cd[base+1] = Math.round(cpiStops[ci][1] + (cpiStops[ci+1][1] - cpiStops[ci][1]) * cf)
+        cd[base+2] = Math.round(cpiStops[ci][2] + (cpiStops[ci+1][2] - cpiStops[ci][2]) * cf)
+        cd[base+3] = 200
+      } else {
+        cd[base] = 0; cd[base+1] = 0; cd[base+2] = 0; cd[base+3] = 0
+      }
+    }
+
+    dctx.putImageData(dispData, 0, 0)
+    sctx.putImageData(shpiImgData, 0, 0)
+    cctx.putImageData(cpiImgData, 0, 0)
+
+    function canvasToB64_(c) {
+      var dataUrl = c.toDataURL('image/png')
+      return dataUrl.replace(/^data:image\/png;base64,/, '')
+    }
+
+    var result = {
+      success:        true,
+      bbox:           rawData.bbox,
+      zone_stats:     zoneStats,
+      validation: {
+        pearson_r:       pr,
+        r_squared:       r2,
+        is_monotonic:    mono,
+        cpi_ratio:       ratio,
+        confirmed:       pr > 0.60 && mono,
+        n_zones:         5,
+        data_source:     'real',
+        shpi_thresholds: thresholds
+      },
+      raster_png_b64: canvasToB64_(dispCanvas),
+      shpi_png_b64:   canvasToB64_(shpiCanvas),
+      cpi_png_b64:    canvasToB64_(cpiCanvas),
+      meta: Object.assign({}, rawData.meta, { width: W, height: H })
+    }
+
+    lastResult = result
+    if (currentRoiId) {
+      var cache = loadResultsCache_()
+      cache[currentRoiId] = result
+      saveResultsCache_(cache)
+      renderLibraryPanel_()
+      maybeShowCompareSection_()
+    }
+    renderResults(result)
+    setProgress(true, 100, 'Complete!')
+    setTimeout(function() { showOverlay(false); setProgress(false) }, 500)
+  }
+  img.src = 'data:image/png;base64,' + rawData.raster_png_b64
 }
 
 // ── Render results ────────────────────────────────────────────
