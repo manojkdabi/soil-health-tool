@@ -1100,7 +1100,7 @@ function renderResults(data) {
 
   // Inline Chart.js plugin that draws vertical SE error bars — uses module-level scatterErrBarsPlugin_
 
-  if (scatterChart) scatterChart.destroy()
+  if (scatterChart) { scatterChart.destroy(); scatterChart = null }
   const sctx = document.getElementById('shpiCpiScatter').getContext('2d')
   scatterChart = new Chart(sctx, {
     plugins: [scatterErrBarsPlugin_],
@@ -1150,10 +1150,10 @@ function renderResults(data) {
         }
       }
     }
-  })
+  });
 
   // ── CI table: zone stats vs Zone 1, with Welch t-test p-value and Cohen's d ──
-  (function() {
+  ;(function() {
     // Standard normal CDF approximation (Horner's method, accurate to ~1e-7).
     // Using normal approximation for the t-distribution — valid here because each
     // decile zone contains hundreds–thousands of pixels (n >> 30 in all practical cases).
