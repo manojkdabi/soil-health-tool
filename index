@@ -330,7 +330,7 @@ canvas{display:block}
         <button id="scatterTabBins"  class="cmp-tab active" onclick="setScatterViewMode_('bins')"   style="font-size:9px;padding:2px 7px">Zone means</button>
         <button id="scatterTabPx"    class="cmp-tab"        onclick="setScatterViewMode_('pixels')" style="font-size:9px;padding:2px 7px">All pixels</button>
         <label id="outlierToggleWrap" style="display:none;align-items:center;gap:3px;font-size:9px;color:#9FE1CB;cursor:pointer;margin-left:4px">
-          <input type="checkbox" id="outlierToggle" onchange="renderScatterPlot_(lastResult)" style="cursor:pointer">Filter outliers (IQR)</label>
+          <input type="checkbox" id="outlierToggle" onchange="renderScatterPlot_(lastResult)" style="cursor:pointer">Clip extremes (2–98 %ile)</label>
       </div>
       <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
       <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
@@ -1933,18 +1933,19 @@ function olsLine_(pts) {
            lineData: [{ x: xMin, y: slope * xMin + intercept }, { x: xMax, y: slope * xMax + intercept }] }
 }
 
-// IQR-based outlier filter — removes points where x or y is beyond Q1-1.0*IQR / Q3+1.0*IQR
+// Percentile-clip outlier filter — removes points outside the 2nd–98th percentile on each axis
 function iqrFilter_(pts) {
-  function bounds_(vals) {
+  function pct_(vals, p) {
     var s = vals.slice().sort(function(a, b) { return a - b })
-    var q1 = s[Math.floor(s.length * 0.25)], q3 = s[Math.floor(s.length * 0.75)]
-    var iqr = q3 - q1
-    return { lo: q1 - 1.0 * iqr, hi: q3 + 1.0 * iqr }
+    var idx = Math.min(s.length - 1, Math.floor(s.length * p))
+    return s[idx]
   }
-  var bx = bounds_(pts.map(function(p) { return p.x }))
-  var by = bounds_(pts.map(function(p) { return p.y }))
+  var xs = pts.map(function(p) { return p.x })
+  var ys = pts.map(function(p) { return p.y })
+  var xLo = pct_(xs, 0.02), xHi = pct_(xs, 0.98)
+  var yLo = pct_(ys, 0.02), yHi = pct_(ys, 0.98)
   return pts.filter(function(p) {
-    return p.x >= bx.lo && p.x <= bx.hi && p.y >= by.lo && p.y <= by.hi
+    return p.x >= xLo && p.x <= xHi && p.y >= yLo && p.y <= yHi
   })
 }
 
