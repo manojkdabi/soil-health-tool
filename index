@@ -1933,13 +1933,13 @@ function olsLine_(pts) {
            lineData: [{ x: xMin, y: slope * xMin + intercept }, { x: xMax, y: slope * xMax + intercept }] }
 }
 
-// IQR-based outlier filter — removes points where x or y is beyond Q1-1.5*IQR / Q3+1.5*IQR
+// IQR-based outlier filter — removes points where x or y is beyond Q1-1.0*IQR / Q3+1.0*IQR
 function iqrFilter_(pts) {
   function bounds_(vals) {
     var s = vals.slice().sort(function(a, b) { return a - b })
     var q1 = s[Math.floor(s.length * 0.25)], q3 = s[Math.floor(s.length * 0.75)]
     var iqr = q3 - q1
-    return { lo: q1 - 1.5 * iqr, hi: q3 + 1.5 * iqr }
+    return { lo: q1 - 1.0 * iqr, hi: q3 + 1.0 * iqr }
   }
   var bx = bounds_(pts.map(function(p) { return p.x }))
   var by = bounds_(pts.map(function(p) { return p.y }))
