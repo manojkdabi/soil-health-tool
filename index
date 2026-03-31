@@ -1934,7 +1934,7 @@ function olsLine_(pts) {
 }
 
 // Percentile-clip outlier filter — removes points outside the 2nd–98th percentile on each axis
-function iqrFilter_(pts) {
+function percentileClip_(pts) {
   function pct_(vals, p) {
     var s = vals.slice().sort(function(a, b) { return a - b })
     var idx = Math.min(s.length - 1, Math.floor(s.length * p))
@@ -2052,7 +2052,7 @@ function renderScatterPlot_(data) {
   // ── All-pixel mode ────────────────────────────────────────────────────────
   var removeOutliers = document.getElementById('outlierToggle') && document.getElementById('outlierToggle').checked
   var totalPx = pixelSample.length
-  var pts = removeOutliers && totalPx > 4 ? iqrFilter_(pixelSample) : pixelSample.slice()
+  var pts = removeOutliers && totalPx > 4 ? percentileClip_(pixelSample) : pixelSample.slice()
   var removedCount = totalPx - pts.length
 
   if (pts.length < 2) {
