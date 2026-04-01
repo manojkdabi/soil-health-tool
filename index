@@ -675,6 +675,49 @@ function runAnalysis() {
     .runAnalysis(params)
 }
 
+// K-means clustering (1D, sorted centroids) — used for supplementary SHPI zoning analytics.
+// vals: array of numbers; k: number of clusters; maxIter: iteration limit.
+// Returns { assignments: number[], centroids: number[] } with clusters sorted by mean (0=lowest).
+function kMeans_(vals, k, maxIter) {
+  var n = vals.length
+  if (n < k) return { assignments: vals.map(function(_, i) { return i % k }), centroids: [] }
+  maxIter = maxIter || 50
+  // Initialise centroids evenly across sorted range
+  var sorted = vals.slice().sort(function(a, b) { return a - b })
+  var step = Math.floor(n / k)
+  var centroids = []
+  for (var ci = 0; ci < k; ci++) {
+    centroids.push(sorted[Math.min(Math.round((ci + 0.5) * step), n - 1)])
+  }
+  var assignments = new Array(n).fill(0)
+  for (var iter = 0; iter < maxIter; iter++) {
+    var changed = false
+    // Assignment step: each value goes to nearest centroid
+    for (var i = 0; i < n; i++) {
+      var best = 0, bestD = Math.abs(vals[i] - centroids[0])
+      for (var c = 1; c < k; c++) {
+        var d = Math.abs(vals[i] - centroids[c])
+        if (d < bestD) { bestD = d; best = c }
+      }
+      if (assignments[i] !== best) { assignments[i] = best; changed = true }
+    }
+    if (!changed) break
+    // Update step: recompute centroid means
+    var sums = new Array(k).fill(0), counts = new Array(k).fill(0)
+    for (var i = 0; i < n; i++) { sums[assignments[i]] += vals[i]; counts[assignments[i]]++ }
+    for (var c = 0; c < k; c++) { if (counts[c] > 0) centroids[c] = sums[c] / counts[c] }
+  }
+  // Remap cluster labels so cluster 0 = lowest mean SHPI
+  var order = centroids.map(function(v, i) { return [v, i] })
+    .sort(function(a, b) { return a[0] - b[0] })
+  var remap = new Array(k)
+  order.forEach(function(pair, newIdx) { remap[pair[1]] = newIdx })
+  return {
+    assignments: assignments.map(function(c) { return remap[c] }),
+    centroids:   order.map(function(pair) { return Math.round(pair[0] * 1000) / 1000 })
+  }
+}
+
 // Shared pixel-decoding helper — calls callback(result) when done, callback(null) on error.
 // Does NOT update any UI. Used by both single-run and batch-run paths.
 function decodeRasterToResult_(rawData, callback) {
@@ -688,19 +731,20 @@ function decodeRasterToResult_(rawData, callback) {
     ctx.drawImage(img, 0, 0)
     var pixels = ctx.getImageData(0, 0, W, H).data
 
-    var shpiPixels = [], ndviPixels = [], pixelPairs = []
+    var shpiPixels = [], cpiPixels = [], pixelPairs = []
     var zoneMap = new Array(W * H).fill(0)  // zone assignment per pixel (0=invalid)
 
     for (var i = 0; i < W * H; i++) {
-      var R = pixels[i * 4]     // shpiBand
-      var G = pixels[i * 4 + 1] // ndviBand
-      var B = pixels[i * 4 + 2] // mask
-      if (B === 0) continue     // invalid pixel
-      var shpi = R === 255 ? null : R / 254
-      var ndvi = G === 255 ? null : G / 254
+      var R = pixels[i * 4]     // SHPI × 254  (valid when B > 0)
+      var G = pixels[i * 4 + 1] // CPI  × 254  (valid when A > 0)
+      var B = pixels[i * 4 + 2] // soil observation count  (0 = no bare-soil obs)
+      var A = pixels[i * 4 + 3] // crop observation count  (0 = no crop obs)
+      if (B === 0 && A === 0) continue  // completely invalid / nodata pixel
+      var shpi = B > 0 ? R / 254 : null  // SHPI valid only if soil obs present
+      var cpi  = A > 0 ? G / 254 : null  // CPI  valid only if crop obs present
       if (shpi !== null) shpiPixels.push({ idx: i, val: shpi })
-      if (ndvi !== null) ndviPixels.push({ idx: i, val: ndvi })
-      if (shpi !== null && ndvi !== null) pixelPairs.push({ idx: i, shpi: shpi, ndvi: ndvi })
+      if (cpi  !== null) cpiPixels.push({ idx: i, val: cpi })
+      if (shpi !== null && cpi !== null) pixelPairs.push({ idx: i, shpi: shpi, cpi: cpi })
     }
 
     // Compute SHPI percentile thresholds from ALL valid SHPI pixels
@@ -726,7 +770,7 @@ function decodeRasterToResult_(rawData, callback) {
       zoneMap[p.idx] = assignZone_(p.val)
     })
 
-    // Zone stats from pixelPairs (pixels with BOTH SHPI and NDVI)
+    // Zone stats from pixelPairs (pixels with BOTH SHPI and CPI)
     var zones = [[],[],[],[],[],[],[],[],[],[]]
     pixelPairs.forEach(function(p) {
       zones[assignZone_(p.shpi) - 1].push(p)
@@ -743,15 +787,18 @@ function decodeRasterToResult_(rawData, callback) {
     }
 
     var zoneStats = zones.map(function(zPairs, idx) {
-      var ms = mean_(zPairs, 'shpi'), mn = mean_(zPairs, 'ndvi')
+      var ms = mean_(zPairs, 'shpi'), mn = mean_(zPairs, 'cpi')
+      var ss = std_(zPairs, 'shpi', ms), sn = std_(zPairs, 'cpi', mn)
       return {
         zone:        idx + 1,
         label:       'Zone ' + (idx + 1),
         pixel_count: zPairs.length,
         mean_shpi:   Math.round(ms * 1000) / 1000,
-        std_shpi:    Math.round(std_(zPairs, 'shpi', ms) * 1000) / 1000,
+        std_shpi:    Math.round(ss * 1000) / 1000,
+        cv_shpi:     Math.round((ms > 0 ? ss / ms : 0) * 1000) / 1000,
         mean_cpi:    Math.round(mn * 1000) / 1000,
-        std_cpi:     Math.round(std_(zPairs, 'ndvi', mn) * 1000) / 1000,
+        std_cpi:     Math.round(sn * 1000) / 1000,
+        cv_cpi:      Math.round((mn > 0 ? sn / mn : 0) * 1000) / 1000,
         data_source: 'real'
       }
     })
@@ -764,7 +811,7 @@ function decodeRasterToResult_(rawData, callback) {
       for (var ki = 0; ki < pixelPairs.length; ki += step) {
         var pp = pixelPairs[ki]
         var pz = assignZone_(pp.shpi) - 1
-        pixelSample.push({ x: pp.shpi, y: pp.ndvi, z: pz })
+        pixelSample.push({ x: pp.shpi, y: pp.cpi, z: pz })
       }
     }
 
@@ -778,6 +825,26 @@ function decodeRasterToResult_(rawData, callback) {
     var zoneMeanCpi = zoneStats.map(function(zs) { return zs.mean_cpi })
     var mono = zoneMeanCpi.every(function(v, i) { return i === 0 || v >= zoneMeanCpi[i - 1] })
     var ratio = zoneMeanCpi[0] > 0.01 ? Math.round(zoneMeanCpi[9] / zoneMeanCpi[0] * 100) / 100 : null
+
+    // K-means k=5 clustering on SHPI pixel values (supplementary analytics)
+    var kmeans5 = null
+    if (shpiPixels.length >= 5) {
+      var shpiVals = shpiPixels.map(function(p) { return p.val })
+      var km = kMeans_(shpiVals, 5, 50)
+      var km5bins = [[],[],[],[],[]]
+      shpiPixels.forEach(function(p, i) { km5bins[km.assignments[i]].push(p.val) })
+      kmeans5 = {
+        centroids: km.centroids,
+        zones: km5bins.map(function(vals, ci) {
+          var m = vals.length ? vals.reduce(function(s, v) { return s + v }, 0) / vals.length : 0
+          var sd2 = vals.length > 1 ? Math.sqrt(vals.reduce(function(s, v) { return s + (v-m)*(v-m) }, 0) / vals.length) : 0
+          return { cluster: ci + 1, count: vals.length,
+            mean_shpi: Math.round(m * 1000) / 1000,
+            std_shpi:  Math.round(sd2 * 1000) / 1000,
+            cv_shpi:   Math.round((m > 0 ? sd2 / m : 0) * 1000) / 1000 }
+        })
+      }
+    }
 
     // Generate display rasters using offscreen canvases
     var dispCanvas = document.createElement('canvas')
@@ -806,7 +873,7 @@ function decodeRasterToResult_(rawData, callback) {
     }
 
     for (var j = 0; j < W * H; j++) {
-      var R2 = pixels[j * 4], G2 = pixels[j * 4 + 1], B2 = pixels[j * 4 + 2]
+      var R2 = pixels[j * 4], G2 = pixels[j * 4 + 1], B2 = pixels[j * 4 + 2], A2 = pixels[j * 4 + 3]
       var base = j * 4
 
       // Zone display raster
@@ -818,8 +885,8 @@ function decodeRasterToResult_(rawData, callback) {
         dd[base] = 0; dd[base+1] = 0; dd[base+2] = 0; dd[base+3] = 0
       }
 
-      // SHPI gradient raster
-      if (B2 > 0 && R2 !== 255) {
+      // SHPI gradient raster: valid when soilCount (B channel) > 0
+      if (B2 > 0) {
         var sv = R2 / 254, st = sv * 4
         var si = Math.min(3, Math.floor(st)), sf = st - si
         sd[base]   = Math.round(shpiStops[si][0] + (shpiStops[si+1][0] - shpiStops[si][0]) * sf)
@@ -830,9 +897,11 @@ function decodeRasterToResult_(rawData, callback) {
         sd[base] = 0; sd[base+1] = 0; sd[base+2] = 0; sd[base+3] = 0
       }
 
-      // CPI gradient raster: normalize NDVI 0.4→1.0 to 0→1, clamp below 0.4 to lowest colour
-      if (B2 > 0 && G2 !== 255) {
-        var cv = G2 / 254, cn = Math.max(0, Math.min(1, (cv - 0.4) / 0.6))
+      // CPI gradient raster: valid when cropCount (A channel) > 0
+      // CPI is already normalised to [0,1] by the evalscript composite formula,
+      // so no sub-range rescaling (unlike old raw-NDVI 0.4→1.0 mapping).
+      if (A2 > 0) {
+        var cv = G2 / 254, cn = Math.max(0, Math.min(1, cv))
         var cseg = cn * (cpiStops.length - 1)
         var ci = Math.min(cpiStops.length - 2, Math.floor(cseg)), cf = cseg - ci
         cd[base]   = Math.round(cpiStops[ci][0] + (cpiStops[ci+1][0] - cpiStops[ci][0]) * cf)
@@ -858,6 +927,7 @@ function decodeRasterToResult_(rawData, callback) {
       bbox:           rawData.bbox,
       zone_stats:     zoneStats,
       pixel_sample:   pixelSample,
+      kmeans5:        kmeans5,
       validation: {
         pearson_r:       pr,
         r_squared:       r2,
