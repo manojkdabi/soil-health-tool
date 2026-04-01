@@ -326,15 +326,10 @@ canvas{display:block}
         <tbody id="zoneTbody"></tbody>
       </table>
       <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:6px">SHPI vs CPI correlation</h3><button class="chart-expand-btn" onclick="openChartFs_('shpiCpiScatter')" title="Fullscreen">⛶</button></div>
-      <div style="display:flex;gap:4px;margin-bottom:4px">
-        <button id="scatterTabBins"  class="cmp-tab active" onclick="setScatterViewMode_('bins')"   style="font-size:9px;padding:2px 7px">Zone means</button>
-        <button id="scatterTabPx"    class="cmp-tab"        onclick="setScatterViewMode_('pixels')" style="font-size:9px;padding:2px 7px">All pixels</button>
-        <label id="outlierToggleWrap" style="display:none;align-items:center;gap:3px;font-size:9px;color:#9FE1CB;cursor:pointer;margin-left:4px">
-          <input type="checkbox" id="outlierToggle" onchange="renderScatterPlot_(lastResult)" style="cursor:pointer">Clip extremes (2–98 %ile)</label>
-      </div>
       <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
       <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
-      <div id="corrSummary" style="margin:3px 0 5px;font-size:9px;color:#9FE1CB;text-align:center"></div>
+      <div id="corrSummary" style="margin:3px 0 2px;font-size:9px;color:#9FE1CB;text-align:center"></div>
+      <div id="scatterOutlierNote" style="text-align:center;font-size:8px;color:#6FA898;margin-bottom:4px"></div>
       <div id="results-map-ctrls">
         <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
         <input type="range" id="rasterOpacity" min="10" max="100" value="80" oninput="updateRasterOpacity_(this.value, 'rasterOpacityVal', false)">
@@ -362,6 +357,7 @@ canvas{display:block}
       </div>
       <div class="cmp-chart-wrap" style="height:150px"><canvas id="cmpScatterChart"></canvas></div>
       <div id="cmpScatterLabel" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
+      <div id="cmpScatterOutlierNote" style="text-align:center;font-size:8px;color:#6FA898;margin-bottom:4px"></div>
     </div>
 
   </div>
@@ -1908,10 +1904,13 @@ function renderCompareView_() {
 
 function setScatterViewMode_(mode) {
   scatterViewMode = mode
-  document.getElementById('scatterTabBins').classList.toggle('active', mode === 'bins')
-  document.getElementById('scatterTabPx').classList.toggle('active', mode === 'pixels')
-  document.getElementById('outlierToggleWrap').style.display = mode === 'pixels' ? 'flex' : 'none'
-  if (lastResult) renderScatterPlot_(lastResult)
+  var bfsEl = document.getElementById('scatterTabBins-fs')
+  var pfsEl = document.getElementById('scatterTabPx-fs')
+  var owfsEl = document.getElementById('outlierToggleWrap-fs')
+  if (bfsEl) bfsEl.classList.toggle('active', mode === 'bins')
+  if (pfsEl) pfsEl.classList.toggle('active', mode === 'pixels')
+  if (owfsEl) owfsEl.style.display = mode === 'pixels' ? 'flex' : 'inline-flex'
+  if (lastResult) renderScatterPlotFs_(lastResult)
 }
 
 // Shared OLS regression helper — works on arrays of {x, y} objects; returns slope, intercept, R², and line endpoints
@@ -1933,44 +1932,169 @@ function olsLine_(pts) {
            lineData: [{ x: xMin, y: slope * xMin + intercept }, { x: xMax, y: slope * xMax + intercept }] }
 }
 
-// Percentile-clip outlier filter — removes points outside the 2nd–98th percentile on each axis
-function percentileClip_(pts) {
-  function pct_(vals, p) {
-    var s = vals.slice().sort(function(a, b) { return a - b })
-    var idx = Math.min(s.length - 1, Math.floor(s.length * p))
-    return s[idx]
-  }
-  var xs = pts.map(function(p) { return p.x })
-  var ys = pts.map(function(p) { return p.y })
-  var xLo = pct_(xs, 0.02), xHi = pct_(xs, 0.98)
-  var yLo = pct_(ys, 0.02), yHi = pct_(ys, 0.98)
-  return pts.filter(function(p) {
-    return p.x >= xLo && p.x <= xHi && p.y >= yLo && p.y <= yHi
+// Per-zone (bin-level) Tukey 1.5×IQR outlier filter on CPI (y-axis) within each zone
+function binIqrFilter_(pts) {
+  var groups = {}
+  pts.forEach(function(p) {
+    var zi = p.z != null ? p.z : 0
+    if (!groups[zi]) groups[zi] = []
+    groups[zi].push(p)
   })
+  var kept = []
+  Object.keys(groups).forEach(function(zi) {
+    var g = groups[zi]
+    if (g.length <= 4) { g.forEach(function(p) { kept.push(p) }); return }
+    var ys = g.map(function(p) { return p.y }).sort(function(a, b) { return a - b })
+    var q1 = ys[Math.floor(ys.length * 0.25)]
+    var q3 = ys[Math.floor(ys.length * 0.75)]
+    var iqr = q3 - q1
+    var lo = q1 - 1.5 * iqr, hi = q3 + 1.5 * iqr
+    g.forEach(function(p) { if (p.y >= lo && p.y <= hi) kept.push(p) })
+  })
+  return kept
+}
+
+// Zone-level Tukey 1.5×IQR filter — removes outlier zone-mean points from a zone_stats array
+function zoneIqrFilter_(zWithData) {
+  if (zWithData.length <= 4) return zWithData.slice()
+  var ys = zWithData.map(function(zs) { return zs.mean_cpi }).sort(function(a, b) { return a - b })
+  var q1 = ys[Math.floor(ys.length * 0.25)]
+  var q3 = ys[Math.floor(ys.length * 0.75)]
+  var iqr = q3 - q1
+  var lo = q1 - 1.5 * iqr, hi = q3 + 1.5 * iqr
+  return zWithData.filter(function(zs) { return zs.mean_cpi >= lo && zs.mean_cpi <= hi })
 }
 
 function renderScatterPlot_(data) {
   if (!data) return
   var z = data.zone_stats
-  var pixelSample = data.pixel_sample || []
+  // Always bins mode in minimized chart — apply zone-level IQR filter always
+  var zWithData0 = z.filter(function(zs) { return zs.pixel_count > 0 })
+  var zWithData = zoneIqrFilter_(zWithData0)
+  var removedZones = zWithData0.length - zWithData.length
+  var bPts = zWithData.map(function(zs) { return { x: zs.mean_shpi, y: zs.mean_cpi } })
+  var reg = olsLine_(bPts)
+  var n = bPts.length
+  var intSign = reg.intercept >= 0 ? ' + ' : ' - '
+  document.getElementById('scatterEq').textContent =
+    'y = ' + reg.slope.toFixed(3) + 'x' + intSign + Math.abs(reg.intercept).toFixed(3) +
+    '   R² = ' + reg.r2.toFixed(3) + '  n=' + n + ' zones'
 
-  // ── Zone-means bin mode ───────────────────────────────────────────────────
+  // Spearman ρ across zone means
+  ;(function() {
+    if (n < 3) {
+      document.getElementById('corrSummary').textContent = 'n < 3 zones — correlation not computed'
+      return
+    }
+    var scatterX = bPts.map(function(p) { return p.x }), scatterY = bPts.map(function(p) { return p.y })
+    function rankAvg_(arr) {
+      var sorted = arr.slice().sort(function(a, b) { return a - b })
+      return arr.map(function(v) {
+        var idx = []
+        sorted.forEach(function(s, i) { if (s === v) idx.push(i + 1) })
+        return idx.reduce(function(a, b) { return a + b }, 0) / idx.length
+      })
+    }
+    var rx = rankAvg_(scatterX), ry = rankAvg_(scatterY)
+    var rmx = rx.reduce(function(a, b) { return a + b }, 0) / n
+    var rmy = ry.reduce(function(a, b) { return a + b }, 0) / n
+    var rNum = rx.reduce(function(a, v, i) { return a + (v - rmx) * (ry[i] - rmy) }, 0)
+    var rdx = Math.sqrt(rx.reduce(function(a, v) { return a + (v - rmx) * (v - rmx) }, 0))
+    var rdy = Math.sqrt(ry.reduce(function(a, v) { return a + (v - rmy) * (v - rmy) }, 0))
+    var rho = (rdx * rdy > 0) ? rNum / (rdx * rdy) : 0
+    var tStat = rho * Math.sqrt(n - 2) / Math.sqrt(Math.max(1e-15, 1 - rho * rho))
+    function normCdf_(x) {
+      var t2 = 1 / (1 + 0.2316419 * Math.abs(x))
+      var d = 0.3989423 * Math.exp(-x * x / 2)
+      var p = d * t2 * (0.3193815 + t2 * (-0.3565638 + t2 * (1.7814779 + t2 * (-1.8212560 + t2 * 1.3302744))))
+      return x > 0 ? 1 - p : p
+    }
+    var pVal = 2 * normCdf_(-Math.abs(tStat))
+    var pStr = pVal < 0.001 ? 'p < 0.001' : 'p = ' + pVal.toFixed(3)
+    document.getElementById('corrSummary').textContent =
+      'Spearman ρ = ' + rho.toFixed(3) + ',  ' + pStr + ',  R² = ' + reg.r2.toFixed(3)
+  })()
+
+  var noteEl = document.getElementById('scatterOutlierNote')
+  if (noteEl) noteEl.textContent = removedZones > 0
+    ? 'Outliers removed: Tukey 1.5×IQR on zone-mean CPI (' + removedZones + ' zone' + (removedZones > 1 ? 's' : '') + ' removed)'
+    : 'Outlier filter: Tukey 1.5×IQR on zone-mean CPI (no outliers detected)'
+
+  var zoneBinDataset = {
+    type: 'scatter',
+    label: 'Zone means',
+    data: zWithData.map(function(zs) { return { x: zs.mean_shpi, y: zs.mean_cpi, zone: zs.zone } }),
+    backgroundColor: zWithData.map(function(zs) {
+      var c = hexToRgb_(ZONE_COLORS[Math.max(0, Math.min(ZONE_COLORS.length - 1, zs.zone - 1))])
+      return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.9)'
+    }),
+    borderColor: '#fff',
+    borderWidth: 1,
+    pointRadius: 7,
+    pointHoverRadius: 9,
+    pointStyle: 'circle',
+    order: 0,
+  }
+
+  if (scatterChart) { scatterChart.destroy(); scatterChart = null }
+  var sctx = document.getElementById('shpiCpiScatter').getContext('2d')
+  scatterChart = new Chart(sctx, {
+    data: {
+      datasets: [
+        zoneBinDataset,
+        { type: 'line', label: 'Fit', data: reg.lineData,
+          borderColor: '#F5A623', borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: function(ctx) {
+          if (ctx.dataset.label === 'Zone means') {
+            var zone = ctx.raw.zone || (ctx.dataIndex + 1)
+            return 'Z' + zone + '  SHPI=' + ctx.raw.x.toFixed(3) + '  CPI=' + ctx.raw.y.toFixed(3)
+          }
+          return null
+        }}}
+      },
+      scales: {
+        x: { title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 9 } },
+             ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } },
+        y: { title: { display: true, text: 'CPI',  color: '#9FE1CB', font: { size: 9 } },
+             ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } }
+      }
+    }
+  });
+}
+
+function renderScatterPlotFs_(data) {
+  if (!data) return
+  var overlay = document.getElementById('chartFs-shpiCpiScatter')
+  if (!overlay || !overlay.classList.contains('open')) return
+  var canvas = document.getElementById('shpiCpiScatter-fs')
+  if (!canvas) return
+  if (chartFsInstances['shpiCpiScatter']) { chartFsInstances['shpiCpiScatter'].destroy(); chartFsInstances['shpiCpiScatter'] = null }
+
+  var z = data.zone_stats
+  var filterOn = document.getElementById('outlierToggleFs') && document.getElementById('outlierToggleFs').checked
+
   if (scatterViewMode === 'bins') {
-    var zWithData = z.filter(function(zs) { return zs.pixel_count > 0 })
+    var zWithData0 = z.filter(function(zs) { return zs.pixel_count > 0 })
+    var zWithData = filterOn ? zoneIqrFilter_(zWithData0) : zWithData0
+    var removedZones = zWithData0.length - zWithData.length
     var bPts = zWithData.map(function(zs) { return { x: zs.mean_shpi, y: zs.mean_cpi } })
     var reg = olsLine_(bPts)
     var n = bPts.length
     var intSign = reg.intercept >= 0 ? ' + ' : ' - '
-    document.getElementById('scatterEq').textContent =
-      'y = ' + reg.slope.toFixed(3) + 'x' + intSign + Math.abs(reg.intercept).toFixed(3) +
+    var eqEl = document.getElementById('scatterEq-fs')
+    if (eqEl) eqEl.textContent = 'y = ' + reg.slope.toFixed(3) + 'x' + intSign + Math.abs(reg.intercept).toFixed(3) +
       '   R² = ' + reg.r2.toFixed(3) + '  n=' + n + ' zones'
 
-    // Spearman ρ across zone means
     ;(function() {
-      if (n < 3) {
-        document.getElementById('corrSummary').textContent = 'n < 3 zones — correlation not computed'
-        return
-      }
+      var csEl = document.getElementById('corrSummary-fs')
+      if (!csEl) return
+      if (n < 3) { csEl.textContent = 'n < 3 zones — correlation not computed'; return }
       var scatterX = bPts.map(function(p) { return p.x }), scatterY = bPts.map(function(p) { return p.y })
       function rankAvg_(arr) {
         var sorted = arr.slice().sort(function(a, b) { return a - b })
@@ -1996,36 +2120,31 @@ function renderScatterPlot_(data) {
       }
       var pVal = 2 * normCdf_(-Math.abs(tStat))
       var pStr = pVal < 0.001 ? 'p < 0.001' : 'p = ' + pVal.toFixed(3)
-      document.getElementById('corrSummary').textContent =
-        'Spearman ρ = ' + rho.toFixed(3) + ',  ' + pStr + ',  R² = ' + reg.r2.toFixed(3)
+      csEl.textContent = 'Spearman ρ = ' + rho.toFixed(3) + ',  ' + pStr + ',  R² = ' + reg.r2.toFixed(3)
     })()
 
+    var noteEl = document.getElementById('scatterOutlierNote-fs')
+    if (noteEl) noteEl.textContent = filterOn
+      ? (removedZones > 0
+          ? 'Outliers removed: Tukey 1.5×IQR on zone-mean CPI (' + removedZones + ' zone' + (removedZones > 1 ? 's' : '') + ' removed)'
+          : 'Outlier filter: Tukey 1.5×IQR on zone-mean CPI (no outliers detected)')
+      : 'No outlier filter applied'
+
     var zoneBinDataset = {
-      type: 'scatter',
-      label: 'Zone means',
+      type: 'scatter', label: 'Zone means',
       data: zWithData.map(function(zs) { return { x: zs.mean_shpi, y: zs.mean_cpi, zone: zs.zone } }),
       backgroundColor: zWithData.map(function(zs) {
         var c = hexToRgb_(ZONE_COLORS[Math.max(0, Math.min(ZONE_COLORS.length - 1, zs.zone - 1))])
         return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.9)'
       }),
-      borderColor: '#fff',
-      borderWidth: 1,
-      pointRadius: 7,
-      pointHoverRadius: 9,
-      pointStyle: 'circle',
-      order: 0,
+      borderColor: '#fff', borderWidth: 1, pointRadius: 9, pointHoverRadius: 11, pointStyle: 'circle', order: 0,
     }
-
-    if (scatterChart) { scatterChart.destroy(); scatterChart = null }
-    var sctx = document.getElementById('shpiCpiScatter').getContext('2d')
-    scatterChart = new Chart(sctx, {
-      data: {
-        datasets: [
-          zoneBinDataset,
-          { type: 'line', label: 'Fit', data: reg.lineData,
-            borderColor: '#F5A623', borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0 }
-        ]
-      },
+    chartFsInstances['shpiCpiScatter'] = new Chart(canvas.getContext('2d'), {
+      data: { datasets: [
+        zoneBinDataset,
+        { type: 'line', label: 'Fit', data: reg.lineData,
+          borderColor: '#F5A623', borderWidth: 2, pointRadius: 0, fill: false, tension: 0 }
+      ]},
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
@@ -2039,55 +2158,62 @@ function renderScatterPlot_(data) {
           }}}
         },
         scales: {
-          x: { title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 9 } },
-               ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } },
-          y: { title: { display: true, text: 'CPI',  color: '#9FE1CB', font: { size: 9 } },
-               ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } }
+          x: { title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 13 } },
+               ticks: { color: '#9FE1CB', font: { size: 13 } }, grid: { color: '#1e3d30' } },
+          y: { title: { display: true, text: 'CPI',  color: '#9FE1CB', font: { size: 13 } },
+               ticks: { color: '#9FE1CB', font: { size: 13 } }, grid: { color: '#1e3d30' } }
         }
       }
-    });
+    })
     return
   }
 
   // ── All-pixel mode ────────────────────────────────────────────────────────
-  var removeOutliers = document.getElementById('outlierToggle') && document.getElementById('outlierToggle').checked
+  var pixelSample = data.pixel_sample || []
   var totalPx = pixelSample.length
-  var pts = removeOutliers && totalPx > 4 ? percentileClip_(pixelSample) : pixelSample.slice()
+  var pts = filterOn && totalPx > 4 ? binIqrFilter_(pixelSample) : pixelSample.slice()
   var removedCount = totalPx - pts.length
 
   if (pts.length < 2) {
-    document.getElementById('scatterEq').textContent = 'Not enough pixel data'
-    document.getElementById('corrSummary').textContent = ''
+    var eqEl2 = document.getElementById('scatterEq-fs')
+    if (eqEl2) eqEl2.textContent = 'Not enough pixel data'
+    var csEl2 = document.getElementById('corrSummary-fs')
+    if (csEl2) csEl2.textContent = ''
     return
   }
 
-  var reg = olsLine_(pts)
-  var n = pts.length
-  var intSign = reg.intercept >= 0 ? ' + ' : ' - '
-  var eqLabel = removeOutliers && removedCount > 0
-    ? 'y = ' + reg.slope.toFixed(3) + 'x' + intSign + Math.abs(reg.intercept).toFixed(3) +
-      '   R² = ' + reg.r2.toFixed(3) + '  (' + removedCount + ' outliers removed)'
-    : 'y = ' + reg.slope.toFixed(3) + 'x' + intSign + Math.abs(reg.intercept).toFixed(3) +
-      '   R² = ' + reg.r2.toFixed(3) + '  n=' + n + ' px'
-  document.getElementById('scatterEq').textContent = eqLabel
+  var reg2 = olsLine_(pts)
+  var n2 = pts.length
+  var intSign2 = reg2.intercept >= 0 ? ' + ' : ' - '
+  var eqLabel = filterOn && removedCount > 0
+    ? 'y = ' + reg2.slope.toFixed(3) + 'x' + intSign2 + Math.abs(reg2.intercept).toFixed(3) +
+      '   R² = ' + reg2.r2.toFixed(3) + '  (' + removedCount + ' outliers removed)'
+    : 'y = ' + reg2.slope.toFixed(3) + 'x' + intSign2 + Math.abs(reg2.intercept).toFixed(3) +
+      '   R² = ' + reg2.r2.toFixed(3) + '  n=' + n2 + ' px'
+  var eqEl3 = document.getElementById('scatterEq-fs')
+  if (eqEl3) eqEl3.textContent = eqLabel
 
-  // Pearson r for all-pixel view (n is large enough to make Pearson appropriate)
-  var xs = pts.map(function(p) { return p.x }), ys = pts.map(function(p) { return p.y })
-  var pr = pearson_(xs, ys)
-  // t-approximation p-value  (df = n-2)
-  var tStat = pr * Math.sqrt(n - 2) / Math.sqrt(Math.max(1e-15, 1 - pr * pr))
+  var xs2 = pts.map(function(p) { return p.x }), ys2 = pts.map(function(p) { return p.y })
+  var pr = pearson_(xs2, ys2)
+  var tStat2 = pr * Math.sqrt(n2 - 2) / Math.sqrt(Math.max(1e-15, 1 - pr * pr))
   function normCdfPx_(x) {
     var t2 = 1 / (1 + 0.2316419 * Math.abs(x))
     var d = 0.3989423 * Math.exp(-x * x / 2)
     var p = d * t2 * (0.3193815 + t2 * (-0.3565638 + t2 * (1.7814779 + t2 * (-1.8212560 + t2 * 1.3302744))))
     return x > 0 ? 1 - p : p
   }
-  var pVal = 2 * normCdfPx_(-Math.abs(tStat))
-  var pStr = pVal < 0.001 ? 'p < 0.001' : 'p = ' + pVal.toFixed(3)
-  document.getElementById('corrSummary').textContent =
-    'Pearson r = ' + pr.toFixed(3) + ',  ' + pStr + ',  R² = ' + reg.r2.toFixed(3)
+  var pVal2 = 2 * normCdfPx_(-Math.abs(tStat2))
+  var pStr2 = pVal2 < 0.001 ? 'p < 0.001' : 'p = ' + pVal2.toFixed(3)
+  var csEl3 = document.getElementById('corrSummary-fs')
+  if (csEl3) csEl3.textContent = 'Pearson r = ' + pr.toFixed(3) + ',  ' + pStr2 + ',  R² = ' + reg2.r2.toFixed(3)
 
-  // Build per-zone pixel datasets — group points by zone in one O(n) pass, then build datasets
+  var noteEl2 = document.getElementById('scatterOutlierNote-fs')
+  if (noteEl2) noteEl2.textContent = filterOn
+    ? (removedCount > 0
+        ? 'Outliers removed: Tukey 1.5×IQR on CPI within each zone (' + removedCount + ' pixels removed)'
+        : 'Outlier filter: Tukey 1.5×IQR on CPI within each zone (no outliers detected)')
+    : 'No outlier filter applied'
+
   var zoneGroups = {}
   pts.forEach(function(p) {
     var zi = p.z != null ? p.z : 0
@@ -2099,32 +2225,23 @@ function renderScatterPlot_(data) {
     var col = ZONE_COLORS[Math.max(0, Math.min(ZONE_COLORS.length - 1, zi))]
     var c = hexToRgb_(col)
     return {
-      type: 'scatter',
-      label: 'Zone ' + (zi + 1),
+      type: 'scatter', label: 'Zone ' + (zi + 1),
       data: zoneGroups[zi],
       backgroundColor: 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.45)',
       borderColor:     'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.0)',
-      pointRadius: 2,
-      pointHoverRadius: 5,
-      order: 1,
+      pointRadius: 3, pointHoverRadius: 6, order: 1,
     }
   })
-
-  if (scatterChart) { scatterChart.destroy(); scatterChart = null }
-  var sctx2 = document.getElementById('shpiCpiScatter').getContext('2d')
-  scatterChart = new Chart(sctx2, {
-    data: {
-      datasets: zoneDatasets.concat([
-        { type: 'line', label: 'Fit', data: reg.lineData,
-          borderColor: '#F5A623', borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0, order: 0 }
-      ])
-    },
+  chartFsInstances['shpiCpiScatter'] = new Chart(canvas.getContext('2d'), {
+    data: { datasets: zoneDatasets.concat([
+      { type: 'line', label: 'Fit', data: reg2.lineData,
+        borderColor: '#F5A623', borderWidth: 2, pointRadius: 0, fill: false, tension: 0, order: 0 }
+    ])},
     options: {
-      responsive: true, maintainAspectRatio: false,
-      animation: false,
+      responsive: true, maintainAspectRatio: false, animation: false,
       plugins: {
         legend: { display: true, position: 'bottom',
-          labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 8, padding: 4,
+          labels: { color: '#9FE1CB', font: { size: 12 }, boxWidth: 10, padding: 6,
             filter: function(item) { return item.text !== 'Fit' } } },
         tooltip: { callbacks: { label: function(ctx) {
           if (ctx.dataset.label === 'Fit') return null
@@ -2133,13 +2250,13 @@ function renderScatterPlot_(data) {
         }}}
       },
       scales: {
-        x: { title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 9 } },
-             ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } },
-        y: { title: { display: true, text: 'CPI',  color: '#9FE1CB', font: { size: 9 } },
-             ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } }
+        x: { title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 13 } },
+             ticks: { color: '#9FE1CB', font: { size: 13 } }, grid: { color: '#1e3d30' } },
+        y: { title: { display: true, text: 'CPI',  color: '#9FE1CB', font: { size: 13 } },
+             ticks: { color: '#9FE1CB', font: { size: 13 } }, grid: { color: '#1e3d30' } }
       }
     }
-  });
+  })
 }
 
 function setCmpScatterMode_(mode) {
@@ -2164,7 +2281,9 @@ function renderCmpScatterZones_(rois, cache) {
     var z     = cache[item.id] && cache[item.id].zone_stats
     if (!z) return
     // Only include zones with actual CPI data — empty zones have mean_shpi/cpi=0
-    var zFiltered = z.filter(function(zs) { return zs.pixel_count > 0 })
+    var zNonEmpty = z.filter(function(zs) { return zs.pixel_count > 0 })
+    var applyFilter = !document.getElementById('cmpOutlierToggleFs') || document.getElementById('cmpOutlierToggleFs').checked
+    var zFiltered = applyFilter ? zoneIqrFilter_(zNonEmpty) : zNonEmpty
     if (!zFiltered.length) return
     var roiColor = ROI_COLORS[idx % ROI_COLORS.length]
     // Colour each zone point by its zone index, use ROI colour as border
@@ -2197,14 +2316,21 @@ function renderCmpScatterZones_(rois, cache) {
   })
   _applyCmpScatter(datasets, 'SHPI', 'CPI')
   document.getElementById('cmpScatterLabel').textContent = ''
+  var cmpNote = document.getElementById('cmpScatterOutlierNote')
+  var cmpNoteFs = document.getElementById('cmpScatterOutlierNote-fs')
+  var noteText = 'Outlier filter: Tukey 1.5×IQR on zone-mean CPI per ROI (applied to each ROI independently)'
+  if (cmpNote) cmpNote.textContent = noteText
+  if (cmpNoteFs) cmpNoteFs.textContent = noteText
 }
 
 function renderCmpScatterSummary_(rois, cache) {
   var pts = rois.map(function(item,idx) {
     var z = cache[item.id] && cache[item.id].zone_stats
     if (!z) return null
-    // Only average zones with actual data to avoid zero-valued empty zones skewing the mean
-    var zf = z.filter(function(zs) { return zs.pixel_count > 0 })
+    // Only average zones with actual data; apply per-ROI zone IQR filter
+    var zNE = z.filter(function(zs) { return zs.pixel_count > 0 })
+    var applyFilterS = !document.getElementById('cmpOutlierToggleFs') || document.getElementById('cmpOutlierToggleFs').checked
+    var zf = applyFilterS ? zoneIqrFilter_(zNE) : zNE
     if (!zf.length) return null
     var meanShpi = zf.reduce(function(a,zs){return a+zs.mean_shpi},0)/zf.length
     var meanCpi  = zf.reduce(function(a,zs){return a+zs.mean_cpi},0)/zf.length
@@ -2242,6 +2368,11 @@ function renderCmpScatterSummary_(rois, cache) {
   var interceptSign = icpt >= 0 ? ' + ' : ' − '
   document.getElementById('cmpScatterLabel').textContent =
     'Global: y = ' + slope.toFixed(3) + 'x' + interceptSign + Math.abs(icpt).toFixed(3) + '   R² = ' + r2.toFixed(3)
+  var cmpNoteS = document.getElementById('cmpScatterOutlierNote')
+  var cmpNoteSFs = document.getElementById('cmpScatterOutlierNote-fs')
+  var noteTxtS = 'Outlier filter: Tukey 1.5×IQR on zone-mean CPI per ROI (applied to each ROI independently)'
+  if (cmpNoteS) cmpNoteS.textContent = noteTxtS
+  if (cmpNoteSFs) cmpNoteSFs.textContent = noteTxtS
 }
 
 function _applyCmpScatter(datasets, xLabel, yLabel, tooltipPts) {
@@ -2362,9 +2493,9 @@ function openChartFs_(id) {
     if (lblFs && lbl) lblFs.textContent = lbl.textContent
   }
   if (id === 'shpiCpiScatter') {
-    var eq = document.getElementById('scatterEq')
-    var eqFs = document.getElementById('scatterEq-fs')
-    if (eqFs && eq) eqFs.textContent = eq.textContent
+    overlay.classList.add('open')
+    requestAnimationFrame(function() { renderScatterPlotFs_(lastResult) })
+    return
   }
   // Destroy previous FS instance for this chart
   if (chartFsInstances[id]) { chartFsInstances[id].destroy(); chartFsInstances[id] = null }
@@ -2426,11 +2557,15 @@ function syncChartFs_(id) {
   }
   // Small delay so the base chart has time to update after setCmpScatterMode_ runs
   setTimeout(function() {
-    openChartFs_(id)
-    if (id === 'cmpScatterChart') {
-      var lbl = document.getElementById('cmpScatterLabel')
-      var lblFs = document.getElementById('cmpScatterLabel-fs')
-      if (lblFs && lbl) lblFs.textContent = lbl.textContent
+    if (id === 'shpiCpiScatter') {
+      renderScatterPlotFs_(lastResult)
+    } else {
+      openChartFs_(id)
+      if (id === 'cmpScatterChart') {
+        var lbl = document.getElementById('cmpScatterLabel')
+        var lblFs = document.getElementById('cmpScatterLabel-fs')
+        if (lblFs && lbl) lblFs.textContent = lbl.textContent
+      }
     }
   }, 50)
 }
@@ -2724,10 +2859,18 @@ function clearMonthlyLayer_() {
 <div id="chartFs-shpiCpiScatter" class="chart-fs-overlay">
   <div class="chart-fs-topbar">
     <span class="chart-fs-title">SHPI vs CPI correlation</span>
+    <div style="display:flex;gap:6px;align-items:center;margin-left:12px">
+      <button id="scatterTabBins-fs" class="cmp-tab active" onclick="setScatterViewMode_('bins')" style="font-size:11px;padding:3px 10px">Zone means</button>
+      <button id="scatterTabPx-fs"   class="cmp-tab"        onclick="setScatterViewMode_('pixels')" style="font-size:11px;padding:3px 10px">All pixels</button>
+      <label id="outlierToggleWrap-fs" style="display:flex;align-items:center;gap:4px;font-size:11px;color:#9FE1CB;cursor:pointer;margin-left:6px">
+        <input type="checkbox" id="outlierToggleFs" checked onchange="renderScatterPlotFs_(lastResult)" style="cursor:pointer">Filter outliers (IQR)</label>
+    </div>
     <button class="rm-ctrl-btn" onclick="closeChartFs_('shpiCpiScatter')">✕ Close</button>
   </div>
   <div class="chart-fs-body"><canvas id="shpiCpiScatter-fs"></canvas></div>
-  <div id="scatterEq-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-bottom:16px"></div>
+  <div id="scatterEq-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-top:4px"></div>
+  <div id="corrSummary-fs" style="margin:3px 0 2px;font-size:11px;color:#9FE1CB;text-align:center"></div>
+  <div id="scatterOutlierNote-fs" style="text-align:center;font-size:10px;color:#6FA898;padding-bottom:16px"></div>
 </div>
 <div id="chartFs-cmpBarChart" class="chart-fs-overlay">
   <div class="chart-fs-topbar">
@@ -2743,10 +2886,13 @@ function clearMonthlyLayer_() {
       <div class="cmp-tab active" id="cmpTabZones-fs" onclick="setCmpScatterMode_('zones');syncChartFs_('cmpScatterChart')">Per-zone</div>
       <div class="cmp-tab" id="cmpTabSummary-fs" onclick="setCmpScatterMode_('summary');syncChartFs_('cmpScatterChart')">Per-ROI summary</div>
     </div>
+    <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#9FE1CB;cursor:pointer;margin-left:6px">
+      <input type="checkbox" id="cmpOutlierToggleFs" checked onchange="syncChartFs_('cmpScatterChart')" style="cursor:pointer">Filter outliers (IQR)</label>
     <button class="rm-ctrl-btn" onclick="closeChartFs_('cmpScatterChart')">✕ Close</button>
   </div>
   <div class="chart-fs-body"><canvas id="cmpScatterChart-fs"></canvas></div>
-  <div id="cmpScatterLabel-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-bottom:16px"></div>
+  <div id="cmpScatterLabel-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-top:4px"></div>
+  <div id="cmpScatterOutlierNote-fs" style="text-align:center;font-size:10px;color:#6FA898;padding-bottom:16px"></div>
 </div>
 </body>
 </html>
