@@ -229,9 +229,12 @@ canvas{display:block}
       <h3 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px" onclick="toggleLibrary_()">
         <span>📚 ROI Library</span>
         <span id="libCount" style="font-size:10px;color:#9FE1CB;font-weight:400;text-transform:none;letter-spacing:0;flex:1"></span>
+        <button class="chart-expand-btn" onclick="event.stopPropagation();openLibTableFs_()" title="Fullscreen" style="margin-left:auto">⛶</button>
         <span id="libToggleIcon" style="font-size:10px">▼</span>
       </h3>
-      <div id="libList"></div>
+      <div id="libList">
+        <div style="overflow-x:auto"><table class="cmp-table" id="roiMergedTable"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>r</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBody"></tbody></table></div>
+      </div>
     </div>
 
     <!-- Step 2: Config -->
@@ -347,8 +350,6 @@ canvas{display:block}
       <div class="banner" id="banner"></div>
       <div id="dataSourceBadge" style="text-align:center;font-size:10px;padding:3px 8px;border-radius:4px;display:none"></div>
       <div class="stat-grid" id="statGrid"></div>
-      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:4px">Mean CPI per zone</h3><button class="chart-expand-btn" onclick="openChartFs_('cpiChart')" title="Fullscreen">⛶</button></div>
-      <div class="chart-wrap"><canvas id="cpiChart"></canvas></div>
       <table class="ztbl">
         <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
         <tbody id="zoneTbody"></tbody>
@@ -373,11 +374,6 @@ canvas{display:block}
     <div id="compareSection" class="compare-section">
       <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-bottom:8px">📊 Compare ROIs</h3>
       <button class="btn btn-sec" style="margin-bottom:8px" onclick="openCompareMap_()">🗺 View Comparison Map</button>
-      <div style="overflow-x:auto">
-        <table class="cmp-table" id="cmpTable"></table>
-      </div>
-      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:8px;margin-bottom:2px">CPI by Zone (all ROIs)</h3><button class="chart-expand-btn" onclick="openChartFs_('cmpBarChart')" title="Fullscreen">⛶</button></div>
-      <div class="cmp-chart-wrap"><canvas id="cmpBarChart"></canvas></div>
       <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:8px;margin-bottom:4px">SHPI vs CPI — all ROIs</h3><button class="chart-expand-btn" onclick="openChartFs_('cmpScatterChart')" title="Fullscreen">⛶</button></div>
       <div class="cmp-tabs">
         <div class="cmp-tab active" id="cmpTabZones" onclick="setCmpScatterMode_('zones')">Per-zone</div>
@@ -432,7 +428,6 @@ let resultsMapFs = null        // fullscreen map Leaflet instance
 let resultsRasterLayerFs = null // raster layer in fullscreen map
 let currentFsLayer = 'zones'   // 'zones' | 'shpi' | 'cpi'
 let currentRoiId = null        // UUID of the library ROI currently loaded (null if drawn/ad-hoc)
-let cmpBarChart = null
 let cmpScatterChart = null
 let cmpScatterMode = 'zones'   // 'zones' | 'summary'
 let scatterViewMode = 'bins'   // 'bins'  | 'pixels'
@@ -446,6 +441,7 @@ const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','
 const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
 const MAX_ROIS_FOR_LEGEND = 6     // hide chart legend when more ROIs than this (to avoid clutter)
 const EPSILON_DENOM       = 1e-10 // numerical stability guard against near-zero denominators in regression
+const MIN_PIXEL_SAMPLE    = 10    // minimum pixel sample size to use sample-based zone means in scatter plot
 
 function formatPixelCount(px) {
   return px >= 1000 ? (px / 1000).toFixed(1) + 'k' : String(Math.round(px))
@@ -607,10 +603,12 @@ document.getElementById('gjInput').addEventListener('change', e => {
     try {
       const gj = JSON.parse(ev.target.result)
       drawn.clearLayers()
-      const layer = L.geoJSON(gj, {
+      const group = L.geoJSON(gj, {
         style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 }
-      }).addTo(drawn)
-      map.fitBounds(layer.getBounds())
+      })
+      const bounds = group.getBounds()
+      group.eachLayer(function(l) { drawn.addLayer(l) })
+      map.fitBounds(bounds)
       if (gj.type === 'FeatureCollection') {
         if (!gj.features || gj.features.length === 0) throw new Error('FeatureCollection has no features')
         roi = gj.features[0].geometry
@@ -1054,29 +1052,8 @@ function renderResults(data) {
     statGrid.appendChild(card)
   })
 
-  // Chart
-  if (chart) chart.destroy()
-  const ctx = document.getElementById('cpiChart').getContext('2d')
-  chart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels:   z.map(zs => 'Z' + zs.zone),
-      datasets: [{
-        data:            z.map(zs => zs.mean_cpi),
-        backgroundColor: ZONE_COLORS,
-        borderRadius:    4,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: '#9FE1CB', font: { size: 10 } }, grid: { color: '#1e3d30' } },
-        y: { ticks: { color: '#9FE1CB', font: { size: 10 } }, grid: { color: '#1e3d30' }, max: 1 },
-      }
-    }
-  })
+  // CPI bar chart removed
+  if (chart) { chart.destroy(); chart = null }
 
   // Zone table
   const tbody = document.getElementById('zoneTbody')
@@ -1593,7 +1570,7 @@ function downloadShapefile_() {
   for (var i = 67; i < 76; i++) db[i] = 32  // right-pad with spaces (ASCII 32)
 
   // ── ZIP ───────────────────────────────────────────────────────
-  var fn = 'roi_' + new Date().toISOString().slice(0, 10)
+  var fn = getRoiFilename_()
   var zip = new JSZip()
   zip.file(fn + '.shp', shpBuf)
   zip.file(fn + '.shx', shxBuf)
@@ -1642,9 +1619,18 @@ function closeMenus_() {
 document.addEventListener('click', closeMenus_)
 
 // ── GeoJSON download ──────────────────────────────────────────
+function getRoiFilename_() {
+  if (currentRoiId) {
+    var lib = loadLibrary_()
+    var item = lib.find(function(r) { return r.id === currentRoiId })
+    if (item) return item.name.replace(/[^A-Za-z0-9_\-]/g, '_')
+  }
+  return 'roi_' + new Date().toISOString().slice(0, 10)
+}
+
 function downloadGeoJSON_() {
   if (!roi) { alert('Draw or upload an ROI first.'); return }
-  var fn = 'roi_' + new Date().toISOString().slice(0, 10) + '.geojson'
+  var fn = getRoiFilename_() + '.geojson'
   var gj = JSON.stringify({ type: 'Feature', geometry: roi, properties: {} }, null, 2)
   var blob = new Blob([gj], { type: 'application/geo+json' })
   var a = document.createElement('a')
@@ -1666,8 +1652,10 @@ document.getElementById('shpInput').addEventListener('change', function (e) {
         var gj = shpToGeoJSON_(buf)
         if (!gj) { alert('Could not parse shapefile — only Polygon shapes are supported.'); return }
         drawn.clearLayers()
-        var layer = L.geoJSON(gj, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } }).addTo(drawn)
-        map.fitBounds(layer.getBounds())
+        var group = L.geoJSON(gj, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } })
+        var bounds = group.getBounds()
+        group.eachLayer(function(l) { drawn.addLayer(l) })
+        map.fitBounds(bounds)
         var feat = gj.features[0]
         roi = feat ? feat.geometry : gj
         var extraMsg = gj.features.length > 1 ? ' (first of ' + gj.features.length + ' features used)' : ''
@@ -1747,46 +1735,100 @@ function saveResultsCache_(cache) {
   localStorage.setItem('shpResultsCache', JSON.stringify(cache))
 }
 
+function getROICentroid_(geom) {
+  var bb = geomBbox_(geom)
+  return [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2]
+}
+
 function saveCurrentROI_() {
   if (!roi) { alert('Draw or upload an ROI first.'); return }
-  var name = prompt('Enter a name for this ROI:', 'ROI ' + new Date().toLocaleDateString())
-  if (!name) return
   var lib = loadLibrary_()
-  var id  = uuid4_()
-  lib.push({ id: id, name: name, geojson: roi, savedAt: Date.now(), areaHa: Math.round(computeAreaHa_(roi)) })
-  saveLibrary_(lib)
-  currentRoiId = id
-  renderLibraryPanel_()
-  maybeShowCompareSection_()
-  setROIStatus('✓ Saved to library: ' + name)
+  var n   = lib.length + 1
+  var centroid = getROICentroid_(roi)
+  var lat = centroid[1], lng = centroid[0]
+  fetch('https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng + '&format=json&zoom=8', {
+    headers: { 'Accept-Language': 'en', 'User-Agent': 'SoilHealthTool/1.0' }
+  }).then(function(r) { return r.json() }).then(function(addr) {
+    var state    = (addr.address && addr.address.state) || ''
+    var district = (addr.address && (addr.address.county || addr.address.state_district)) || ''
+    var raw  = state && district ? state + '_' + district + '_' + n
+             : state ? state + '_' + n
+             : 'ROI_' + n
+    var name = raw.replace(/[^A-Za-z0-9_]/g, '_')
+    doSave_(name)
+  }).catch(function() {
+    doSave_('ROI_' + n)
+  })
+  function doSave_(name) {
+    var id = uuid4_()
+    lib.push({ id: id, name: name, geojson: roi, savedAt: Date.now(), areaHa: Math.round(computeAreaHa_(roi)) })
+    saveLibrary_(lib)
+    currentRoiId = id
+    renderLibraryPanel_()
+    maybeShowCompareSection_()
+    setROIStatus('✓ Saved: ' + name)
+  }
 }
 
 function renderLibraryPanel_() {
   var lib   = loadLibrary_()
   var cache = loadResultsCache_()
-  var el    = document.getElementById('libList')
   var cnt   = document.getElementById('libCount')
   if (cnt) cnt.textContent = lib.length > 0 ? '(' + lib.length + ')' : ''
-  if (lib.length === 0) {
-    el.innerHTML = '<div class="lib-empty">No saved ROIs yet</div>'
-    return
-  }
-  el.innerHTML = lib.map(function(item) {
-    var hasResult = !!cache[item.id]
+
+  var rows = lib.map(function(item, idx) {
+    var d         = cache[item.id]
+    var hasResult = !!(d && Array.isArray(d.zone_stats) && d.validation)
     var date      = new Date(item.savedAt).toLocaleDateString()
-    var active    = currentRoiId === item.id ? ' style="border-color:#F5A623"' : ''
-    return '<div class="lib-item"' + active + '>' +
-      '<div class="lib-item-name">' + escHtml_(item.name) +
-        (hasResult ? '<span style="font-size:9px;color:#7FE07F;margin-left:5px">📊</span>' : '') +
-      '</div>' +
-      '<div class="lib-item-meta"><span>📐 ' + item.areaHa + ' ha</span><span>📅 ' + date + '</span></div>' +
-      '<div class="lib-item-actions">' +
-        '<button class="lib-btn lib-btn-load" onclick="loadROIFromLibrary_(\'' + item.id + '\')">🗺 Load</button>' +
-        (hasResult ? '<button class="lib-btn lib-btn-cached" onclick="viewCachedResult_(\'' + item.id + '\')">📊 Results</button>' : '') +
-        '<button class="lib-btn lib-btn-del" onclick="deleteROIFromLibrary_(\'' + item.id + '\')">🗑</button>' +
-      '</div>' +
-    '</div>'
+    var active    = currentRoiId === item.id ? ' style="background:#1c3828"' : ''
+    var dotColor  = hasResult ? ROI_COLORS[idx % ROI_COLORS.length] : '#555'
+    var dot       = '<span class="roi-color-dot" style="background:' + dotColor + '"></span>'
+    var nameCell  = dot + '<span style="cursor:pointer;color:#9FE1CB" onclick="zoomToROI_(\'' + item.id + '\')" title="Zoom to ROI">' + escHtml_(item.name) + '</span>'
+
+    var shpiCell = '—', rCell = '—', r2Cell = '—', ratioCell = '—'
+    if (hasResult) {
+      var v  = d.validation
+      var z  = d.zone_stats
+      var sMin = Math.min.apply(null, z.map(function(zs) { return zs.mean_shpi }))
+      var sMax = Math.max.apply(null, z.map(function(zs) { return zs.mean_shpi }))
+      shpiCell  = sMin.toFixed(2) + '–' + sMax.toFixed(2)
+      rCell     = v.pearson_r  !== undefined ? v.pearson_r  : '—'
+      r2Cell    = v.r_squared  !== undefined ? v.r_squared  : '—'
+      ratioCell = v.cpi_ratio  !== undefined ? v.cpi_ratio + '×' : '—'
+    }
+    var actions =
+      '<button class="lib-btn lib-btn-load" onclick="loadROIFromLibrary_(\'' + item.id + '\')">🗺 Load</button>' +
+      (hasResult ? '<button class="lib-btn lib-btn-cached" onclick="viewCachedResult_(\'' + item.id + '\')">📊 Results</button>' : '') +
+      '<button class="lib-btn lib-btn-del" onclick="deleteROIFromLibrary_(\'' + item.id + '\')">🗑</button>'
+
+    return '<tr' + active + '><td>' + nameCell + '</td><td>' + item.areaHa + ' ha</td><td>' + date + '</td><td>' + shpiCell + '</td><td>' + rCell + '</td><td>' + r2Cell + '</td><td>' + ratioCell + '</td><td>' + actions + '</td></tr>'
   }).join('')
+
+  var emptyMsg = lib.length === 0 ? '<tr><td colspan="8" style="text-align:center;color:#5a8a6a">No saved ROIs yet</td></tr>' : ''
+  var bodyHtml = rows || emptyMsg
+
+  var body = document.getElementById('roiMergedBody')
+  if (body) body.innerHTML = bodyHtml
+  var bodyFs = document.getElementById('roiMergedBodyFs')
+  if (bodyFs) bodyFs.innerHTML = bodyHtml
+}
+
+function zoomToROI_(id) {
+  var lib  = loadLibrary_()
+  var item = lib.find(function(r) { return r.id === id })
+  if (!item) return
+  var group = L.geoJSON(item.geojson)
+  map.fitBounds(group.getBounds())
+}
+
+function openLibTableFs_() {
+  var el = document.getElementById('libTableFs')
+  if (el) { el.style.display = 'flex'; el.classList.add('open') }
+}
+
+function closeLibTableFs_() {
+  var el = document.getElementById('libTableFs')
+  if (el) { el.style.display = 'none'; el.classList.remove('open') }
 }
 
 function toggleLibrary_() {
@@ -1802,8 +1844,10 @@ function loadROIFromLibrary_(id) {
   var item = lib.find(function(r) { return r.id === id })
   if (!item) return
   drawn.clearLayers()
-  var layer = L.geoJSON(item.geojson, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } }).addTo(drawn)
-  map.fitBounds(layer.getBounds())
+  var group = L.geoJSON(item.geojson, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } })
+  var bounds = group.getBounds()
+  group.eachLayer(function(l) { drawn.addLayer(l) })
+  map.fitBounds(bounds)
   roi          = item.geojson
   currentRoiId = id
   setROIStatus('✓ Loaded: ' + item.name)
@@ -1827,8 +1871,10 @@ function viewCachedResult_(id) {
     roi          = item.geojson
     currentRoiId = id
     drawn.clearLayers()
-    var layer = L.geoJSON(item.geojson, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } }).addTo(drawn)
-    map.fitBounds(layer.getBounds())
+    var group = L.geoJSON(item.geojson, { style: { color: '#F5A623', weight: 2, fillOpacity: 0.12 } })
+    var bounds = group.getBounds()
+    group.eachLayer(function(l) { drawn.addLayer(l) })
+    map.fitBounds(bounds)
     updateAreaDisplay_()
     renderLibraryPanel_()
   }
@@ -1948,58 +1994,6 @@ function renderCompareView_() {
   var rois  = loadROIsWithResults_()
   if (rois.length < 2) return
   var cache = loadResultsCache_()
-
-  // Summary table
-  var html = '<tr><th>ROI</th><th>SHPI range</th><th>r</th><th>R²</th><th>CPI Z10/Z1</th></tr>'
-  rois.forEach(function(item, idx) {
-    var d      = cache[item.id]
-    if (!d || !Array.isArray(d.zone_stats) || !d.validation) return
-    var v      = d.validation
-    var z      = d.zone_stats
-    var sMin   = Math.min.apply(null, z.map(function(zs) { return zs.mean_shpi }))
-    var sMax   = Math.max.apply(null, z.map(function(zs) { return zs.mean_shpi }))
-    var color  = ROI_COLORS[idx % ROI_COLORS.length]
-    html += '<tr>' +
-      '<td><span class="roi-color-dot" style="background:' + color + '"></span>' + escHtml_(item.name) + '</td>' +
-      '<td>' + sMin.toFixed(2) + '–' + sMax.toFixed(2) + '</td>' +
-      '<td>' + (v.pearson_r !== undefined ? v.pearson_r : '—') + '</td>' +
-      '<td>' + (v.r_squared !== undefined ? v.r_squared : '—') + '</td>' +
-      '<td>' + (v.cpi_ratio !== undefined ? v.cpi_ratio + '×' : '—') + '</td>' +
-    '</tr>'
-  })
-  document.getElementById('cmpTable').innerHTML = html
-
-  // Grouped CPI bar chart
-  if (cmpBarChart) { cmpBarChart.destroy(); cmpBarChart = null }
-  var bctx = document.getElementById('cmpBarChart').getContext('2d')
-  cmpBarChart = new Chart(bctx, {
-    type: 'bar',
-    data: {
-      labels: ['Z1','Z2','Z3','Z4','Z5','Z6','Z7','Z8','Z9','Z10'],
-      datasets: rois.map(function(item, idx) {
-        var z = cache[item.id] && cache[item.id].zone_stats
-        if (!z) return null
-        return {
-          label: item.name,
-          data: z.map(function(zs) { return zs.mean_cpi }),
-          backgroundColor: ROI_COLORS[idx % ROI_COLORS.length] + 'cc',
-          borderColor:     ROI_COLORS[idx % ROI_COLORS.length],
-          borderWidth: 1, borderRadius: 3
-        }
-      }).filter(Boolean)
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: rois.length <= MAX_ROIS_FOR_LEGEND, labels: { color: '#9FE1CB', font: { size: 9 }, boxWidth: 10 } }
-      },
-      scales: {
-        x: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } },
-        y: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' }, max: 1 }
-      }
-    }
-  })
-
   renderCmpScatterChart_(rois, cache)
 }
 
@@ -2066,13 +2060,34 @@ function zoneIqrFilter_(zWithData) {
   return zWithData.filter(function(zs) { return zs.mean_cpi >= lo && zs.mean_cpi <= hi })
 }
 
+function zoneMeansFromSample_(pixelSample, applyBinFilter) {
+  var pts = applyBinFilter ? binIqrFilter_(pixelSample) : pixelSample.slice()
+  var groups = {}
+  pts.forEach(function(p) {
+    var zi = p.z != null ? p.z : 0
+    if (!groups[zi]) groups[zi] = []
+    groups[zi].push(p)
+  })
+  return Object.keys(groups).sort(function(a, b) { return +a - +b }).map(function(zi) {
+    var g = groups[zi]
+    var mx = g.reduce(function(s, p) { return s + p.x }, 0) / g.length
+    var my = g.reduce(function(s, p) { return s + p.y }, 0) / g.length
+    return { zone: +zi + 1, mean_shpi: mx, mean_cpi: my, pixel_count: g.length }
+  })
+}
+
 function renderScatterPlot_(data) {
   if (!data) return
-  var z = data.zone_stats
-  // Always bins mode in minimized chart — apply zone-level IQR filter always
-  var zWithData0 = z.filter(function(zs) { return zs.pixel_count > 0 })
-  var zWithData = zoneIqrFilter_(zWithData0)
-  var removedZones = zWithData0.length - zWithData.length
+  var pixSample = data.pixel_sample || []
+  var zWithData
+  if (pixSample.length >= MIN_PIXEL_SAMPLE) {
+    zWithData = zoneMeansFromSample_(pixSample, true).filter(function(zs) { return zs.pixel_count > 0 })
+  } else {
+    var z = data.zone_stats
+    var zWithData0 = z.filter(function(zs) { return zs.pixel_count > 0 })
+    zWithData = zoneIqrFilter_(zWithData0)
+  }
+  var removedZones = 0
   var bPts = zWithData.map(function(zs) { return { x: zs.mean_shpi, y: zs.mean_cpi } })
   var reg = olsLine_(bPts)
   var n = bPts.length
@@ -2117,9 +2132,11 @@ function renderScatterPlot_(data) {
   })()
 
   var noteEl = document.getElementById('scatterOutlierNote')
-  if (noteEl) noteEl.textContent = removedZones > 0
-    ? 'Outliers removed: Tukey 1.5×IQR on zone-mean CPI (' + removedZones + ' zone' + (removedZones > 1 ? 's' : '') + ' removed)'
-    : 'Outlier filter: Tukey 1.5×IQR on zone-mean CPI (no outliers detected)'
+  if (noteEl) noteEl.textContent = pixSample.length >= MIN_PIXEL_SAMPLE
+    ? 'Per-zone IQR outlier removal applied to pixel sample'
+    : (removedZones > 0
+        ? 'Outliers removed: Tukey 1.5×IQR on zone-mean CPI (' + removedZones + ' zone' + (removedZones > 1 ? 's' : '') + ' removed)'
+        : 'Outlier filter: Tukey 1.5×IQR on zone-mean CPI (no outliers detected)')
 
   var zoneBinDataset = {
     type: 'scatter',
@@ -2131,8 +2148,8 @@ function renderScatterPlot_(data) {
     }),
     borderColor: '#fff',
     borderWidth: 1,
-    pointRadius: 7,
-    pointHoverRadius: 9,
+    pointRadius: 4,
+    pointHoverRadius: 6,
     pointStyle: 'circle',
     order: 0,
   }
@@ -2181,9 +2198,15 @@ function renderScatterPlotFs_(data) {
   var filterOn = document.getElementById('outlierToggleFs') && document.getElementById('outlierToggleFs').checked
 
   if (scatterViewMode === 'bins') {
-    var zWithData0 = z.filter(function(zs) { return zs.pixel_count > 0 })
-    var zWithData = filterOn ? zoneIqrFilter_(zWithData0) : zWithData0
-    var removedZones = zWithData0.length - zWithData.length
+    var pixSample = data.pixel_sample || []
+    var zWithData
+    if (pixSample.length >= MIN_PIXEL_SAMPLE) {
+      zWithData = zoneMeansFromSample_(pixSample, filterOn).filter(function(zs) { return zs.pixel_count > 0 })
+    } else {
+      var zWithData0 = z.filter(function(zs) { return zs.pixel_count > 0 })
+      zWithData = filterOn ? zoneIqrFilter_(zWithData0) : zWithData0
+    }
+    var removedZones = 0
     var bPts = zWithData.map(function(zs) { return { x: zs.mean_shpi, y: zs.mean_cpi } })
     var reg = olsLine_(bPts)
     var n = bPts.length
@@ -2225,11 +2248,13 @@ function renderScatterPlotFs_(data) {
     })()
 
     var noteEl = document.getElementById('scatterOutlierNote-fs')
-    if (noteEl) noteEl.textContent = filterOn
-      ? (removedZones > 0
-          ? 'Outliers removed: Tukey 1.5×IQR on zone-mean CPI (' + removedZones + ' zone' + (removedZones > 1 ? 's' : '') + ' removed)'
-          : 'Outlier filter: Tukey 1.5×IQR on zone-mean CPI (no outliers detected)')
-      : 'No outlier filter applied'
+    if (noteEl) noteEl.textContent = pixSample.length >= MIN_PIXEL_SAMPLE
+      ? (filterOn ? 'Per-zone IQR outlier removal applied to pixel sample' : 'No outlier filter applied')
+      : (filterOn
+          ? (removedZones > 0
+              ? 'Outliers removed: Tukey 1.5×IQR on zone-mean CPI (' + removedZones + ' zone' + (removedZones > 1 ? 's' : '') + ' removed)'
+              : 'Outlier filter: Tukey 1.5×IQR on zone-mean CPI (no outliers detected)')
+          : 'No outlier filter applied')
 
     var zoneBinDataset = {
       type: 'scatter', label: 'Zone means',
@@ -2238,7 +2263,7 @@ function renderScatterPlotFs_(data) {
         var c = hexToRgb_(ZONE_COLORS[Math.max(0, Math.min(ZONE_COLORS.length - 1, zs.zone - 1))])
         return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.9)'
       }),
-      borderColor: '#fff', borderWidth: 1, pointRadius: 9, pointHoverRadius: 11, pointStyle: 'circle', order: 0,
+      borderColor: '#fff', borderWidth: 1, pointRadius: 6, pointHoverRadius: 8, pointStyle: 'circle', order: 0,
     }
     chartFsInstances['shpiCpiScatter'] = new Chart(canvas.getContext('2d'), {
       data: { datasets: [
@@ -2330,7 +2355,7 @@ function renderScatterPlotFs_(data) {
       data: zoneGroups[zi],
       backgroundColor: 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.45)',
       borderColor:     'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',0.0)',
-      pointRadius: 3, pointHoverRadius: 6, order: 1,
+      pointRadius: 2, pointHoverRadius: 5, order: 1,
     }
   })
   chartFsInstances['shpiCpiScatter'] = new Chart(canvas.getContext('2d'), {
@@ -2572,9 +2597,7 @@ function closeCompareMap_() {
 // ── Chart fullscreen expand / collapse ───────────────────────
 // Map from source chart ID to the corresponding Chart.js instance variable
 function _getChartInstance(id) {
-  if (id === 'cpiChart') return chart
   if (id === 'shpiCpiScatter') return scatterChart
-  if (id === 'cmpBarChart') return cmpBarChart
   if (id === 'cmpScatterChart') return cmpScatterChart
   return null
 }
@@ -3136,13 +3159,6 @@ function clearMonthlyLayer_() {
 </div>
 
 <!-- Chart fullscreen overlays -->
-<div id="chartFs-cpiChart" class="chart-fs-overlay">
-  <div class="chart-fs-topbar">
-    <span class="chart-fs-title">Mean CPI per zone</span>
-    <button class="rm-ctrl-btn" onclick="closeChartFs_('cpiChart')">✕ Close</button>
-  </div>
-  <div class="chart-fs-body"><canvas id="cpiChart-fs"></canvas></div>
-</div>
 <div id="chartFs-shpiCpiScatter" class="chart-fs-overlay">
   <div class="chart-fs-topbar">
     <span class="chart-fs-title">SHPI vs CPI correlation</span>
@@ -3159,13 +3175,6 @@ function clearMonthlyLayer_() {
   <div id="corrSummary-fs" style="margin:3px 0 2px;font-size:11px;color:#9FE1CB;text-align:center"></div>
   <div id="scatterOutlierNote-fs" style="text-align:center;font-size:10px;color:#6FA898;padding-bottom:16px"></div>
 </div>
-<div id="chartFs-cmpBarChart" class="chart-fs-overlay">
-  <div class="chart-fs-topbar">
-    <span class="chart-fs-title">CPI by zone (all ROIs)</span>
-    <button class="rm-ctrl-btn" onclick="closeChartFs_('cmpBarChart')">✕ Close</button>
-  </div>
-  <div class="chart-fs-body"><canvas id="cmpBarChart-fs"></canvas></div>
-</div>
 <div id="chartFs-cmpScatterChart" class="chart-fs-overlay">
   <div class="chart-fs-topbar">
     <span class="chart-fs-title">SHPI vs CPI — all ROIs</span>
@@ -3180,6 +3189,15 @@ function clearMonthlyLayer_() {
   <div class="chart-fs-body"><canvas id="cmpScatterChart-fs"></canvas></div>
   <div id="cmpScatterLabel-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-top:4px"></div>
   <div id="cmpScatterOutlierNote-fs" style="text-align:center;font-size:10px;color:#6FA898;padding-bottom:16px"></div>
+</div>
+<div id="libTableFs" class="chart-fs-overlay" style="display:none;flex-direction:column" onclick="if(event.target===this)closeLibTableFs_()">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">ROI Library</span>
+    <button class="rm-ctrl-btn" onclick="closeLibTableFs_()">✕ Close</button>
+  </div>
+  <div style="padding:16px;overflow:auto;flex:1">
+    <table class="cmp-table" id="roiMergedTableFs"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>r</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBodyFs"></tbody></table>
+  </div>
 </div>
 </body>
 </html>
