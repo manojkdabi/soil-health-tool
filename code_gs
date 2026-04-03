@@ -266,72 +266,68 @@ function buildTsEvalscript_() {
 // Returns an array of { date, evi2, ndre, nirv, ndmi, ndvi, n }
 // objects (one per 14-day interval that has valid observations).
 function fetchROITimeSeries_(geojson, yearStart, yearEnd, token) {
-  try {
-    var from = yearStart + '-01-01T00:00:00Z';
-    var to   = yearEnd   + '-12-31T23:59:59Z';
-    var payload = {
-      input: {
-        bounds: {
-          geometry: geojson,
-          properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' }
-        },
-        data: [{
-          dataFilter: { timeRange: { from: from, to: to } },
-          type: 'sentinel-2-l2a'
-        }]
+  var from = yearStart + '-01-01T00:00:00Z';
+  var to   = yearEnd   + '-12-31T23:59:59Z';
+  // resx/resy are in CRS84 degrees — 0.0002° ≈ 22 m at India's latitude.
+  // Do NOT put dataFilter.timeRange inside input.data; temporal windowing is
+  // handled exclusively by aggregation.timeRange for the Statistics API.
+  var payload = {
+    input: {
+      bounds: {
+        geometry: geojson,
+        properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' }
       },
-      aggregation: {
-        timeRange: { from: from, to: to },
-        aggregationInterval: { of: 'P14D' },
-        evalscript: buildTsEvalscript_(),
-        resx: 20,
-        resy: 20
-      },
-      calculations: { data: {} }
-    };
-    var resp = UrlFetchApp.fetch(SH_STATISTICS_URL, {
-      method: 'post', contentType: 'application/json',
-      headers: { Authorization: 'Bearer ' + token },
-      payload: JSON.stringify(payload), muteHttpExceptions: true
-    });
-    var statusCode = resp.getResponseCode();
-    Logger.log('TimeSeries status: ' + statusCode);
-    if (statusCode !== 200) {
-      var body = resp.getContentText().substring(0, 500);
-      Logger.log('TimeSeries error body: ' + body);
-      throw new Error('HTTP ' + statusCode + ' — ' + body);
-    }
-    var result = JSON.parse(resp.getContentText());
-    var series = [];
-    if (result.data) {
-      result.data.forEach(function(interval) {
-        if (!interval.outputs || !interval.outputs.data) return;
-        var bands = interval.outputs.data.bands;
-        // noDataCount includes cloud-masked pixels; skip fully-clouded intervals
-        var sampleCount  = (bands.B0.stats.sampleCount || 0);
-        var noDataCount  = (bands.B0.stats.noDataCount || 0);
-        var n  = sampleCount - noDataCount;
-        if (n <= 0) return;
-        function safeVal(stat) {
-          var v = stat.mean;
-          return (v == null || isNaN(v)) ? null : Math.round(v * 1000) / 1000;
-        }
-        series.push({
-          date: interval.interval.from.substring(0, 10),
-          evi2: safeVal(bands.B0.stats),
-          ndre: safeVal(bands.B1.stats),
-          nirv: safeVal(bands.B2.stats),
-          ndmi: safeVal(bands.B3.stats),
-          ndvi: safeVal(bands.B4.stats),
-          n: n
-        });
-      });
-    }
-    return series;
-  } catch(e) {
-    Logger.log('fetchROITimeSeries_ error: ' + e.message);
-    return null;
+      data: [{ type: 'sentinel-2-l2a' }]
+    },
+    aggregation: {
+      timeRange: { from: from, to: to },
+      aggregationInterval: { of: 'P14D' },
+      evalscript: buildTsEvalscript_(),
+      resx: 0.0002,
+      resy: 0.0002
+    },
+    calculations: { data: {} }
+  };
+  var resp = UrlFetchApp.fetch(SH_STATISTICS_URL, {
+    method: 'post', contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + token },
+    payload: JSON.stringify(payload), muteHttpExceptions: true
+  });
+  var statusCode = resp.getResponseCode();
+  Logger.log('TimeSeries status: ' + statusCode);
+  if (statusCode !== 200) {
+    var body = resp.getContentText().substring(0, 400);
+    Logger.log('TimeSeries error body: ' + body);
+    throw new Error('HTTP ' + statusCode + ': ' + body);
   }
+  var result = JSON.parse(resp.getContentText());
+  var series = [];
+  if (result.data) {
+    result.data.forEach(function(interval) {
+      if (!interval.outputs || !interval.outputs.data) return;
+      var bands = interval.outputs.data.bands;
+      if (!bands || !bands.B0 || !bands.B0.stats) return;
+      // noDataCount = cloud-masked pixels (NaN returns); skip fully-clouded intervals.
+      var sampleCount = (bands.B0.stats.sampleCount || 0);
+      var noDataCount = (bands.B0.stats.noDataCount  || 0);
+      var n = sampleCount - noDataCount;
+      if (n <= 0) return;
+      function safeVal(stat) {
+        var v = stat ? stat.mean : null;
+        return (v == null || isNaN(v)) ? null : Math.round(v * 1000) / 1000;
+      }
+      series.push({
+        date: interval.interval.from.substring(0, 10),
+        evi2: safeVal(bands.B0.stats),
+        ndre: safeVal(bands.B1 ? bands.B1.stats : null),
+        nirv: safeVal(bands.B2 ? bands.B2.stats : null),
+        ndmi: safeVal(bands.B3 ? bands.B3.stats : null),
+        ndvi: safeVal(bands.B4 ? bands.B4.stats : null),
+        n: n
+      });
+    });
+  }
+  return series;
 }
 
 // ── Public: fetch time series (called from HTML client) ───────
@@ -339,12 +335,11 @@ function getTimeSeries(params) {
   try {
     var token  = getToken_();
     var series = fetchROITimeSeries_(params.geojson, params.yearStart, params.yearEnd, token);
-    if (series === null) return { success: false, error: 'Statistics API fetch failed — check GAS execution logs for HTTP status details.' };
     if (series.length === 0) return { success: false, error: 'No valid observations found (all intervals were cloud-covered or outside the ROI).' };
     return { success: true, series: series };
   } catch(e) {
     Logger.log('getTimeSeries error: ' + e.message);
-    return { success: false, error: 'Statistics API error: ' + e.message };
+    return { success: false, error: e.message };
   }
 }
 
