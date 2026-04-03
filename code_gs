@@ -246,7 +246,8 @@ function runAnalysis(params) {
 function buildTsEvalscript_() {
   return '//VERSION=3\n' +
     'function setup(){\n' +
-    '  return{input:[{bands:["B04","B05","B08","B11","SCL"],units:"REFLECTANCE"}],\n' +
+    '  return{input:[{bands:["B04","B05","B08","B11"],units:"REFLECTANCE"},\n' +
+    '               {bands:["SCL"],units:"DN"}],\n' +
     '         output:[{id:"data",bands:5,sampleType:"FLOAT32"}]};\n' +
     '}\n' +
     'function evaluatePixel(s){\n' +
