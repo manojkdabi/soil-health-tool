@@ -284,20 +284,22 @@ function fetchROITimeSeries_(geojson, yearStart, yearEnd, token) {
         timeRange: { from: from, to: to },
         aggregationInterval: { of: 'P14D' },
         evalscript: buildTsEvalscript_(),
-        resx: 100,
-        resy: 100
+        resx: 20,
+        resy: 20
       },
-      calculations: { default: {} }
+      calculations: { data: {} }
     };
     var resp = UrlFetchApp.fetch(SH_STATISTICS_URL, {
       method: 'post', contentType: 'application/json',
       headers: { Authorization: 'Bearer ' + token },
       payload: JSON.stringify(payload), muteHttpExceptions: true
     });
-    Logger.log('TimeSeries status: ' + resp.getResponseCode());
-    if (resp.getResponseCode() !== 200) {
-      Logger.log('TimeSeries error: ' + resp.getContentText().substring(0, 500));
-      return null;
+    var statusCode = resp.getResponseCode();
+    Logger.log('TimeSeries status: ' + statusCode);
+    if (statusCode !== 200) {
+      var body = resp.getContentText().substring(0, 500);
+      Logger.log('TimeSeries error body: ' + body);
+      throw new Error('HTTP ' + statusCode + ' — ' + body);
     }
     var result = JSON.parse(resp.getContentText());
     var series = [];
@@ -337,12 +339,12 @@ function getTimeSeries(params) {
   try {
     var token  = getToken_();
     var series = fetchROITimeSeries_(params.geojson, params.yearStart, params.yearEnd, token);
-    if (!series) return { success: false, error: 'Statistics API fetch failed — check credentials or try a smaller date range.' };
-    if (series.length === 0) return { success: false, error: 'No valid observations found (all intervals were cloud-covered).' };
+    if (series === null) return { success: false, error: 'Statistics API fetch failed — check GAS execution logs for HTTP status details.' };
+    if (series.length === 0) return { success: false, error: 'No valid observations found (all intervals were cloud-covered or outside the ROI).' };
     return { success: true, series: series };
   } catch(e) {
     Logger.log('getTimeSeries error: ' + e.message);
-    return { success: false, error: e.message };
+    return { success: false, error: 'Statistics API error: ' + e.message };
   }
 }
 
