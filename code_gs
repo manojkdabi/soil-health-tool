@@ -241,18 +241,20 @@ function runAnalysis(params) {
 
 // ── Time-series evalscript (Statistics API) ───────────────────
 // Returns 5 float bands per pixel per scene: EVI2, NDRE, NIRv, NDMI, NDVI.
-// Cloud / shadow pixels (SCL 3/8/9/10) return NaN so the Statistics API
+// Cloud / nodata pixels (dataMask=0) return NaN so the Statistics API
 // excludes them from the per-interval mean.
 function buildTsEvalscript_() {
+  // Single input group only — Statistics API treats each group as a separate
+  // dataset; a second group for SCL (DN) causes "Dataset with id: 1 not found".
+  // dataMask is available for free in every S2L2A evalscript and is already
+  // derived from SCL (clouds/shadow/snow are 0), so no separate SCL group needed.
   return '//VERSION=3\n' +
     'function setup(){\n' +
-    '  return{input:[{bands:["B04","B05","B08","B11"],units:"REFLECTANCE"},\n' +
-    '               {bands:["SCL"],units:"DN"}],\n' +
+    '  return{input:[{bands:["B04","B05","B08","B11","dataMask"],units:"REFLECTANCE"}],\n' +
     '         output:[{id:"data",bands:5,sampleType:"FLOAT32"}]};\n' +
     '}\n' +
     'function evaluatePixel(s){\n' +
-    '  if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10)\n' +
-    '    return{data:[NaN,NaN,NaN,NaN,NaN]};\n' +
+    '  if(!s.dataMask) return{data:[NaN,NaN,NaN,NaN,NaN]};\n' +
     '  var d=s.B08-s.B04,s2=s.B08+s.B04+1e-9;\n' +
     '  var ndvi=d/s2;\n' +
     '  var evi2=2.5*d/(s.B08+2.4*s.B04+1);\n' +
