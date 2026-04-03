@@ -86,11 +86,9 @@ input:focus,select:focus{border-color:#F5A623}
 #results-fs-map{position:absolute;inset:0}
 #results-fs-topbar{position:absolute;top:12px;left:12px;z-index:1001;display:flex;align-items:center;gap:8px;background:#13241ecc;border:1px solid #2E6B4F;border-radius:6px;padding:6px 10px}
 #results-fs-panel{position:absolute;top:12px;right:12px;background:#13241e;border:1px solid #2E6B4F;border-radius:8px;padding:12px 14px;z-index:1001;min-width:230px;max-height:calc(100vh - 30px);overflow-y:auto}
-/* Swipe / curtain handle */
-#fs-swipe-handle{display:none;position:absolute;top:0;bottom:0;width:3px;background:#F5A623;cursor:ew-resize;z-index:1600;touch-action:none}
-#fs-swipe-knob{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:32px;height:32px;background:#F5A623;color:#0f1a17;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;user-select:none;box-shadow:0 2px 8px #0007;pointer-events:none}
-#fs-swipe-label-l{position:absolute;top:50%;transform:translateY(-50%);right:calc(100% + 8px);font-size:10px;font-weight:700;color:#fff;background:#0006;padding:2px 5px;border-radius:3px;white-space:nowrap;pointer-events:none}
-#fs-swipe-label-r{position:absolute;top:50%;transform:translateY(-50%);left:calc(100% + 8px);font-size:10px;font-weight:700;color:#fff;background:#0006;padding:2px 5px;border-radius:3px;white-space:nowrap;pointer-events:none}
+/* Overlay toggle for fullscreen map */
+#fs-overlay-toggle{display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:#9FE1CB;padding:2px 6px;border-radius:4px;border:1px solid #2E6B4F;user-select:none}
+#fs-overlay-toggle input{cursor:pointer;accent-color:#F5A623}
 /* Radio toggle for Zones / SHPI / CPI in fullscreen map */
 #fs-layer-toggle{display:flex;gap:4px;align-items:center}
 #fs-layer-toggle label{display:flex;align-items:center;gap:3px;cursor:pointer;font-size:10px;color:#9FE1CB;padding:2px 6px;border-radius:4px;border:1px solid transparent;user-select:none;transition:background .15s,border-color .15s}
@@ -760,10 +758,28 @@ function decodeRasterToResult_(rawData, callback) {
     ctx.drawImage(img, 0, 0)
     var pixels = ctx.getImageData(0, 0, W, H).data
 
+    // Build a per-pixel polygon mask if bbox + geojson are available.
+    // The Process API returns a bbox-clipped rectangle; pixels outside the
+    // actual ROI polygon boundary are excluded to avoid contamination.
+    var polyMask = null
+    var bb = rawData.bbox  // [minLng, minLat, maxLng, maxLat]
+    var roiGeom = rawData.geojson  // polygon geometry passed through from caller
+    if (bb && roiGeom) {
+      var lngRange = bb[2] - bb[0], latRange = bb[3] - bb[1]
+      polyMask = new Uint8Array(W * H)  // 1=inside polygon, 0=outside
+      for (var mi = 0; mi < W * H; mi++) {
+        var col = mi % W, row = Math.floor(mi / W)
+        var lng = bb[0] + (col + 0.5) / W * lngRange
+        var lat = bb[3] - (row + 0.5) / H * latRange  // row 0 = north (maxLat)
+        polyMask[mi] = pointInPolygon_(lng, lat, roiGeom) ? 1 : 0
+      }
+    }
+
     var shpiPixels = [], cpiPixels = [], pixelPairs = []
     var zoneMap = new Array(W * H).fill(0)  // zone assignment per pixel (0=invalid)
 
     for (var i = 0; i < W * H; i++) {
+      if (polyMask && !polyMask[i]) continue  // outside ROI polygon
       var R = pixels[i * 4]     // SHPI × 254  (valid when B > 0)
       var G = pixels[i * 4 + 1] // CPI  × 254  (valid when A > 0)
       var B = pixels[i * 4 + 2] // soil observation count  (0 = no bare-soil obs)
@@ -993,6 +1009,8 @@ function decodeRasterToResult_(rawData, callback) {
 
 // Single-run path: decode PNG and render results in the UI
 function decodeRasterAndAnalyse_(rawData) {
+  // Attach current ROI polygon so the decoder can clip to its exact boundary
+  if (roi && !rawData.geojson) rawData.geojson = roi
   decodeRasterToResult_(rawData, function(result) {
     if (!result) {
       showOverlay(false)
@@ -1124,6 +1142,36 @@ function geomBbox_(geom) {
   return coords.reduce(function(b, c) {
     return [Math.min(b[0], c[0]), Math.min(b[1], c[1]), Math.max(b[2], c[0]), Math.max(b[3], c[1])]
   }, [Infinity, Infinity, -Infinity, -Infinity])
+}
+
+// Ray-casting point-in-polygon test for a single ring [[lng,lat], ...]
+function pointInRing_(lng, lat, ring) {
+  var inside = false
+  var n = ring.length
+  for (var i = 0, j = n - 1; i < n; j = i++) {
+    var xi = ring[i][0], yi = ring[i][1]
+    var xj = ring[j][0], yj = ring[j][1]
+    if (((yi > lat) !== (yj > lat)) &&
+        (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+// Returns true if [lng, lat] is inside the GeoJSON Polygon or MultiPolygon (respects holes).
+function pointInPolygon_(lng, lat, geom) {
+  var polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates]
+  for (var p = 0; p < polys.length; p++) {
+    var rings = polys[p]
+    if (!pointInRing_(lng, lat, rings[0])) continue  // outside outer ring
+    var inHole = false
+    for (var h = 1; h < rings.length; h++) {
+      if (pointInRing_(lng, lat, rings[h])) { inHole = true; break }
+    }
+    if (!inHole) return true
+  }
+  return false
 }
 
 function hexToRgb_(hex) {
@@ -1316,61 +1364,16 @@ function toggleResultsFullscreen_() {
     // Build zone area table
     buildFsZoneAreaTable_(data.zone_stats)
   }
-  // Initialise the swipe/curtain handle
-  initSwipeHandle_()
+  // Reset overlay toggle to checked when opening
+  var overlayChk = document.getElementById('overlayVisibleFs')
+  if (overlayChk) overlayChk.checked = true
 }
 
-// ── Swipe curtain for fullscreen zone map ─────────────────────
-function initSwipeHandle_() {
-  var container = document.getElementById('results-fs-container')
-  var mapEl     = document.getElementById('results-fs-map')
-  var handle    = document.getElementById('fs-swipe-handle')
-  if (!handle) return
-  if (!resultsRasterLayerFs) { handle.style.display = 'none'; return }
-
-  // Position handle at 50% width initially
-  var w = mapEl.offsetWidth || window.innerWidth
-  handle.style.left = (w / 2) + 'px'
-  handle.style.display = 'block'
-  updateSwipeClip_(w / 2)
-
-  // Remove any previous listeners by replacing the handle with a clone
-  var newHandle = handle.cloneNode(true)
-  handle.parentNode.replaceChild(newHandle, handle)
-  handle = newHandle
-
-  var dragging = false
-  function onDragStart(e) { dragging = true; e.preventDefault(); e.stopPropagation() }
-  function onDragMove(e) {
-    if (!dragging) return
-    var rect = mapEl.getBoundingClientRect()
-    var clientX = e.touches ? e.touches[0].clientX : e.clientX
-    var x = Math.max(0, Math.min(clientX - rect.left, rect.width))
-    handle.style.left = x + 'px'
-    updateSwipeClip_(x)
-    if (e.touches) e.preventDefault()
-  }
-  function onDragEnd() { dragging = false }
-
-  handle.addEventListener('mousedown', onDragStart)
-  container.addEventListener('mousemove', onDragMove)
-  container.addEventListener('mouseup', onDragEnd)
-  container.addEventListener('mouseleave', onDragEnd)
-  handle.addEventListener('touchstart', onDragStart, { passive: false })
-  container.addEventListener('touchmove', onDragMove, { passive: false })
-  container.addEventListener('touchend', onDragEnd)
-}
-
-function updateSwipeClip_(xPos) {
+// ── Toggle fullscreen overlay layer visibility ────────────────
+function toggleFsOverlay_(show) {
   if (!resultsRasterLayerFs) return
   var img = resultsRasterLayerFs._image
-  if (!img) return
-  var mapEl = document.getElementById('results-fs-map')
-  var w = mapEl ? mapEl.offsetWidth || window.innerWidth : window.innerWidth
-  // Clip right-side percentage = (map width - handle x) / map width
-  // so the raster is fully visible left of the handle and hidden right of it
-  var pct = ((w - xPos) / w * 100).toFixed(2)
-  img.style.clipPath = 'inset(0 ' + pct + '% 0 0)'
+  if (img) img.style.display = show ? '' : 'none'
 }
 
 // ── Switch the fullscreen map overlay between Zones / SHPI / CPI ──────────────
@@ -1408,8 +1411,9 @@ function switchFsLayer_(layerName) {
   document.getElementById('fs-panel-shpi').style.display  = layerName === 'shpi'  ? '' : 'none'
   document.getElementById('fs-panel-cpi').style.display   = layerName === 'cpi'   ? '' : 'none'
 
-  // Re-initialise swipe handle for the new layer
-  initSwipeHandle_()
+  // Respect the current overlay visibility toggle
+  var overlayChk = document.getElementById('overlayVisibleFs')
+  if (overlayChk && !overlayChk.checked) toggleFsOverlay_(false)
 }
 
 function buildFsZoneAreaTable_(zoneStat) {
@@ -1960,7 +1964,8 @@ function runAllROIs_() {
     google.script.run
       .withSuccessHandler(function(data) {
         if (data.success) {
-          // Decode the raw PNG into zone_stats/validation before caching
+          // Attach ROI polygon so decoder can clip to exact boundary, then decode
+          if (item.geojson && !data.geojson) data.geojson = item.geojson
           decodeRasterToResult_(data, function(result) {
             if (result) {
               var cache = loadResultsCache_()
@@ -2448,7 +2453,7 @@ function renderCmpScatterZones_(rois, cache) {
       }),
       borderColor: roiColor,
       borderWidth: 2,
-      pointRadius: 6, pointHoverRadius: 8
+      pointRadius: 3, pointHoverRadius: 5
     })
     var xs = zFiltered.map(function(zs) { return zs.mean_shpi })
     var ys = zFiltered.map(function(zs) { return zs.mean_cpi })
@@ -2507,7 +2512,7 @@ function renderCmpScatterSummary_(rois, cache) {
       type: 'scatter', label: 'ROIs',
       data: pts.map(function(p){return{x:p.x,y:p.y}}),
       backgroundColor: pts.map(function(p){return p.color}),
-      pointRadius: 7, pointHoverRadius: 9
+      pointRadius: 4, pointHoverRadius: 6
     },
     {
       type: 'line', label: 'Global fit',
@@ -3108,22 +3113,25 @@ function clearMonthlyLayer_() {
   s.textContent = '.bound-tooltip{background:#13241e;border:1px solid #2E6B4F;color:#9FE1CB;font-size:10px;padding:2px 6px;border-radius:4px;box-shadow:none}'
   document.head.appendChild(s)
 })()
+
+// Auto-populate library table on page load
+renderLibraryPanel_()
 </script>
 
 <!-- Fullscreen results map -->
 <div id="results-fs-container">
   <div id="results-fs-map"></div>
-  <div id="fs-swipe-handle">
-    <div id="fs-swipe-label-l">Overlay</div>
-    <div id="fs-swipe-knob">⇔</div>
-    <div id="fs-swipe-label-r">Basemap</div>
-  </div>
   <div id="results-fs-topbar">
     <div id="fs-layer-toggle">
       <label><input type="radio" name="fsLayer" value="zones" checked onchange="switchFsLayer_(this.value)"><span>Zones</span></label>
       <label><input type="radio" name="fsLayer" value="shpi" onchange="switchFsLayer_(this.value)"><span>SHPI</span></label>
       <label><input type="radio" name="fsLayer" value="cpi" onchange="switchFsLayer_(this.value)"><span>CPI</span></label>
     </div>
+    <span style="width:1px;height:16px;background:#2E6B4F;margin:0 2px;display:inline-block"></span>
+    <label id="fs-overlay-toggle">
+      <input type="checkbox" id="overlayVisibleFs" checked onchange="toggleFsOverlay_(this.checked)">
+      <span>Show overlay</span>
+    </label>
     <span style="width:1px;height:16px;background:#2E6B4F;margin:0 2px;display:inline-block"></span>
     <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
     <input type="range" id="rasterOpacityFs" min="10" max="100" value="80"
