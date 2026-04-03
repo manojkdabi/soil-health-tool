@@ -1,5 +1,5 @@
 // ============================================================
-// Soil Health Stratification Tool — Apps Script Backend BE1.3.0
+// Soil Health Stratification Tool — Apps Script Backend BE1.3.1
 // Treeconomy Soil Intelligence Division
 // All strings use single quotes and + concatenation. No backticks.
 // ============================================================
@@ -379,7 +379,9 @@ function fetchROITimeSeries_(geojson, yearStart, yearEnd, token) {
       },
       output: {
         width: W, height: H,
-        responses: [{ identifier: 'default', format: { type: 'image/tiff' } }]
+        responses: [{ identifier: 'default',
+                      format: { type: 'image/tiff',
+                                parameters: { compression: 'none' } } }]
       },
       evalscript: evalscript
     };
@@ -398,10 +400,12 @@ function fetchROITimeSeries_(geojson, yearStart, yearEnd, token) {
           evi2: m[0], ndre: m[1], nirv: m[2], ndmi: m[3], ndvi: m[4],
           n: parsed.validCount
         });
+      } else {
+        Logger.log('TS window ' + wFrom.substring(0,10) + ': no crop pixels (n=0 or parse failed)');
       }
     } else {
-      Logger.log('TS window ' + wFrom.substring(0,10) + ' status ' + code +
-                 ': ' + resp.getContentText().substring(0, 120));
+      Logger.log('TS window ' + wFrom.substring(0,10) + ' HTTP ' + code +
+                 ': ' + resp.getContentText().substring(0, 200));
     }
     cursor = nextCursor;
   }
