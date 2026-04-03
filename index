@@ -441,7 +441,7 @@ const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','
 const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
 const MAX_ROIS_FOR_LEGEND = 6     // hide chart legend when more ROIs than this (to avoid clutter)
 const EPSILON_DENOM       = 1e-10 // numerical stability guard against near-zero denominators in regression
-const MIN_PIXEL_SAMPLE    = 10    // minimum pixel sample size to use sample-based zone means in scatter plot
+const MIN_PIXEL_SAMPLE    = 10    // min pixel sample for bin-IQR zone means (10 ensures ≥1 sample/zone on average)
 
 function formatPixelCount(px) {
   return px >= 1000 ? (px / 1000).toFixed(1) + 'k' : String(Math.round(px))
@@ -1618,12 +1618,17 @@ function closeMenus_() {
 }
 document.addEventListener('click', closeMenus_)
 
+// Sanitize a string for use as a filename or ROI name (keeps letters, digits, hyphens, underscores)
+function sanitizeName_(str) {
+  return str.replace(/[^A-Za-z0-9_\-]/g, '_')
+}
+
 // ── GeoJSON download ──────────────────────────────────────────
 function getRoiFilename_() {
   if (currentRoiId) {
     var lib = loadLibrary_()
     var item = lib.find(function(r) { return r.id === currentRoiId })
-    if (item) return item.name.replace(/[^A-Za-z0-9_\-]/g, '_')
+    if (item) return sanitizeName_(item.name)
   }
   return 'roi_' + new Date().toISOString().slice(0, 10)
 }
@@ -1754,19 +1759,20 @@ function saveCurrentROI_() {
     var raw  = state && district ? state + '_' + district + '_' + n
              : state ? state + '_' + n
              : 'ROI_' + n
-    var name = raw.replace(/[^A-Za-z0-9_]/g, '_')
-    doSave_(name)
-  }).catch(function() {
-    doSave_('ROI_' + n)
+    var name = sanitizeName_(raw)
+    doSave_(name, false)
+  }).catch(function(err) {
+    console.warn('Nominatim geocoding failed:', err)
+    doSave_('ROI_' + n, true)
   })
-  function doSave_(name) {
+  function doSave_(name, geoFailed) {
     var id = uuid4_()
     lib.push({ id: id, name: name, geojson: roi, savedAt: Date.now(), areaHa: Math.round(computeAreaHa_(roi)) })
     saveLibrary_(lib)
     currentRoiId = id
     renderLibraryPanel_()
     maybeShowCompareSection_()
-    setROIStatus('✓ Saved: ' + name)
+    setROIStatus('✓ Saved: ' + name + (geoFailed ? ' (geocoding unavailable)' : ''))
   }
 }
 
