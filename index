@@ -187,6 +187,12 @@ canvas{display:block}
 .cmp-tab{flex:1;padding:4px 6px;background:#1e3d30;border:1px solid #2E6B4F;border-radius:4px;color:#9FE1CB;font-size:10px;cursor:pointer;text-align:center}
 .cmp-tab.active{background:#F5A623;color:#3A1800;border-color:#F5A623;font-weight:600}
 .cmp-chart-wrap{height:130px;margin-top:4px}
+
+/* Time-series panel */
+.ts-idx-btn{font-size:9px;padding:2px 7px;border:1px solid #2E6B4F;border-radius:3px;background:#1a2535;color:#9FE1CB;cursor:pointer;margin:0 2px;line-height:1.6}
+.ts-idx-btn.active{background:#F5A623;color:#111;border-color:#F5A623;font-weight:700}
+.ts-idx-btn:hover:not(.active){background:#2E6B4F}
+#tsChartWrap{height:140px;margin-top:4px}
 </style>
 </head>
 <body>
@@ -313,6 +319,28 @@ canvas{display:block}
       </div>
     </div>
 
+    <!-- Time Series Panel -->
+    <div class="sb">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleTsPanel_()">
+        <h3 style="margin:0">📈 Crop Time Series</h3>
+        <span id="tsPanelChevron" style="color:#F5A623;font-size:11px">▶</span>
+      </div>
+      <div id="tsPanelBody" style="display:none;margin-top:8px">
+        <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Statistics API). Load an ROI and set year range, then fetch.</p>
+        <button class="btn btn-sec" id="tsFetchBtn" onclick="fetchTimeSeries_()" style="margin-bottom:6px">📡 Fetch Time Series</button>
+        <div id="tsIndexBtns" style="display:none;margin-bottom:6px;text-align:center">
+          <span style="font-size:9px;color:#9FE1CB;margin-right:3px">Index:</span>
+          <button class="ts-idx-btn active" onclick="setTsIndex_('evi2')" id="tsBtn_evi2">EVI2</button>
+          <button class="ts-idx-btn" onclick="setTsIndex_('ndre')" id="tsBtn_ndre">NDRE</button>
+          <button class="ts-idx-btn" onclick="setTsIndex_('nirv')" id="tsBtn_nirv">NIRv</button>
+          <button class="ts-idx-btn" onclick="setTsIndex_('ndmi')" id="tsBtn_ndmi">NDMI</button>
+          <button class="ts-idx-btn" onclick="setTsIndex_('ndvi')" id="tsBtn_ndvi">NDVI</button>
+        </div>
+        <div id="tsChartWrap" style="display:none"><canvas id="tsChart"></canvas></div>
+        <div id="tsChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
+      </div>
+    </div>
+
     <!-- Results -->
     <div class="results" id="results">
       <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623">Results</h3>
@@ -410,6 +438,9 @@ let cmpScatterMode = 'zones'   // 'zones' | 'summary'
 let scatterViewMode = 'bins'   // 'bins'  | 'pixels'
 let compareMapFs = null
 let chartFsInstances = {}      // chart-id → Chart instance for fullscreen canvases
+let tsChart     = null         // time-series Chart instance
+let tsData      = null         // fetched time-series array
+let tsCurIndex  = 'evi2'       // active index key
 const ZONE_COLORS         = ['#a50026','#d73027','#f46d43','#fdae61','#fee090','#d9ef8b','#a6d96a','#66bd63','#1a9850','#006837']
 const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','#ff9f43','#54a0ff','#5f27cd','#ee5a24','#0abde3']
 const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
@@ -2663,6 +2694,192 @@ function downloadResult() {
   a.href     = URL.createObjectURL(blob)
   a.download = 'soil_health_' + new Date().toISOString().slice(0, 10) + '.json'
   a.click()
+}
+
+// ── Time Series — collapse / expand panel ─────────────────────
+function toggleTsPanel_() {
+  const body    = document.getElementById('tsPanelBody')
+  const chevron = document.getElementById('tsPanelChevron')
+  const open    = body.style.display !== 'none'
+  body.style.display    = open ? 'none' : 'block'
+  chevron.textContent   = open ? '▶' : '▼'
+}
+
+// ── Time Series — fetch from Statistics API ───────────────────
+function fetchTimeSeries_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+  const yearStart = parseInt(document.getElementById('yearStart').value, 10)
+  const yearEnd   = parseInt(document.getElementById('yearEnd').value, 10)
+  if (isNaN(yearStart) || isNaN(yearEnd)) { alert('Set a valid year range first.'); return }
+  const btn = document.getElementById('tsFetchBtn')
+  btn.disabled    = true
+  btn.textContent = '⏳ Fetching...'
+  document.getElementById('tsChartLabel').textContent = ''
+  google.script.run
+    .withSuccessHandler(function(data) {
+      btn.disabled    = false
+      btn.textContent = '📡 Fetch Time Series'
+      if (!data.success) {
+        document.getElementById('tsChartLabel').textContent = '⚠ ' + data.error
+        return
+      }
+      tsData = data.series
+      document.getElementById('tsIndexBtns').style.display = 'block'
+      document.getElementById('tsChartWrap').style.display = 'block'
+      renderTsChart_(tsCurIndex)
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled    = false
+      btn.textContent = '📡 Fetch Time Series'
+      document.getElementById('tsChartLabel').textContent = '⚠ ' + err.message
+    })
+    .getTimeSeries({ geojson: roi, yearStart, yearEnd })
+}
+
+// ── Time Series — switch active index ─────────────────────────
+function setTsIndex_(key) {
+  tsCurIndex = key
+  document.querySelectorAll('.ts-idx-btn').forEach(b => b.classList.remove('active'))
+  const btn = document.getElementById('tsBtn_' + key)
+  if (btn) btn.classList.add('active')
+  if (tsData) renderTsChart_(key)
+}
+
+// ── Time Series — Gaussian smoothing (σ in array-index units) ─
+function gaussianSmooth_(values, sigma) {
+  const r      = Math.max(1, Math.round(sigma * 2.5))
+  const kernel = []
+  let wsum = 0
+  for (let i = -r; i <= r; i++) {
+    const w = Math.exp(-0.5 * (i / sigma) ** 2)
+    kernel.push(w); wsum += w
+  }
+  return values.map((_, idx) => {
+    let acc = 0, wt = 0
+    for (let k = -r; k <= r; k++) {
+      const j = idx + k
+      if (j >= 0 && j < values.length && values[j] !== null) {
+        acc += values[j] * kernel[k + r]; wt += kernel[k + r]
+      }
+    }
+    return wt > 0 ? acc / wt : null
+  })
+}
+
+// ── Time Series — peak detection ──────────────────────────────
+// Returns indices of local maxima with prominence > globalMean * minProminenceFrac
+// and at least minDistancePts apart.
+function detectPeaks_(smoothed, minProminenceFrac, minDistancePts) {
+  const validVals = smoothed.filter(v => v !== null)
+  if (!validVals.length) return []
+  const globalMean = validVals.reduce((a, b) => a + b, 0) / validVals.length
+  const threshold  = globalMean * (1 + minProminenceFrac)
+  const peaks = []
+  for (let i = 1; i < smoothed.length - 1; i++) {
+    const v    = smoothed[i]
+    const prev = smoothed[i - 1]
+    const next = smoothed[i + 1]
+    if (v === null || prev === null || next === null) continue
+    if (v > prev && v > next && v > threshold) {
+      if (!peaks.length || i - peaks[peaks.length - 1] >= minDistancePts) {
+        peaks.push(i)
+      }
+    }
+  }
+  return peaks
+}
+
+// ── Time Series — render Chart.js line chart ──────────────────
+function renderTsChart_(indexKey) {
+  if (!tsData || !tsData.length) return
+  const labelMap  = { evi2: 'EVI2', ndre: 'NDRE', nirv: 'NIRv', ndmi: 'NDMI', ndvi: 'NDVI' }
+  const labels    = tsData.map(d => d.date)
+  const rawVals   = tsData.map(d => (d[indexKey] != null ? d[indexKey] : null))
+
+  // Fill nulls for smoothing (nearest-neighbour interpolation)
+  const dense = rawVals.slice()
+  for (let i = 0; i < dense.length; i++) {
+    if (dense[i] === null) {
+      const prev = dense.slice(0, i).reverse().find(v => v !== null) ?? null
+      const next = dense.slice(i + 1).find(v => v !== null) ?? null
+      dense[i] = prev !== null && next !== null ? (prev + next) / 2 : (prev ?? next ?? null)
+    }
+  }
+
+  const smoothed = gaussianSmooth_(dense, 1.2)
+  const peaks    = detectPeaks_(smoothed, 0.15, 4)  // 15 % above mean, ≥ 56 days apart
+
+  // Highlight peak points with orange markers
+  const ptBg  = rawVals.map((_, i) => peaks.includes(i) ? '#F5A623' : 'rgba(159,225,203,0.45)')
+  const ptRad = rawVals.map((_, i) => peaks.includes(i) ? 6 : 2)
+
+  if (tsChart) { tsChart.destroy(); tsChart = null }
+  const ctx = document.getElementById('tsChart').getContext('2d')
+  tsChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: labelMap[indexKey] || indexKey,
+          data: rawVals,
+          borderColor: 'rgba(159,225,203,0.65)',
+          borderWidth: 1.2,
+          pointBackgroundColor: ptBg,
+          pointRadius: ptRad,
+          pointHoverRadius: 7,
+          fill: false,
+          tension: 0.3,
+          spanGaps: true
+        },
+        {
+          label: 'Smoothed',
+          data: smoothed.map(v => v !== null ? Math.round(v * 1000) / 1000 : null),
+          borderColor: '#F5A623',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.4,
+          spanGaps: true
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => items[0].label,
+            label: item => (item.datasetIndex === 0
+              ? (labelMap[indexKey] || indexKey) + ': ' + item.raw
+              : 'Smoothed: ' + item.raw)
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#9FE1CB', font: { size: 7 }, maxRotation: 45, minRotation: 30, maxTicksLimit: 10 },
+          grid: { color: 'rgba(255,255,255,0.07)' }
+        },
+        y: {
+          ticks: { color: '#9FE1CB', font: { size: 8 } },
+          grid: { color: 'rgba(255,255,255,0.07)' }
+        }
+      }
+    }
+  });
+
+  // Update label below chart with peak summary
+  if (peaks.length) {
+    const peakDates = peaks.map(i => labels[i]).join(', ')
+    document.getElementById('tsChartLabel').textContent =
+      peaks.length + ' season peak' + (peaks.length > 1 ? 's' : '') +
+      ' detected (🟠) — ' + peakDates
+  } else {
+    document.getElementById('tsChartLabel').textContent =
+      'No significant peaks detected — ' + tsData.length + ' intervals'
+  }
 }
 
 // ── UI helpers ────────────────────────────────────────────────
