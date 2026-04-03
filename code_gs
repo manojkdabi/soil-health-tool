@@ -241,7 +241,9 @@ function runAnalysis(params) {
 // ── Time-series evalscript (Process API, ORBIT mosaicking) ───
 // Returns 5 FLOAT32 bands per output pixel: EVI2, NDRE, NIRv, NDMI, NDVI.
 // samples[] is the temporal stack for the 14-day window at that spatial pixel.
-// Pixels where no crop observation exists return NaN on all bands.
+// NDVI > 0.35 threshold matches the crop-pixel gate in buildCombinedEvalscript_
+// (the main raster evalscript) — ensures only genuine crop observations are
+// averaged into the spectral indices.  Non-crop / cloud pixels return NaN.
 function buildTsWindowEvalscript_() {
   return '//VERSION=3\n' +
     'function setup(){\n' +
@@ -254,7 +256,7 @@ function buildTsWindowEvalscript_() {
     '  for(var i=0;i<samples.length;i++){\n' +
     '    var s=samples[i];\n' +
     '    var ndvi=(s.B08-s.B04)/(s.B08+s.B04+1e-9);\n' +
-    '    if(ndvi<=0.35) continue;\n' +
+    '    if(ndvi<=0.35) continue;\n' +  // only crop pixels (matches main evalscript gate)
     '    e+=2.5*(s.B08-s.B04)/(s.B08+2.4*s.B04+1);\n' +
     '    nd+=(s.B08-s.B05)/(s.B08+s.B05+1e-9);\n' +
     '    ni+=ndvi*s.B08;\n' +
@@ -289,7 +291,7 @@ function parseTiffFloat32Bands_(content) {
     for (var t = 0; t < numTags; t++) {
       var tOff = ifdOff + 2 + t * 12;
       var tag  = dv.getUint16(tOff, le);
-      var type = dv.getUint16(tOff + 2, le);
+      var type = dv.getUint16(tOff + 2, le);  // 3=SHORT(uint16), 4=LONG(uint32) per TIFF spec
       var cnt  = dv.getUint32(tOff + 4, le);
       var vOff = tOff + 8;
       function readOne(offset) {
@@ -352,11 +354,13 @@ function parseTiffFloat32Bands_(content) {
 // valid crop observations.  Uses the same auth/API as the main SHPI/CPI raster.
 function fetchROITimeSeries_(geojson, yearStart, yearEnd, token) {
   var bbox = getBbox_(geojson);
-  // Image dimensions: ~20 m pixels, clamped to 32×32 to keep files small.
+  // 0.0002° ≈ 22 m at India's latitude; image clamped to 32×32 to keep files small.
+  var DEG_PER_PIXEL = 0.0002;
+  var MS_14_DAYS    = 14 * 24 * 60 * 60 * 1000;
   var lngSpan = bbox[2] - bbox[0];
   var latSpan = bbox[3] - bbox[1];
-  var W = Math.max(1, Math.min(32, Math.round(lngSpan / 0.0002)));
-  var H = Math.max(1, Math.min(32, Math.round(latSpan / 0.0002)));
+  var W = Math.max(1, Math.min(32, Math.round(lngSpan / DEG_PER_PIXEL)));
+  var H = Math.max(1, Math.min(32, Math.round(latSpan / DEG_PER_PIXEL)));
   var evalscript = buildTsWindowEvalscript_();
   var series = [];
   // Walk 14-day windows from Jan 1 of yearStart to Dec 31 of yearEnd
@@ -364,7 +368,7 @@ function fetchROITimeSeries_(geojson, yearStart, yearEnd, token) {
   var rangeEnd = new Date(yearEnd   + '-12-31T23:59:59Z');
   while (cursor <= rangeEnd) {
     var wFrom = cursor.toISOString().substring(0, 10) + 'T00:00:00Z';
-    var nextCursor = new Date(cursor.getTime() + 14 * 24 * 60 * 60 * 1000);
+    var nextCursor = new Date(cursor.getTime() + MS_14_DAYS);
     var wEnd  = nextCursor > rangeEnd ? rangeEnd : nextCursor;
     var wTo   = new Date(wEnd.getTime() - 1000).toISOString().substring(0, 10) + 'T23:59:59Z';
     var payload = {
