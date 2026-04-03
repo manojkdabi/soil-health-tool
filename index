@@ -766,12 +766,14 @@ function decodeRasterToResult_(rawData, callback) {
     var roiGeom = rawData.geojson  // polygon geometry passed through from caller
     if (bb && roiGeom) {
       var lngRange = bb[2] - bb[0], latRange = bb[3] - bb[1]
-      polyMask = new Uint8Array(W * H)  // 1=inside polygon, 0=outside
-      for (var mi = 0; mi < W * H; mi++) {
-        var col = mi % W, row = Math.floor(mi / W)
-        var lng = bb[0] + (col + 0.5) / W * lngRange
-        var lat = bb[3] - (row + 0.5) / H * latRange  // row 0 = north (maxLat)
-        polyMask[mi] = pointInPolygon_(lng, lat, roiGeom) ? 1 : 0
+      if (lngRange > 0 && latRange > 0) {
+        polyMask = new Uint8Array(W * H)  // 1=inside polygon, 0=outside
+        for (var mi = 0; mi < W * H; mi++) {
+          var col = mi % W, row = Math.floor(mi / W)
+          var lng = bb[0] + (col + 0.5) / W * lngRange
+          var lat = bb[3] - (row + 0.5) / H * latRange  // row 0 = north (maxLat)
+          polyMask[mi] = pointInPolygon_(lng, lat, roiGeom) ? 1 : 0
+        }
       }
     }
 
