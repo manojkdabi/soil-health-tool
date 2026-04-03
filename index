@@ -233,7 +233,7 @@ canvas{display:block}
         <span id="libToggleIcon" style="font-size:10px">▼</span>
       </h3>
       <div id="libList">
-        <div style="overflow-x:auto"><table class="cmp-table" id="roiMergedTable"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>r</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBody"></tbody></table></div>
+        <div style="overflow-x:auto"><table class="cmp-table" id="roiMergedTable"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>ρ</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBody"></tbody></table></div>
       </div>
     </div>
 
@@ -844,15 +844,30 @@ function decodeRasterToResult_(rawData, callback) {
       }
     }
 
-    // Pearson r / R² computed from pixel-level sample (more robust than zone means)
-    var xs = pixelSample.map(function(p) { return p.x })
-    var ys = pixelSample.map(function(p) { return p.y })
-    var pr = pearson_(xs, ys)
-    var r2 = Math.round(pr * pr * 1000) / 1000
-    pr = Math.round(pr * 1000) / 1000
-    // mono / ratio still use zone means (they describe the ordinal zone pattern)
-    var zoneMeanCpi = zoneStats.map(function(zs) { return zs.mean_cpi })
-    var mono = zoneMeanCpi.every(function(v, i) { return i === 0 || v >= zoneMeanCpi[i - 1] })
+    // Spearman ρ on zone means — the meaningful signal (matches scatter plot logic)
+    var zoneMeanShpi = zoneStats.map(function(zs) { return zs.mean_shpi })
+    var zoneMeanCpi  = zoneStats.map(function(zs) { return zs.mean_cpi })
+    function rankAvgVal_(arr) {
+      var sorted = arr.slice().sort(function(a, b) { return a - b })
+      return arr.map(function(v) {
+        var idx = []
+        sorted.forEach(function(s, i) { if (s === v) idx.push(i + 1) })
+        return idx.reduce(function(a, b) { return a + b }, 0) / idx.length
+      })
+    }
+    var rxz = rankAvgVal_(zoneMeanShpi), ryz = rankAvgVal_(zoneMeanCpi)
+    var nz  = rxz.length
+    var rmxz = rxz.reduce(function(a, b) { return a + b }, 0) / nz
+    var rmyz = ryz.reduce(function(a, b) { return a + b }, 0) / nz
+    var rNumZ = rxz.reduce(function(a, v, i) { return a + (v - rmxz) * (ryz[i] - rmyz) }, 0)
+    var rdxZ  = Math.sqrt(rxz.reduce(function(a, v) { return a + (v - rmxz) * (v - rmxz) }, 0))
+    var rdyZ  = Math.sqrt(ryz.reduce(function(a, v) { return a + (v - rmyz) * (v - rmyz) }, 0))
+    var rho = (rdxZ * rdyZ > 0) ? rNumZ / (rdxZ * rdyZ) : 0
+    rho = Math.round(rho * 1000) / 1000
+    var rho_r2 = Math.round(rho * rho * 1000) / 1000
+
+    // mono / ratio describe the ordinal zone pattern
+    var mono  = zoneMeanCpi.every(function(v, i) { return i === 0 || v >= zoneMeanCpi[i - 1] })
     var ratio = zoneMeanCpi[0] > 0.01 ? Math.round(zoneMeanCpi[9] / zoneMeanCpi[0] * 100) / 100 : null
 
     // K-means k=5 clustering on SHPI pixel values (supplementary analytics)
@@ -958,11 +973,11 @@ function decodeRasterToResult_(rawData, callback) {
       pixel_sample:   pixelSample,
       kmeans5:        kmeans5,
       validation: {
-        pearson_r:       pr,
-        r_squared:       r2,
+        spearman_r:      rho,
+        r_squared:       rho_r2,
         is_monotonic:    mono,
         cpi_ratio:       ratio,
-        confirmed:       pr > 0.60 && mono,
+        confirmed:       rho > 0.60 && mono,
         n_zones:         10,
         data_source:     'real',
         shpi_thresholds: thresholds
@@ -1029,12 +1044,16 @@ function renderResults(data) {
   }
   badge.style.display = 'block'
 
-  // Stat cards
+  // Stat cards — use Spearman ρ (zone-level, consistent with scatter) with fallback for old cached results
   const statGrid = document.getElementById('statGrid')
   statGrid.innerHTML = ''
+  var isNew  = v.spearman_r !== undefined
+  var rhoVal = isNew ? v.spearman_r : v.pearson_r
+  var rhoLbl = isNew ? 'Spearman ρ (zones)' : 'Pearson r'
+  var r2Lbl  = isNew ? 'R² (zones)' : 'R²'
   const stats = [
-    { val: v.pearson_r,  lbl: 'Pearson r' },
-    { val: v.r_squared,  lbl: 'R²' },
+    { val: rhoVal,  lbl: rhoLbl },
+    { val: v.r_squared,  lbl: r2Lbl },
     { val: v.cpi_ratio ? v.cpi_ratio + '×' : '—', lbl: 'CPI Z10/Z1 ratio' },
     { val: v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
   ]
@@ -1798,7 +1817,7 @@ function renderLibraryPanel_() {
       var sMin = Math.min.apply(null, z.map(function(zs) { return zs.mean_shpi }))
       var sMax = Math.max.apply(null, z.map(function(zs) { return zs.mean_shpi }))
       shpiCell  = sMin.toFixed(2) + '–' + sMax.toFixed(2)
-      rCell     = v.pearson_r  !== undefined ? v.pearson_r  : '—'
+      rCell     = (v.spearman_r !== undefined ? v.spearman_r : v.pearson_r !== undefined ? v.pearson_r : '—')
       r2Cell    = v.r_squared  !== undefined ? v.r_squared  : '—'
       ratioCell = v.cpi_ratio  !== undefined ? v.cpi_ratio + '×' : '—'
     }
@@ -3202,7 +3221,7 @@ function clearMonthlyLayer_() {
     <button class="rm-ctrl-btn" onclick="closeLibTableFs_()">✕ Close</button>
   </div>
   <div style="padding:16px;overflow:auto;flex:1">
-    <table class="cmp-table" id="roiMergedTableFs"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>r</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBodyFs"></tbody></table>
+    <table class="cmp-table" id="roiMergedTableFs"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>ρ</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBodyFs"></tbody></table>
   </div>
 </div>
 </body>
