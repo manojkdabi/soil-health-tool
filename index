@@ -200,7 +200,7 @@ canvas{display:block}
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
     <span class="ver-pill ver-pill-be">BE1.7.0</span>
-    <span class="ver-pill ver-pill-fe">FE1.8.0</span>
+    <span class="ver-pill ver-pill-fe">FE1.9.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -262,6 +262,7 @@ canvas{display:block}
         <div style="display:flex;gap:4px;margin-bottom:6px">
           <button class="ts-idx-btn active" id="tsPanelCropTab" onclick="setTsPanelMode_('crop')" style="flex:1;font-size:9px">🌿 Crop (CPI)</button>
           <button class="ts-idx-btn" id="tsPanelSoilTab" onclick="setTsPanelMode_('soil')" style="flex:1;font-size:9px">🟤 Soil (SHPI)</button>
+          <button class="ts-idx-btn" id="tsPanelPairedTab" onclick="setTsPanelMode_('paired')" style="flex:1;font-size:9px">📊 Paired</button>
         </div>
         <!-- Crop panel -->
         <div id="tsCropPanel">
@@ -314,6 +315,19 @@ canvas{display:block}
             <div id="soilYearChecks" style="display:flex;flex-wrap:wrap;gap:3px;font-size:8px;color:#9FE1CB;margin-bottom:5px"></div>
             <button class="btn btn-prim" onclick="useYearsForShpi_()" style="width:100%;font-size:9px" id="tsUseShpiBtn">🟤 Use selected years for SHPI</button>
           </div>
+        </div>
+        <!-- D3: Paired Scatter (SHPI fallow × CPI season per year) -->
+        <div id="tsPairedPanel" style="display:none">
+          <div style="font-size:8px;color:#9FE1CB;margin-bottom:5px">Year-by-year fallow SHPI vs crop CPI scatter. Requires both Crop and Soil series to be fetched.</div>
+          <div style="display:flex;gap:4px;margin-bottom:6px;text-align:center">
+            <button class="ts-idx-btn active" id="d3KharifTab" onclick="setD3Season_('kharif')" style="flex:1;font-size:9px">🌾 Kharif</button>
+            <button class="ts-idx-btn" id="d3RabiTab" onclick="setD3Season_('rabi')" style="flex:1;font-size:9px">🌿 Rabi</button>
+          </div>
+          <div id="d3PairedChartWrap" style="display:none"><canvas id="pairedScatterCanvas"></canvas></div>
+          <div id="d3PairedEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
+          <div id="d3PairedCorr" style="text-align:center;font-size:9px;color:#9FE1CB;margin-bottom:3px"></div>
+          <div id="d3PairedStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
+          <div id="fallowShpiFetchStatus" style="display:none;font-size:8px;color:#F5A623;text-align:center;margin-top:3px"></div>
         </div>
       </div>
     </div>
@@ -3012,12 +3026,17 @@ function setTsPanelMode_(mode) {
   tsPanelMode = mode
   var cropTab  = document.getElementById('tsPanelCropTab')
   var soilTab  = document.getElementById('tsPanelSoilTab')
+  var pairedTab = document.getElementById('tsPanelPairedTab')
   var cropPanel = document.getElementById('tsCropPanel')
   var soilPanel = document.getElementById('tsSoilPanel')
+  var pairedPanel = document.getElementById('tsPairedPanel')
   if (cropTab) cropTab.classList.toggle('active', mode === 'crop')
   if (soilTab) soilTab.classList.toggle('active', mode === 'soil')
+  if (pairedTab) pairedTab.classList.toggle('active', mode === 'paired')
   if (cropPanel) cropPanel.style.display = mode === 'crop' ? 'block' : 'none'
   if (soilPanel) soilPanel.style.display = mode === 'soil' ? 'block' : 'none'
+  if (pairedPanel) pairedPanel.style.display = mode === 'paired' ? 'block' : 'none'
+  if (mode === 'paired') renderPairedScatter_(d3SeasonTab)
 }
 
 // ── Time Series — decode one window PNG (RGBA → index means) ────────
@@ -3299,7 +3318,247 @@ function fetchFallowShpi_(season, onReady) {
     .getFallowShpiRaster({ geojson: roi, season: season, yearStart: yearStart, yearEnd: yearEnd })
 }
 
-// ── Time Series — date → day-of-year (1–365) ──────────────────
+// ── D3: Year×season paired scatter helpers ────────────────────
+// Compute CPI composite from a tsData row (evi2/ndre/nirv/ndmi in [0,1]).
+function computeCpiFromRow_(row) {
+  function c01(v) { return v < 0 ? 0 : v > 1 ? 1 : v }
+  return c01(row.evi2 / 0.80) * 0.35 +
+         c01(row.ndre / 0.60) * 0.30 +
+         c01(row.nirv / 0.40) * 0.20 +
+         c01((row.ndmi + 0.10) / 0.60) * 0.15
+}
+
+// Compute SHPI composite from a soilTsData row (sab/claysi/ri2/smi in [0,1] rescaled from TS evalscript).
+function computeShpiFromRow_(row) {
+  function c01(v) { return v < 0 ? 0 : v > 1 ? 1 : v }
+  // Recover raw sub-index values from TS evalscript rescaling
+  var sab_r  = row.sab                    // raw brightness (already direct)
+  var clay_r = row.claysi * 0.6 - 0.2    // raw ClaySI; TS encodes as (claySI+0.2)/0.6
+  var ri2_r  = row.ri2 * 0.3 - 0.05      // raw RI2; TS encodes as (ri2+0.05)/0.3
+  var smi_r  = row.smi - 0.5             // raw SMI; TS encodes as (smi+0.5)/1.0
+  // Apply SHPI normalization (matches buildFallowShpiEvalscript_ in code_gs)
+  var sabN    = c01((sab_r - 0.03) / 0.17)
+  var claySIN = c01((clay_r + 0.10) / 0.20)
+  var ri2N    = c01((ri2_r  + 0.05) / 0.20)
+  var smiN    = c01((smi_r  + 0.20) / 0.50)
+  return (1 - sabN) * 0.35 + claySIN * 0.30 + ri2N * 0.20 + smiN * 0.15
+}
+
+// Compute per-year SHPI(fallow) and CPI(season) means from tsData + soilTsData.
+// Returns [{year, shpi, cpi, nShpi, nCpi}] sorted by year.
+function computeYearSeasonPairs_(season) {
+  if (!tsData || !soilTsData) return []
+  var shpiByYear = {}  // year string → [shpi values]
+  var cpiByYear  = {}  // year string (kharif-year) → [cpi values]
+
+  if (season === 'kharif') {
+    // Pre-Kharif SHPI: Feb–May of year Y
+    soilTsData.forEach(function(d) {
+      var mo = parseInt(d.date.substring(5, 7))
+      if (mo >= 2 && mo <= 5) {
+        var yr = d.date.substring(0, 4)
+        if (!shpiByYear[yr]) shpiByYear[yr] = []
+        shpiByYear[yr].push(computeShpiFromRow_(d))
+      }
+    })
+    // Kharif CPI: Jun–Oct of year Y
+    tsData.forEach(function(d) {
+      var mo = parseInt(d.date.substring(5, 7))
+      if (mo >= 6 && mo <= 10) {
+        var yr = d.date.substring(0, 4)
+        if (!cpiByYear[yr]) cpiByYear[yr] = []
+        cpiByYear[yr].push(computeCpiFromRow_(d))
+      }
+    })
+  } else { // rabi
+    // Pre-Rabi SHPI: Oct–Nov of year Y
+    soilTsData.forEach(function(d) {
+      var mo = parseInt(d.date.substring(5, 7))
+      if (mo >= 10 && mo <= 11) {
+        var yr = d.date.substring(0, 4)
+        if (!shpiByYear[yr]) shpiByYear[yr] = []
+        shpiByYear[yr].push(computeShpiFromRow_(d))
+      }
+    })
+    // Rabi CPI: Nov–Dec of year Y and Jan–Mar of year Y+1 → assigned to Rabi year Y
+    tsData.forEach(function(d) {
+      var yr = parseInt(d.date.substring(0, 4))
+      var mo = parseInt(d.date.substring(5, 7))
+      var rabiYr
+      if (mo >= 11) rabiYr = String(yr)           // Nov/Dec → Rabi year Y
+      else if (mo <= 3) rabiYr = String(yr - 1)   // Jan-Mar → Rabi year Y-1
+      else return
+      if (!cpiByYear[rabiYr]) cpiByYear[rabiYr] = []
+      cpiByYear[rabiYr].push(computeCpiFromRow_(d))
+    })
+  }
+
+  // Build paired array for years with both SHPI and CPI data
+  var pairs = []
+  Object.keys(shpiByYear).sort().forEach(function(yr) {
+    if (!cpiByYear[yr] || cpiByYear[yr].length === 0) return
+    var shpiMean = shpiByYear[yr].reduce(function(s,v){return s+v},0) / shpiByYear[yr].length
+    var cpiMean  = cpiByYear[yr].reduce(function(s,v){return s+v},0)  / cpiByYear[yr].length
+    pairs.push({ year: yr, shpi: shpiMean, cpi: cpiMean,
+                 nShpi: shpiByYear[yr].length, nCpi: cpiByYear[yr].length })
+  })
+  return pairs
+}
+
+// ── D3: Switch paired scatter season tab ──────────────────────
+function setD3Season_(season) {
+  d3SeasonTab = season
+  var kTab = document.getElementById('d3KharifTab')
+  var rTab = document.getElementById('d3RabiTab')
+  if (kTab) kTab.classList.toggle('active', season === 'kharif')
+  if (rTab) rTab.classList.toggle('active', season === 'rabi')
+  renderPairedScatter_(season)
+}
+
+// ── D3: Render year×season paired scatter ─────────────────────
+function renderPairedScatter_(season) {
+  var statusEl = document.getElementById('d3PairedStatus')
+  var eqEl     = document.getElementById('d3PairedEq')
+  var corrEl   = document.getElementById('d3PairedCorr')
+  var wrapEl   = document.getElementById('d3PairedChartWrap')
+
+  if (!tsData || !soilTsData) {
+    if (statusEl) statusEl.textContent = '⚠ Fetch both Crop Series and Soil Series first.'
+    if (wrapEl)   wrapEl.style.display = 'none'
+    return
+  }
+
+  var pairs = computeYearSeasonPairs_(season)
+  if (pairs.length < 2) {
+    if (statusEl) statusEl.textContent = '⚠ Need ≥2 years with both fallow SHPI and season CPI data.'
+    if (wrapEl)   wrapEl.style.display = 'none'
+    return
+  }
+  if (statusEl) statusEl.textContent = ''
+  if (wrapEl)   wrapEl.style.display = 'block'
+
+  var pts = pairs.map(function(p) { return { x: p.shpi, y: p.cpi } })
+  var reg = olsLine_(pts)
+  var n   = pts.length
+
+  var intSign = reg.intercept >= 0 ? ' + ' : ' - '
+  var seasonLabel = season === 'kharif' ? 'Kharif' : 'Rabi'
+  var shpiWindow  = season === 'kharif' ? 'Feb–May' : 'Oct–Nov'
+  var cpiWindow   = season === 'kharif' ? 'Jun–Oct' : 'Nov–Mar'
+  if (eqEl) eqEl.textContent =
+    seasonLabel + ' · y = ' + reg.slope.toFixed(3) + 'x' + intSign +
+    Math.abs(reg.intercept).toFixed(3) + '   R² = ' + reg.r2.toFixed(3) + '  n=' + n + ' yrs'
+
+  // Spearman ρ
+  ;(function() {
+    if (n < 3) { if (corrEl) corrEl.textContent = 'n < 3 — ρ not computed'; return }
+    var xs = pts.map(function(p){ return p.x }), ys = pts.map(function(p){ return p.y })
+    function rankAvg_(arr) {
+      var sorted = arr.slice().sort(function(a,b){return a-b})
+      return arr.map(function(v) {
+        var idx=[]; sorted.forEach(function(s,i){if(s===v)idx.push(i+1)})
+        return idx.reduce(function(a,b){return a+b},0)/idx.length
+      })
+    }
+    var rx = rankAvg_(xs), ry = rankAvg_(ys)
+    var rmx = rx.reduce(function(a,b){return a+b},0)/n
+    var rmy = ry.reduce(function(a,b){return a+b},0)/n
+    var rNum = rx.reduce(function(a,v,i){return a+(v-rmx)*(ry[i]-rmy)},0)
+    var rdx = Math.sqrt(rx.reduce(function(a,v){return a+(v-rmx)*(v-rmx)},0))
+    var rdy = Math.sqrt(ry.reduce(function(a,v){return a+(v-rmy)*(v-rmy)},0))
+    var rho = (rdx*rdy>0) ? rNum/(rdx*rdy) : 0
+    var tStat = rho * Math.sqrt(n-2) / Math.sqrt(Math.max(1e-15, 1-rho*rho))
+    function normCdf_(x) {
+      var t2=1/(1+0.2316419*Math.abs(x)), d=0.3989423*Math.exp(-x*x/2)
+      var p=d*t2*(0.3193815+t2*(-0.3565638+t2*(1.7814779+t2*(-1.8212560+t2*1.3302744))))
+      return x>0?1-p:p
+    }
+    var pVal = 2*normCdf_(-Math.abs(tStat))
+    var pStr = pVal<0.001 ? 'p < 0.001' : 'p = '+pVal.toFixed(3)
+    if (corrEl) corrEl.textContent =
+      'Spearman ρ = '+rho.toFixed(3)+'  '+pStr+'  R² = '+reg.r2.toFixed(3)
+  })()
+
+  // Build chart datasets
+  var YEAR_COLORS = ['#4ecdc4','#ff6b6b','#f9ca24','#6c5ce7','#a29bfe','#fd79a8','#00b894','#e17055','#0984e3','#00cec9']
+  var scatterDataset = {
+    type: 'scatter',
+    label: seasonLabel + ' years',
+    data: pairs.map(function(p, i) {
+      return { x: p.shpi, y: p.cpi, year: p.year, nShpi: p.nShpi, nCpi: p.nCpi }
+    }),
+    backgroundColor: pairs.map(function(p, i) { return YEAR_COLORS[i % YEAR_COLORS.length] }),
+    borderColor: '#fff',
+    borderWidth: 1,
+    pointRadius: 7,
+    pointHoverRadius: 9,
+    order: 0
+  }
+
+  var olsDataset = {
+    type: 'line',
+    label: 'OLS fit',
+    data: reg.lineData,
+    borderColor: '#F5A623',
+    borderWidth: 2,
+    pointRadius: 0,
+    fill: false,
+    order: 1
+  }
+
+  if (pairedScatterChart) { pairedScatterChart.destroy(); pairedScatterChart = null }
+  var ctx = document.getElementById('pairedScatterCanvas').getContext('2d')
+  pairedScatterChart = new Chart(ctx, {
+    data: { datasets: [scatterDataset, olsDataset] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(item) {
+              var d = item.raw
+              if (!d || d.year == null) return ''
+              return d.year + ' · SHPI('+shpiWindow+')=' + (d.x||0).toFixed(3) +
+                     ' · CPI('+cpiWindow+')=' + (d.y||0).toFixed(3) +
+                     ' · n(soil)='+d.nShpi+' n(crop)='+d.nCpi
+            }
+          }
+        },
+        datalabels: false
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'SHPI ('+shpiWindow+' fallow)', color: '#9FE1CB', font: { size: 9 } },
+          ticks: { color: '#9FE1CB', font: { size: 8 } }
+        },
+        y: {
+          title: { display: true, text: 'CPI ('+cpiWindow+' season)', color: '#9FE1CB', font: { size: 9 } },
+          ticks: { color: '#9FE1CB', font: { size: 8 } }
+        }
+      }
+    },
+    plugins: [{
+      // Year label annotations drawn on each point
+      id: 'yearLabels',
+      afterDatasetsDraw: function(chart) {
+        var meta = chart.getDatasetMeta(0)
+        var ctx2 = chart.ctx
+        ctx2.save()
+        ctx2.font = 'bold 8px sans-serif'
+        ctx2.textAlign = 'center'
+        ctx2.fillStyle = '#fff'
+        pairs.forEach(function(p, i) {
+          var el = meta.data[i]
+          if (!el) return
+          ctx2.fillText(p.year, el.x, el.y - 9)
+        })
+        ctx2.restore()
+      }
+    }]
+  })
+}
 function dateToDoy_(dateStr) {
   var d     = new Date(dateStr + 'T00:00:00')
   var start = new Date(d.getFullYear(), 0, 0)
@@ -3630,6 +3889,9 @@ function setSoilTsIndex_(key) {
 let soilSelectedYears  = null   // Set<string> of checked years for soil chart (populated after soil fetch)
 let tsYearsForShpi     = []     // confirmed year list for D2 fallow SHPI raster calls
 let fallowShpiCache    = {}     // { 'kharif': shpiArr, 'rabi': shpiArr } — cached per-season fallow SHPI
+// D3: Year×season paired scatter state
+let d3SeasonTab        = 'kharif'  // 'kharif' | 'rabi'
+let pairedScatterChart = null
 
 // ── D1: Soil TS — switch view mode ────────────────────────────
 let soilTsViewMode = 'timeline'
