@@ -199,8 +199,8 @@ canvas{display:block}
   <div class="hdr-logo">SH</div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
-    <span class="ver-pill ver-pill-be">BE1.7.0</span>
-    <span class="ver-pill ver-pill-fe">FE1.9.0</span>
+    <span class="ver-pill ver-pill-be">BE1.8.0</span>
+    <span class="ver-pill ver-pill-fe">FE2.0.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
