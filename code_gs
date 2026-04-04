@@ -1,5 +1,5 @@
 // ============================================================
-// Soil Health Stratification Tool — Apps Script Backend BE1.6.0
+// Soil Health Stratification Tool — Apps Script Backend BE1.7.0
 // Treeconomy Soil Intelligence Division
 // All strings use single quotes and + concatenation. No backticks.
 // ============================================================
@@ -465,6 +465,119 @@ function getSoilTimeSeries(params) {
 
 // ── Season-specific CPI raster (Stage 2) ─────────────────────
 // Builds a CPI raster using only crop observations from the requested season.
+// ── D2: Fallow-gap-anchored SHPI raster per season ───────────
+// Builds a SHPI composite from bare-soil observations in the pre-season fallow window.
+// season: 'kharif' → Feb–May of requested years (pre-monsoon fallow)
+//         'rabi'   → Oct–Nov of requested years (post-Kharif harvest gap)
+// Output: 4-band UINT8 PNG — R = SHPI×254, A = bare-soil observation count.
+// We use 4-band output for PNG compatibility: [SHPI×254, 0, 0, soilCount].
+function buildFallowShpiEvalscript_(season) {
+  var monthFilter = '';
+  if (season === 'kharif') {
+    // Pre-Kharif fallow = Feb–May (months 2–5)
+    monthFilter = 'var m_=scenes[i].date.getUTCMonth()+1;if(m_<2||m_>5)continue;';
+  } else if (season === 'rabi') {
+    // Pre-Rabi fallow = Oct–Nov (months 10–11)
+    monthFilter = 'var m_=scenes[i].date.getUTCMonth()+1;if(m_<10||m_>11)continue;';
+  }
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{\n' +
+    '    input:[{bands:["B02","B03","B04","B08","B11","B12","SCL"]}],\n' +
+    '    output:{bands:4,sampleType:"UINT8"},\n' +
+    '    mosaicking:"ORBIT"\n' +
+    '  };\n' +
+    '}\n' +
+    'function evaluatePixel(samples,scenes){\n' +
+    '  function div(a,b){return b===0?0:a/b;}\n' +
+    '  function c01(v){return v<0?0:v>1?1:v;}\n' +
+    '  function med(a,k){\n' +
+    '    var x=a.map(function(s){return s[k];}).sort(function(a,b){return a-b;});\n' +
+    '    var m=Math.floor(x.length/2);\n' +
+    '    return x.length%2?x[m]:(x[m-1]+x[m])/2;\n' +
+    '  }\n' +
+    '  var bareS=[];\n' +
+    '  for(var i=0;i<samples.length;i++){\n' +
+    (monthFilter ? '    ' + monthFilter + '\n' : '') +
+    '    var s=samples[i];\n' +
+    '    if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10) continue;\n' +
+    '    var ndvi=div(s.B08-s.B04,s.B08+s.B04);\n' +
+    '    var ndmi=div(s.B08-s.B11,s.B08+s.B11);\n' +
+    '    var nirv=Math.max(0,ndvi)*s.B08;\n' +
+    '    if(ndvi<0.2&&ndmi<0.05&&nirv<0.05) bareS.push(s);\n' +
+    '  }\n' +
+    '  if(!bareS.length) return[0,0,0,0];\n' +
+    '  var b2=med(bareS,"B02"),b3=med(bareS,"B03"),b4=med(bareS,"B04");\n' +
+    '  var b8=med(bareS,"B08"),b11=med(bareS,"B11"),b12=med(bareS,"B12");\n' +
+    '  var sab=(b2+b3+b4)/3.0;\n' +
+    '  var claySI=div(b11-b12,b11+b12);\n' +
+    '  var ri2=div(b4-b2,b4+b2);\n' +
+    '  var smi=div(b8-b11,b8+b11);\n' +
+    '  var sabN   =c01((sab   -0.03)/0.17);\n' +
+    '  var claySIN=c01((claySI+0.10)/0.20);\n' +
+    '  var ri2N   =c01((ri2   +0.05)/0.20);\n' +
+    '  var smiN   =c01((smi   +0.20)/0.50);\n' +
+    '  var shpi=(1-sabN)*0.35+claySIN*0.30+ri2N*0.20+smiN*0.15;\n' +
+    '  return[Math.round(c01(shpi)*254),0,0,Math.min(254,bareS.length)];\n' +
+    '}';
+}
+
+function fetchFallowShpiRaster_(bbox, season, yearStart, yearEnd, token) {
+  try {
+    var from = yearStart + '-01-01T00:00:00Z';
+    var to   = yearEnd   + '-12-31T23:59:59Z';
+    var lngSpan = bbox[2] - bbox[0];
+    var latSpan = bbox[3] - bbox[1];
+    var W, H;
+    if (lngSpan >= latSpan) {
+      W = 512; H = Math.max(1, Math.round(512 * latSpan / lngSpan));
+    } else {
+      H = 512; W = Math.max(1, Math.round(512 * lngSpan / latSpan));
+    }
+    var payload = {
+      input: {
+        bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
+        data: [{ dataFilter: { timeRange: { from: from, to: to } }, type: 'sentinel-2-l2a' }]
+      },
+      output: {
+        width: W, height: H,
+        responses: [{ identifier: 'default', format: { type: 'image/png' } }]
+      },
+      evalscript: buildFallowShpiEvalscript_(season)
+    };
+    var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+    Logger.log('Fallow SHPI (' + season + ') status: ' + resp.getResponseCode());
+    if (resp.getResponseCode() !== 200) {
+      Logger.log('Fallow SHPI error: ' + resp.getContentText().substring(0, 400));
+      return null;
+    }
+    return Utilities.base64Encode(resp.getContent());
+  } catch(e) {
+    Logger.log('fetchFallowShpiRaster_ error: ' + e.message);
+    return null;
+  }
+}
+
+// ── Public: fetch fallow-gap SHPI raster (called from HTML client) ──────────
+// params: { geojson, season ('kharif'|'rabi'), yearStart, yearEnd }
+// Returns { success:true, img64 } — base64-encoded 4-band PNG where R=SHPI×254, A=soil obs count.
+function getFallowShpiRaster(params) {
+  try {
+    var token = getToken_();
+    var bbox  = getBbox_(params.geojson);
+    var img64 = fetchFallowShpiRaster_(bbox, params.season, params.yearStart, params.yearEnd, token);
+    if (!img64) return { success: false, error: 'Fallow SHPI raster fetch failed — check Sentinel Hub credentials and ROI size' };
+    return { success: true, img64: img64 };
+  } catch(e) {
+    Logger.log('getFallowShpiRaster error: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
 // season: 'all' = no month filter, 'kharif' = Jun–Oct, 'rabi' = Nov–Mar, 'zaid' = Mar–Jun.
 // Month filtering uses scenes[i].date (available in ORBIT mosaicking evaluatePixel).
 // Output: 4-band RGBA PNG where R=0, G=CPI×254, B=0, A=crop_obs_count.

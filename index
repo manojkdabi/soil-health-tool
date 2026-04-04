@@ -200,7 +200,7 @@ canvas{display:block}
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
     <span class="ver-pill ver-pill-be">BE1.6.0</span>
-    <span class="ver-pill ver-pill-fe">FE1.7.0</span>
+    <span class="ver-pill ver-pill-fe">FE1.8.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -305,6 +305,15 @@ canvas{display:block}
           </div>
           <div id="soilChartWrap" style="display:none"><canvas id="soilTsChart"></canvas></div>
           <div id="soilChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
+          <div id="soilYearWrap" style="display:none;margin-top:6px;border-top:1px solid #1e3d30;padding-top:5px">
+            <div style="font-size:8px;color:#9FE1CB;margin-bottom:3px">
+              Filter years:&nbsp;
+              <a href="#" onclick="soilSelectAllYears_();return false" style="color:#F5A623;font-size:8px">All</a>&nbsp;/&nbsp;
+              <a href="#" onclick="soilClearYears_();return false" style="color:#F5A623;font-size:8px">None</a>
+            </div>
+            <div id="soilYearChecks" style="display:flex;flex-wrap:wrap;gap:3px;font-size:8px;color:#9FE1CB;margin-bottom:5px"></div>
+            <button class="btn btn-prim" onclick="useYearsForShpi_()" style="width:100%;font-size:9px" id="tsUseShpiBtn">🟤 Use selected years for SHPI</button>
+          </div>
         </div>
       </div>
     </div>
@@ -3171,6 +3180,125 @@ function useYearsForCpi_() {
   }
 }
 
+// ── D2: Soil TS — build year checkboxes after soil fetch ──────
+function buildSoilYearCheckboxes_(years) {
+  soilSelectedYears = new Set(years)
+  var container = document.getElementById('soilYearChecks')
+  if (!container) return
+  container.innerHTML = ''
+  years.forEach(function(y) {
+    var label = document.createElement('label')
+    label.style.cssText = 'display:flex;align-items:center;gap:2px;cursor:pointer;color:#9FE1CB;font-size:8px;background:rgba(0,0,0,0.3);padding:2px 5px;border-radius:3px;border:1px solid #2E6B4F'
+    var cb = document.createElement('input')
+    cb.type    = 'checkbox'
+    cb.checked = true
+    cb.value   = y
+    cb.style.accentColor = '#cd853f'
+    cb.onchange = function() { toggleSoilYear_(y, cb.checked) }
+    label.appendChild(cb)
+    label.appendChild(document.createTextNode('\u00a0' + y))
+    container.appendChild(label)
+  })
+  var shpiBtnEl = document.getElementById('tsUseShpiBtn')
+  if (shpiBtnEl) shpiBtnEl.textContent = '🟤 Use selected years for SHPI'
+}
+
+// ── D2: Soil TS — toggle a year in/out of season view ─────────
+function toggleSoilYear_(year, checked) {
+  if (!soilSelectedYears) soilSelectedYears = new Set()
+  if (checked) soilSelectedYears.add(year)
+  else         soilSelectedYears.delete(year)
+  if (soilTsData && soilTsViewMode === 'season') renderSoilTsChart_(soilCurIndex)
+}
+
+// ── D2: Soil TS — select/clear all years ──────────────────────
+function soilSelectAllYears_() {
+  if (!soilSelectedYears) return
+  document.querySelectorAll('#soilYearChecks input[type=checkbox]').forEach(function(cb) {
+    cb.checked = true; soilSelectedYears.add(cb.value)
+  })
+  if (soilTsData && soilTsViewMode === 'season') renderSoilTsChart_(soilCurIndex)
+}
+function soilClearYears_() {
+  if (!soilSelectedYears) return
+  document.querySelectorAll('#soilYearChecks input[type=checkbox]').forEach(function(cb) {
+    cb.checked = false; soilSelectedYears.delete(cb.value)
+  })
+  if (soilTsData && soilTsViewMode === 'season') renderSoilTsChart_(soilCurIndex)
+}
+
+// ── D2: Soil TS — lock selected years for fallow SHPI computation ─────────
+function useYearsForShpi_() {
+  if (!soilSelectedYears || soilSelectedYears.size === 0) {
+    alert('Select at least one year.')
+    return
+  }
+  tsYearsForShpi = Array.from(soilSelectedYears).sort()
+  var btn = document.getElementById('tsUseShpiBtn')
+  if (btn) {
+    btn.textContent = '🟤 SHPI years locked: ' + tsYearsForShpi.join(', ')
+    btn.style.background = '#5a3a1a'
+  }
+  // Clear cache so next season scatter uses new year selection
+  fallowShpiCache = {}
+}
+
+// ── D2: Decode fallow SHPI PNG — R=SHPI×254, A=soil obs count ─────────────
+// Returns Float32Array where -1 = no data (A channel === 0).
+function decodeFallowShpiPng_(img64, callback) {
+  var img = new Image()
+  img.onerror = function() { callback(null) }
+  img.onload = function() {
+    var c = document.createElement('canvas')
+    c.width = img.naturalWidth; c.height = img.naturalHeight
+    var ctx = c.getContext('2d')
+    ctx.drawImage(img, 0, 0)
+    var px = ctx.getImageData(0, 0, c.width, c.height).data
+    var total = c.width * c.height
+    var shpiArr = new Float32Array(total)
+    for (var i = 0; i < total; i++) {
+      var A = px[i * 4 + 3]  // soil observation count (A channel)
+      shpiArr[i] = A > 0 ? px[i * 4] / 254 : -1  // R channel = SHPI×254; -1 = no data
+    }
+    callback(shpiArr)
+  }
+  img.src = 'data:image/png;base64,' + img64
+}
+
+// ── D2: Fetch fallow SHPI raster and cache it ─────────────────
+function fetchFallowShpi_(season, onReady) {
+  if (!lastResult || !roi) {
+    alert('Run analysis first before selecting a fallow SHPI scatter.')
+    return
+  }
+  if (tsYearsForShpi.length === 0) {
+    alert('Fetch Soil Series, select good bare-soil years, then click "🟤 Use selected years for SHPI" first.')
+    return
+  }
+  var yearStart = tsYearsForShpi[0]
+  var yearEnd   = tsYearsForShpi[tsYearsForShpi.length - 1]
+  var statusEl  = document.getElementById('fallowShpiFetchStatus')
+  if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = '⏳ Fetching ' + season + ' fallow SHPI raster…' }
+  google.script.run
+    .withSuccessHandler(function(data) {
+      if (statusEl) statusEl.style.display = 'none'
+      if (!data.success) {
+        alert('Fallow SHPI fetch failed: ' + (data.error || 'unknown error'))
+        return
+      }
+      decodeFallowShpiPng_(data.img64, function(shpiArr) {
+        if (!shpiArr) { alert('Failed to decode fallow SHPI image.'); return }
+        fallowShpiCache[season] = shpiArr
+        if (onReady) onReady(shpiArr)
+      })
+    })
+    .withFailureHandler(function(err) {
+      if (statusEl) statusEl.style.display = 'none'
+      alert('Fallow SHPI error: ' + err)
+    })
+    .getFallowShpiRaster({ geojson: roi, season: season, yearStart: yearStart, yearEnd: yearEnd })
+}
+
 // ── Time Series — date → day-of-year (1–365) ──────────────────
 function dateToDoy_(dateStr) {
   var d     = new Date(dateStr + 'T00:00:00')
@@ -3499,6 +3627,10 @@ function setSoilTsIndex_(key) {
   if (soilTsData) renderSoilTsChart_(key)
 }
 
+let soilSelectedYears  = null   // Set<string> of checked years for soil chart (populated after soil fetch)
+let tsYearsForShpi     = []     // confirmed year list for D2 fallow SHPI raster calls
+let fallowShpiCache    = {}     // { 'kharif': shpiArr, 'rabi': shpiArr } — cached per-season fallow SHPI
+
 // ── D1: Soil TS — switch view mode ────────────────────────────
 let soilTsViewMode = 'timeline'
 function setSoilTsViewMode_(mode) {
@@ -3507,6 +3639,8 @@ function setSoilTsViewMode_(mode) {
   var snBtn = document.getElementById('soilViewSeason')
   if (tlBtn) tlBtn.classList.toggle('active', mode === 'timeline')
   if (snBtn) snBtn.classList.toggle('active', mode === 'season')
+  var yWrap = document.getElementById('soilYearWrap')
+  if (yWrap) yWrap.style.display = mode === 'season' ? 'block' : 'none'
   if (soilTsData) renderSoilTsChart_(soilCurIndex)
 }
 
@@ -3542,6 +3676,8 @@ function fetchSoilTimeSeries_() {
       document.getElementById('soilViewBtns').style.display = 'block'
       document.getElementById('soilChartWrap').style.display = 'block'
       renderSoilTsChart_(soilCurIndex)
+      const soilYears = Array.from(new Set(soilTsData.map(d => d.date.substring(0, 4)))).sort()
+      buildSoilYearCheckboxes_(soilYears)
     })
     .withFailureHandler(function(err) {
       btn.disabled    = false
@@ -3550,8 +3686,6 @@ function fetchSoilTimeSeries_() {
     })
     .getSoilTimeSeries({ geojson: roi, yearStart, yearEnd })
 }
-
-// ── D1: Soil TS — render Chart.js line chart ──────────────────
 function renderSoilTsChart_(indexKey) {
   if (!soilTsData || !soilTsData.length) return
   if (soilTsChart) { soilTsChart.destroy(); soilTsChart = null }
@@ -3632,7 +3766,10 @@ function renderSoilTsChartTimeline_(indexKey) {
 // D1: Soil TS season (DOY overlay) mode
 function renderSoilTsChartSeason_(indexKey) {
   const labelMap = { sab: 'SAB', claysi: 'ClaySI', ri2: 'RI2', smi: 'SMI' }
-  const years = Array.from(new Set(soilTsData.map(d => d.date.substring(0, 4)))).sort()
+  const allYears = Array.from(new Set(soilTsData.map(d => d.date.substring(0, 4)))).sort()
+  const years = soilSelectedYears && soilSelectedYears.size > 0
+    ? allYears.filter(y => soilSelectedYears.has(y))
+    : allYears
   const yearPalette = ['#cd853f','#d4a56a','#b8860b','#daa520','#c68e3a','#e8b96a','#a0522d','#8b6914']
 
   const byYear = {}
