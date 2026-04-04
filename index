@@ -200,7 +200,7 @@ canvas{display:block}
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
     <span class="ver-pill ver-pill-be">BE1.3.1</span>
-    <span class="ver-pill ver-pill-fe">FE1.4.0</span>
+    <span class="ver-pill ver-pill-fe">FE1.5.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -329,15 +329,28 @@ canvas{display:block}
       <div id="tsPanelBody" style="display:none;margin-top:8px">
         <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Process API). Load an ROI and set year range, then fetch.</p>
         <button class="btn btn-sec" id="tsFetchBtn" onclick="fetchTimeSeries_()" style="margin-bottom:6px">📡 Fetch Time Series</button>
-        <div id="tsIndexBtns" style="display:none;margin-bottom:6px;text-align:center">
+        <div id="tsIndexBtns" style="display:none;margin-bottom:4px;text-align:center">
           <span style="font-size:9px;color:#9FE1CB;margin-right:3px">Index:</span>
           <button class="ts-idx-btn active" onclick="setTsIndex_('evi2')" id="tsBtn_evi2">EVI2</button>
           <button class="ts-idx-btn" onclick="setTsIndex_('ndre')" id="tsBtn_ndre">NDRE</button>
           <button class="ts-idx-btn" onclick="setTsIndex_('nirv')" id="tsBtn_nirv">NIRv</button>
           <button class="ts-idx-btn" onclick="setTsIndex_('ndmi')" id="tsBtn_ndmi">NDMI</button>
         </div>
+        <div id="tsViewBtns" style="display:none;text-align:center;margin-bottom:5px">
+          <button class="ts-idx-btn active" id="tsViewTimeline" onclick="setTsViewMode_('timeline')" style="font-size:8px">📈 Timeline</button>
+          <button class="ts-idx-btn" id="tsViewSeason" onclick="setTsViewMode_('season')" style="font-size:8px">📅 By season</button>
+        </div>
         <div id="tsChartWrap" style="display:none"><canvas id="tsChart"></canvas></div>
         <div id="tsChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
+        <div id="tsYearWrap" style="display:none;margin-top:6px;border-top:1px solid #1e3d30;padding-top:5px">
+          <div style="font-size:8px;color:#9FE1CB;margin-bottom:3px">
+            Filter years:&nbsp;
+            <a href="#" onclick="tsSelectAllYears_();return false" style="color:#F5A623;font-size:8px">All</a>&nbsp;/&nbsp;
+            <a href="#" onclick="tsClearYears_();return false" style="color:#F5A623;font-size:8px">None</a>
+          </div>
+          <div id="tsYearChecks" style="display:flex;flex-wrap:wrap;gap:3px;font-size:8px;color:#9FE1CB;margin-bottom:5px"></div>
+          <button class="btn btn-prim" onclick="useYearsForCpi_()" style="width:100%;font-size:9px" id="tsUseCpiBtn">✅ Use selected years for CPI</button>
+        </div>
       </div>
     </div>
 
@@ -430,9 +443,12 @@ let cmpScatterMode = 'zones'   // 'zones' | 'summary'
 let scatterViewMode = 'bins'   // 'bins'  | 'pixels'
 let compareMapFs = null
 let chartFsInstances = {}      // chart-id → Chart instance for fullscreen canvases
-let tsChart     = null         // time-series Chart instance
-let tsData      = null         // fetched time-series array
-let tsCurIndex  = 'evi2'       // active index key
+let tsChart        = null         // time-series Chart instance
+let tsData         = null         // fetched time-series array
+let tsCurIndex     = 'evi2'       // active index key
+let tsViewMode     = 'timeline'   // 'timeline' | 'season'
+let tsSelectedYears = null        // Set<string> of checked years (populated after fetch)
+let tsYearsForCpi  = []           // confirmed year list stored for Stage 2 CPI computation
 const ZONE_COLORS         = ['#a50026','#d73027','#f46d43','#fdae61','#fee090','#d9ef8b','#a6d96a','#66bd63','#1a9850','#006837']
 const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','#ff9f43','#54a0ff','#5f27cd','#ee5a24','#0abde3']
 const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
@@ -2372,10 +2388,17 @@ function renderScatterPlotFs_(data) {
     : 'No outlier filter applied'
 
   var zoneGroups = {}
-  pts.forEach(function(p) {
+  // Add a small deterministic jitter (±0.4×UINT8 step = ±0.0016) to the x values
+  // to visually break the ~30 vertical SHPI stripes caused by UINT8 quantization.
+  // Statistics are unaffected — jitter is purely cosmetic.
+  var SHPI_JITTER = 0.4 / 254
+  pts.forEach(function(p, idx) {
     var zi = p.z != null ? p.z : 0
     if (!zoneGroups[zi]) zoneGroups[zi] = []
-    zoneGroups[zi].push({ x: p.x, y: p.y, z: zi })
+    // Deterministic hash: (idx * golden-ratio-int) & 0xFFFF mapped to [-1, 1]
+    var h = ((idx * 2654435761) >>> 0) & 0xFFFF
+    var jitter = (h / 65535 - 0.5) * 2 * SHPI_JITTER
+    zoneGroups[zi].push({ x: p.x + jitter, y: p.y, z: zi })
   })
   var zoneDatasets = Object.keys(zoneGroups).map(function(zi) {
     zi = parseInt(zi)
@@ -2818,7 +2841,11 @@ function fetchTimeSeries_() {
           '⚠ No valid crop observations found in any window.'
         return
       }
+      // Extract unique years and build year checkboxes
+      const years = Array.from(new Set(tsData.map(d => d.date.substring(0, 4)))).sort()
+      buildYearCheckboxes_(years)
       document.getElementById('tsIndexBtns').style.display = 'block'
+      document.getElementById('tsViewBtns').style.display = 'block'
       document.getElementById('tsChartWrap').style.display = 'block'
       renderTsChart_(tsCurIndex)
     })
@@ -2839,7 +2866,90 @@ function setTsIndex_(key) {
   if (tsData) renderTsChart_(key)
 }
 
-// ── Time Series — Gaussian smoothing (σ in array-index units) ─
+// ── Time Series — switch view mode (timeline | season) ────────
+function setTsViewMode_(mode) {
+  tsViewMode = mode
+  var tlBtn = document.getElementById('tsViewTimeline')
+  var snBtn = document.getElementById('tsViewSeason')
+  if (tlBtn) { tlBtn.classList.toggle('active', mode === 'timeline') }
+  if (snBtn) { snBtn.classList.toggle('active', mode === 'season') }
+  // Year controls only visible in season mode
+  var yWrap = document.getElementById('tsYearWrap')
+  if (yWrap) yWrap.style.display = mode === 'season' ? 'block' : 'none'
+  if (tsData) renderTsChart_(tsCurIndex)
+}
+
+// ── Time Series — build year checkboxes after fetch ────────────
+function buildYearCheckboxes_(years) {
+  tsSelectedYears = new Set(years)
+  var container = document.getElementById('tsYearChecks')
+  if (!container) return
+  container.innerHTML = ''
+  years.forEach(function(y) {
+    var label = document.createElement('label')
+    label.style.cssText = 'display:flex;align-items:center;gap:2px;cursor:pointer;color:#9FE1CB;font-size:8px;background:rgba(0,0,0,0.3);padding:2px 5px;border-radius:3px;border:1px solid #2E6B4F'
+    var cb = document.createElement('input')
+    cb.type    = 'checkbox'
+    cb.checked = true
+    cb.value   = y
+    cb.style.accentColor = '#F5A623'
+    cb.onchange = function() { toggleTsYear_(y, cb.checked) }
+    label.appendChild(cb)
+    label.appendChild(document.createTextNode('\u00a0' + y))
+    container.appendChild(label)
+  })
+  // Reset CPI button text
+  var cpiBtnEl = document.getElementById('tsUseCpiBtn')
+  if (cpiBtnEl) cpiBtnEl.textContent = '✅ Use selected years for CPI'
+}
+
+// ── Time Series — toggle a year in/out of season view ─────────
+function toggleTsYear_(year, checked) {
+  if (!tsSelectedYears) tsSelectedYears = new Set()
+  if (checked) tsSelectedYears.add(year)
+  else         tsSelectedYears.delete(year)
+  if (tsData && tsViewMode === 'season') renderTsChart_(tsCurIndex)
+}
+
+// ── Time Series — select/clear all years ──────────────────────
+function tsSelectAllYears_() {
+  if (!tsSelectedYears) return
+  document.querySelectorAll('#tsYearChecks input[type=checkbox]').forEach(function(cb) {
+    cb.checked = true; tsSelectedYears.add(cb.value)
+  })
+  if (tsData && tsViewMode === 'season') renderTsChart_(tsCurIndex)
+}
+function tsClearYears_() {
+  if (!tsSelectedYears) return
+  document.querySelectorAll('#tsYearChecks input[type=checkbox]').forEach(function(cb) {
+    cb.checked = false; tsSelectedYears.delete(cb.value)
+  })
+  if (tsData && tsViewMode === 'season') renderTsChart_(tsCurIndex)
+}
+
+// ── Time Series — lock selected years for CPI computation ─────
+// Stores the confirmed year list in tsYearsForCpi for Stage 2 CPI raster calls.
+function useYearsForCpi_() {
+  if (!tsSelectedYears || tsSelectedYears.size === 0) {
+    alert('Select at least one year.')
+    return
+  }
+  tsYearsForCpi = Array.from(tsSelectedYears).sort()
+  var btn = document.getElementById('tsUseCpiBtn')
+  if (btn) {
+    btn.textContent = '✅ CPI years locked: ' + tsYearsForCpi.join(', ')
+    btn.style.background = '#1a6b4a'
+  }
+}
+
+// ── Time Series — date → day-of-year (1–365) ──────────────────
+function dateToDoy_(dateStr) {
+  var d     = new Date(dateStr + 'T00:00:00')
+  var start = new Date(d.getFullYear(), 0, 0)
+  return Math.floor((d - start) / 86400000)
+}
+
+
 function gaussianSmooth_(values, sigma) {
   const r      = Math.max(1, Math.round(sigma * 2.5))
   const kernel = []
@@ -2884,8 +2994,19 @@ function detectPeaks_(smoothed, minProminenceFrac, minDistancePts) {
 }
 
 // ── Time Series — render Chart.js line chart ──────────────────
+// Delegates to timeline or season renderer based on tsViewMode.
 function renderTsChart_(indexKey) {
   if (!tsData || !tsData.length) return
+  if (tsChart) { tsChart.destroy(); tsChart = null }
+  if (tsViewMode === 'season') {
+    renderTsChartSeason_(indexKey)
+  } else {
+    renderTsChartTimeline_(indexKey)
+  }
+}
+
+// Timeline mode — current linear multi-year view (unchanged behaviour)
+function renderTsChartTimeline_(indexKey) {
   const labelMap  = { evi2: 'EVI2', ndre: 'NDRE', nirv: 'NIRv', ndmi: 'NDMI' }
   const labels    = tsData.map(d => d.date)
   const rawVals   = tsData.map(d => (d[indexKey] != null ? d[indexKey] : null))
@@ -2907,7 +3028,6 @@ function renderTsChart_(indexKey) {
   const ptBg  = rawVals.map((_, i) => peaks.includes(i) ? '#F5A623' : 'rgba(159,225,203,0.45)')
   const ptRad = rawVals.map((_, i) => peaks.includes(i) ? 6 : 2)
 
-  if (tsChart) { tsChart.destroy(); tsChart = null }
   const ctx = document.getElementById('tsChart').getContext('2d')
   tsChart = new Chart(ctx, {
     type: 'line',
@@ -2974,6 +3094,140 @@ function renderTsChart_(indexKey) {
     document.getElementById('tsChartLabel').textContent =
       'No significant peaks detected — ' + tsData.length + ' intervals'
   }
+}
+
+// Season (DOY overlay) mode — fold all windows onto a Jan–Dec x-axis,
+// one coloured line per selected year, plus a bold mean-year line.
+function renderTsChartSeason_(indexKey) {
+  const labelMap = { evi2: 'EVI2', ndre: 'NDRE', nirv: 'NIRv', ndmi: 'NDMI' }
+  const selYears = tsSelectedYears ? Array.from(tsSelectedYears).sort() : []
+  if (!selYears.length) {
+    document.getElementById('tsChartLabel').textContent = 'No years selected — check at least one year below.'
+    return
+  }
+
+  // Group tsData by year (skip years not in selection)
+  const byYear = {}
+  tsData.forEach(function(d) {
+    const yr = d.date.substring(0, 4)
+    if (!selYears.includes(yr)) return
+    if (!byYear[yr]) byYear[yr] = []
+    const doy = dateToDoy_(d.date)
+    byYear[yr].push({ doy, val: d[indexKey] })
+  })
+
+  // Year colour palette (distinct from ZONE_COLORS)
+  const yearPalette = ['#4ecdc4','#ff6b6b','#ffd166','#c3a6e0','#ff9f43','#54a0ff','#a8e6cf','#ee5a24']
+
+  // Build one dataset per year
+  const datasets = selYears.map(function(yr, i) {
+    const col = yearPalette[i % yearPalette.length]
+    const pts = (byYear[yr] || [])
+      .filter(function(p) { return p.val != null })
+      .sort(function(a, b) { return a.doy - b.doy })
+      .map(function(p) { return { x: p.doy, y: Math.round(p.val * 1000) / 1000 } })
+    return {
+      type: 'scatter',
+      label: yr,
+      data: pts,
+      borderColor: col,
+      backgroundColor: col,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      showLine: true,
+      borderWidth: 1.4,
+      fill: false,
+      tension: 0.3,
+      spanGaps: false
+    }
+  })
+
+  // Mean-year line: average val at each biweekly DOY bucket (round to nearest 14)
+  const buckets = {}
+  selYears.forEach(function(yr) {
+    ;(byYear[yr] || []).forEach(function(p) {
+      if (p.val == null) return
+      const bkt = Math.round(p.doy / 14) * 14
+      if (!buckets[bkt]) buckets[bkt] = []
+      buckets[bkt].push(p.val)
+    })
+  })
+  const meanPts = Object.keys(buckets)
+    .map(Number)
+    .sort(function(a, b) { return a - b })
+    .map(function(doy) {
+      const vals = buckets[doy]
+      return { x: doy, y: Math.round(vals.reduce(function(a, b) { return a + b }, 0) / vals.length * 1000) / 1000 }
+    })
+  datasets.push({
+    type: 'line',
+    label: 'Mean',
+    data: meanPts,
+    borderColor: '#F5A623',
+    backgroundColor: 'transparent',
+    borderWidth: 2.5,
+    pointRadius: 0,
+    fill: false,
+    tension: 0.4,
+    spanGaps: true
+  })
+
+  // Fixed month-start DOY tick positions
+  const MONTH_DOYS   = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+  const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+  const ctx = document.getElementById('tsChart').getContext('2d')
+  tsChart = new Chart(ctx, {
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true, position: 'bottom',
+          labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 8, padding: 4 }
+        },
+        tooltip: {
+          callbacks: {
+            title: function(items) {
+              const doy = items[0].raw.x
+              // Map DOY to approximate calendar date using a non-leap reference year
+              const ref = new Date(2001, 0, doy)
+              return 'DOY ' + doy + ' (~' + ref.toLocaleDateString('en', { month: 'short', day: 'numeric' }) + ')'
+            },
+            label: function(item) {
+              return item.dataset.label + ':  ' + (labelMap[indexKey] || indexKey) + ' = ' + item.raw.y
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          min: 1, max: 365,
+          title: { display: true, text: 'Day of year', color: '#9FE1CB', font: { size: 8 } },
+          afterBuildTicks: function(axis) {
+            axis.ticks = MONTH_DOYS.map(function(v) { return { value: v } })
+          },
+          ticks: {
+            color: '#9FE1CB', font: { size: 7 }, maxRotation: 0, minRotation: 0,
+            callback: function(val) {
+              const idx = MONTH_DOYS.indexOf(val)
+              return idx >= 0 ? MONTH_LABELS[idx] : ''
+            }
+          },
+          grid: { color: 'rgba(255,255,255,0.07)' }
+        },
+        y: {
+          ticks: { color: '#9FE1CB', font: { size: 8 } },
+          grid: { color: 'rgba(255,255,255,0.07)' }
+        }
+      }
+    }
+  })
+
+  document.getElementById('tsChartLabel').textContent =
+    'Seasons overlaid — ' + selYears.length + ' year' + (selYears.length > 1 ? 's' : '') +
+    ' (' + selYears.join(', ') + ')  |  orange line = mean'
 }
 
 // ── UI helpers ────────────────────────────────────────────────
