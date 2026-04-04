@@ -2781,13 +2781,8 @@ function decodeTsWindowPng_(img64) {
         n++
       }
       if (n === 0) { resolve(null); return }
-      resolve({
-        evi2: Math.round(rS/n/254 * 1000) / 1000,
-        ndre: Math.round(gS/n/254 * 1000) / 1000,
-        nirv: Math.round(bS/n/254 * 1000) / 1000,
-        ndmi: Math.round(aS/n/254 * 1000) / 1000,
-        n
-      })
+      const sc = v => Math.round(v / 254 * 1000) / 1000
+      resolve({ evi2: sc(rS/n), ndre: sc(gS/n), nirv: sc(bS/n), ndmi: sc(aS/n), n })
     }
     img.onerror = function() { resolve(null) }
     img.src = 'data:image/png;base64,' + img64

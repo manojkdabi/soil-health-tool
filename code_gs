@@ -302,7 +302,6 @@ function fetchROITimeSeries_(geojson, yearStart, yearEnd, token) {
   var H = Math.max(1, Math.min(32, Math.round(latSpan / DEG_PER_PIXEL)));
   var evalscript = buildTsWindowEvalscript_();
   var windows = [];
-  var isFirst = true;
   // Walk 14-day windows from Jan 1 of yearStart to Dec 31 of yearEnd
   var cursor   = new Date(yearStart + '-01-01T00:00:00Z');
   var rangeEnd = new Date(yearEnd   + '-12-31T23:59:59Z');
@@ -311,9 +310,6 @@ function fetchROITimeSeries_(geojson, yearStart, yearEnd, token) {
     var nextCursor = new Date(cursor.getTime() + MS_14_DAYS);
     var wEnd  = nextCursor > rangeEnd ? rangeEnd : nextCursor;
     var wTo   = new Date(wEnd.getTime() - 1000).toISOString().substring(0, 10) + 'T23:59:59Z';
-    // Throttle: 500 ms between requests to stay within free-tier rate limits
-    if (!isFirst) Utilities.sleep(500);
-    isFirst = false;
     var payload = {
       input: {
         bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
@@ -344,6 +340,8 @@ function fetchROITimeSeries_(geojson, yearStart, yearEnd, token) {
                  ': ' + resp.getContentText().substring(0, 200));
     }
     cursor = nextCursor;
+    // Throttle: 500 ms between requests to stay within free-tier rate limits
+    if (cursor <= rangeEnd) Utilities.sleep(500);
   }
   return windows;
 }
