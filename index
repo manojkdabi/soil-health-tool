@@ -200,7 +200,7 @@ canvas{display:block}
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
     <span class="ver-pill ver-pill-be">BE1.3.1</span>
-    <span class="ver-pill ver-pill-fe">FE1.3.1</span>
+    <span class="ver-pill ver-pill-fe">FE1.4.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -327,7 +327,7 @@ canvas{display:block}
         <span id="tsPanelChevron" style="color:#F5A623;font-size:11px">▶</span>
       </div>
       <div id="tsPanelBody" style="display:none;margin-top:8px">
-        <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Statistics API). Load an ROI and set year range, then fetch.</p>
+        <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Process API). Load an ROI and set year range, then fetch.</p>
         <button class="btn btn-sec" id="tsFetchBtn" onclick="fetchTimeSeries_()" style="margin-bottom:6px">📡 Fetch Time Series</button>
         <div id="tsIndexBtns" style="display:none;margin-bottom:6px;text-align:center">
           <span style="font-size:9px;color:#9FE1CB;margin-right:3px">Index:</span>
@@ -335,7 +335,6 @@ canvas{display:block}
           <button class="ts-idx-btn" onclick="setTsIndex_('ndre')" id="tsBtn_ndre">NDRE</button>
           <button class="ts-idx-btn" onclick="setTsIndex_('nirv')" id="tsBtn_nirv">NIRv</button>
           <button class="ts-idx-btn" onclick="setTsIndex_('ndmi')" id="tsBtn_ndmi">NDMI</button>
-          <button class="ts-idx-btn" onclick="setTsIndex_('ndvi')" id="tsBtn_ndvi">NDVI</button>
         </div>
         <div id="tsChartWrap" style="display:none"><canvas id="tsChart"></canvas></div>
         <div id="tsChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
@@ -2760,7 +2759,42 @@ function toggleTsPanel_() {
   chevron.textContent   = open ? '▶' : '▼'
 }
 
-// ── Time Series — fetch from Statistics API ───────────────────
+// ── Time Series — decode one window PNG (RGBA → index means) ────────
+// Decodes a base64-encoded RGBA PNG returned by getTimeSeries().
+// Channel mapping: R=EVI2×254, G=NDRE×254, B=NIRv×254, A=NDMI×254.
+// Pixels with [0,0,0,0] are nodata (no valid crop observations) and skipped.
+// Returns Promise<{evi2,ndre,nirv,ndmi,n}|null>.
+function decodeTsWindowPng_(img64) {
+  return new Promise(function(resolve) {
+    const img = new Image()
+    img.onload = function() {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0)
+      const px = ctx.getImageData(0, 0, img.width, img.height).data
+      let rS=0, gS=0, bS=0, aS=0, n=0
+      for (let i=0; i<px.length; i+=4) {
+        if (px[i]===0 && px[i+1]===0 && px[i+2]===0 && px[i+3]===0) continue
+        rS += px[i]; gS += px[i+1]; bS += px[i+2]; aS += px[i+3]
+        n++
+      }
+      if (n === 0) { resolve(null); return }
+      resolve({
+        evi2: Math.round(rS/n/254 * 1000) / 1000,
+        ndre: Math.round(gS/n/254 * 1000) / 1000,
+        nirv: Math.round(bS/n/254 * 1000) / 1000,
+        ndmi: Math.round(aS/n/254 * 1000) / 1000,
+        n
+      })
+    }
+    img.onerror = function() { resolve(null) }
+    img.src = 'data:image/png;base64,' + img64
+  })
+}
+
+// ── Time Series — fetch from Process API (biweekly loop) ─────
 function fetchTimeSeries_() {
   if (!roi) { alert('Draw or upload an ROI first.'); return }
   const yearStart = parseInt(document.getElementById('yearStart').value, 10)
@@ -2771,14 +2805,24 @@ function fetchTimeSeries_() {
   btn.textContent = '⏳ Fetching...'
   document.getElementById('tsChartLabel').textContent = ''
   google.script.run
-    .withSuccessHandler(function(data) {
+    .withSuccessHandler(async function(data) {
       btn.disabled    = false
       btn.textContent = '📡 Fetch Time Series'
       if (!data.success) {
         document.getElementById('tsChartLabel').textContent = '⚠ ' + data.error
         return
       }
-      tsData = data.series
+      // Decode each window PNG using Canvas pixel reads
+      const decoded = await Promise.all(data.windows.map(async w => {
+        const v = await decodeTsWindowPng_(w.img64)
+        return v ? Object.assign({ date: w.date }, v) : null
+      }))
+      tsData = decoded.filter(Boolean)
+      if (tsData.length === 0) {
+        document.getElementById('tsChartLabel').textContent =
+          '⚠ No valid crop observations found in any window.'
+        return
+      }
       document.getElementById('tsIndexBtns').style.display = 'block'
       document.getElementById('tsChartWrap').style.display = 'block'
       renderTsChart_(tsCurIndex)
@@ -2847,7 +2891,7 @@ function detectPeaks_(smoothed, minProminenceFrac, minDistancePts) {
 // ── Time Series — render Chart.js line chart ──────────────────
 function renderTsChart_(indexKey) {
   if (!tsData || !tsData.length) return
-  const labelMap  = { evi2: 'EVI2', ndre: 'NDRE', nirv: 'NIRv', ndmi: 'NDMI', ndvi: 'NDVI' }
+  const labelMap  = { evi2: 'EVI2', ndre: 'NDRE', nirv: 'NIRv', ndmi: 'NDMI' }
   const labels    = tsData.map(d => d.date)
   const rawVals   = tsData.map(d => (d[indexKey] != null ? d[indexKey] : null))
 
