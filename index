@@ -199,8 +199,8 @@ canvas{display:block}
   <div class="hdr-logo">SH</div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
-    <span class="ver-pill ver-pill-be">BE1.3.1</span>
-    <span class="ver-pill ver-pill-fe">FE1.5.0</span>
+    <span class="ver-pill ver-pill-be">BE1.5.0</span>
+    <span class="ver-pill ver-pill-fe">FE1.6.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -441,6 +441,8 @@ let currentRoiId = null        // UUID of the library ROI currently loaded (null
 let cmpScatterChart = null
 let cmpScatterMode = 'zones'   // 'zones' | 'summary'
 let scatterViewMode = 'bins'   // 'bins'  | 'pixels'
+let scatterSeasonMode = 'all'  // 'all' | 'kharif' | 'rabi' — season filter for scatter FS
+let seasonCpiCache = {}        // {season: scatter pts array} — cached season CPI decode results
 let compareMapFs = null
 let chartFsInstances = {}      // chart-id → Chart instance for fullscreen canvases
 let tsChart        = null         // time-series Chart instance
@@ -877,6 +879,18 @@ function decodeRasterToResult_(rawData, callback) {
       }
     }
 
+    // Build a sampled SHPI-pixel array (with pixel index) for season CPI pairing (Stage 2).
+    // Samples ALL valid SHPI pixels (not just those with CPI) so that season scatter can
+    // pair each SHPI position with its season-specific CPI from the season raster.
+    var shpiSample = []
+    if (shpiPixels.length > 0) {
+      var shpiStep = Math.max(1, Math.floor(shpiPixels.length / MAX_SCATTER_PX))
+      for (var si = 0; si < shpiPixels.length; si += shpiStep) {
+        var sp = shpiPixels[si]
+        shpiSample.push({ idx: sp.idx, x: sp.val, z: assignZone_(sp.val) - 1 })
+      }
+    }
+
     // Spearman ρ on zone means — the meaningful signal (matches scatter plot logic)
     var zoneMeanShpi = zoneStats.map(function(zs) { return zs.mean_shpi })
     var zoneMeanCpi  = zoneStats.map(function(zs) { return zs.mean_cpi })
@@ -1004,6 +1018,7 @@ function decodeRasterToResult_(rawData, callback) {
       bbox:           rawData.bbox,
       zone_stats:     zoneStats,
       pixel_sample:   pixelSample,
+      shpi_sample:    shpiSample,
       kmeans5:        kmeans5,
       validation: {
         spearman_r:      rho,
@@ -1036,6 +1051,9 @@ function decodeRasterAndAnalyse_(rawData) {
       return
     }
     lastResult = result
+    // Clear season CPI cache so stale season data from a previous ROI is not shown
+    seasonCpiCache = {}
+    scatterSeasonMode = 'all'
     if (currentRoiId) {
       var cache = loadResultsCache_()
       cache[currentRoiId] = result
@@ -2052,7 +2070,140 @@ function setScatterViewMode_(mode) {
   if (bfsEl) bfsEl.classList.toggle('active', mode === 'bins')
   if (pfsEl) pfsEl.classList.toggle('active', mode === 'pixels')
   if (owfsEl) owfsEl.style.display = mode === 'pixels' ? 'flex' : 'inline-flex'
-  if (lastResult) renderScatterPlotFs_(lastResult)
+  renderScatterFsActive_()
+}
+
+// ── Season scatter helpers (Stage 2 / Stage 3) ────────────────────────────
+
+// Active render dispatcher: renders FS scatter with season data if a season is selected,
+// otherwise falls back to the standard all-season render with lastResult.
+function renderScatterFsActive_() {
+  if (scatterSeasonMode !== 'all' && seasonCpiCache[scatterSeasonMode]) {
+    renderScatterWithSeasonPts_(seasonCpiCache[scatterSeasonMode], scatterSeasonMode)
+  } else {
+    if (lastResult) renderScatterPlotFs_(lastResult)
+  }
+}
+
+// Decode a season CPI PNG (G=CPI×254, A=crop obs count) into a Float32Array indexed by pixel.
+// Returns the array via callback, or null on error.
+function decodeSeasCpiPng_(img64, callback) {
+  var img = new Image()
+  img.onerror = function() { callback(null) }
+  img.onload = function() {
+    var c = document.createElement('canvas')
+    c.width = img.naturalWidth; c.height = img.naturalHeight
+    var ctx = c.getContext('2d')
+    ctx.drawImage(img, 0, 0)
+    var px = ctx.getImageData(0, 0, c.width, c.height).data
+    var total = c.width * c.height
+    var cpiArr = new Float32Array(total)
+    for (var i = 0; i < total; i++) {
+      var A = px[i * 4 + 3]  // crop observation count (A channel)
+      cpiArr[i] = A > 0 ? px[i * 4 + 1] / 254 : -1  // G channel = CPI×254; -1 = no data
+    }
+    callback(cpiArr)
+  }
+  img.src = 'data:image/png;base64,' + img64
+}
+
+// Pair shpi_sample pixel indices with a decoded season CPI array to build scatter points.
+// shpiSample: [{idx, x, z}, ...]; cpiArr: Float32Array (−1 = nodata).
+// Returns [{x: shpi, y: seasCpi, z: zone}, ...] for pixels where both SHPI and season CPI are valid.
+function buildSeasonScatterData_(shpiSample, cpiArr) {
+  var pts = []
+  for (var i = 0; i < shpiSample.length; i++) {
+    var sp = shpiSample[i]
+    if (sp.idx >= cpiArr.length) continue
+    var cpi = cpiArr[sp.idx]
+    if (cpi < 0) continue  // no crop obs for this pixel in this season
+    pts.push({ x: sp.x, y: cpi, z: sp.z })
+  }
+  return pts
+}
+
+// Set the scatter season mode and re-render (or fetch if not yet cached).
+// season: 'all' | 'kharif' | 'rabi'
+function setScatterSeasonMode_(season) {
+  scatterSeasonMode = season
+  var SEASONS = ['all', 'kharif', 'rabi']
+  SEASONS.forEach(function(s) {
+    var el = document.getElementById('scatterSeasonTab-' + s + '-fs')
+    if (el) el.classList.toggle('active', s === season)
+  })
+  var titleEl = document.getElementById('scatterFsTitle')
+  var SEASON_LABELS = { all: 'SHPI vs CPI correlation', kharif: 'SHPI vs Kharif CPI (Jun–Oct)', rabi: 'SHPI vs Rabi CPI (Nov–Mar)' }
+  if (titleEl) titleEl.textContent = SEASON_LABELS[season] || 'SHPI vs CPI correlation'
+  if (season === 'all') {
+    if (lastResult) renderScatterPlotFs_(lastResult)
+    return
+  }
+  // Use cached result if available
+  if (seasonCpiCache[season]) {
+    renderScatterWithSeasonPts_(seasonCpiCache[season], season)
+    return
+  }
+  // Fetch season CPI raster from backend
+  fetchSeasonCpi_(season)
+}
+
+// Fetch season-specific CPI raster from backend, decode, and render scatter.
+function fetchSeasonCpi_(season) {
+  if (!lastResult || !roi) {
+    alert('Run analysis first before selecting a season CPI scatter.')
+    return
+  }
+  var years = ((lastResult.meta && lastResult.meta.year_range) || '').split('-')
+  var yearStart = years[0] ? parseInt(years[0]) : parseInt(document.getElementById('yearStart').value)
+  var yearEnd   = years[1] ? parseInt(years[1]) : parseInt(document.getElementById('yearEnd').value)
+  var statusEl = document.getElementById('seasonFetchStatus-fs')
+  if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = '⏳ Fetching ' + season + ' CPI raster from Sentinel Hub…' }
+  google.script.run
+    .withSuccessHandler(function(data) {
+      if (statusEl) statusEl.style.display = 'none'
+      if (!data.success) {
+        alert('Season CPI fetch failed: ' + (data.error || 'unknown error'))
+        return
+      }
+      decodeSeasCpiPng_(data.img64, function(cpiArr) {
+        if (!cpiArr) { alert('Failed to decode season CPI image.'); return }
+        var shpiSample = lastResult.shpi_sample || []
+        var pts = buildSeasonScatterData_(shpiSample, cpiArr)
+        if (pts.length < 10) {
+          alert('Not enough season crop pixels found for scatter (' + season + '). Try a wider year range or a region with denser crop cover in this season.')
+          return
+        }
+        seasonCpiCache[season] = pts
+        renderScatterWithSeasonPts_(pts, season)
+      })
+    })
+    .withFailureHandler(function(err) {
+      if (statusEl) statusEl.style.display = 'none'
+      alert('Season CPI error: ' + err)
+    })
+    .getSeasonCpiRaster({ geojson: roi, season: season, yearStart: yearStart, yearEnd: yearEnd })
+}
+
+// Build season-specific zone stats from scatter points and render the FS scatter.
+function renderScatterWithSeasonPts_(pts, season) {
+  if (!lastResult) return
+  // Compute zone stats from season scatter pts (not from main-raster zone_stats)
+  var groups = {}
+  pts.forEach(function(p) {
+    var zi = p.z != null ? p.z : 0
+    if (!groups[zi]) groups[zi] = []
+    groups[zi].push(p)
+  })
+  var seasonZoneStats = Object.keys(groups).sort(function(a, b) { return +a - +b }).map(function(zi) {
+    var g = groups[zi]
+    var mx = g.reduce(function(s, p) { return s + p.x }, 0) / g.length
+    var my = g.reduce(function(s, p) { return s + p.y }, 0) / g.length
+    return { zone: +zi + 1, label: 'Zone ' + (+zi + 1),
+             mean_shpi: mx, mean_cpi: my, pixel_count: g.length, data_source: 'real' }
+  })
+  // Build a synthetic result substituting season CPI data
+  var seasonData = Object.assign({}, lastResult, { pixel_sample: pts, zone_stats: seasonZoneStats })
+  renderScatterPlotFs_(seasonData)
 }
 
 // Shared OLS regression helper — works on arrays of {x, y} objects; returns slope, intercept, R², and line endpoints
@@ -2673,7 +2824,8 @@ function openChartFs_(id) {
   }
   if (id === 'shpiCpiScatter') {
     overlay.classList.add('open')
-    requestAnimationFrame(function() { renderScatterPlotFs_(lastResult) })
+    // Reset to 'All' season mode whenever the FS is freshly opened
+    setScatterSeasonMode_('all')
     return
   }
   // Destroy previous FS instance for this chart
@@ -2737,7 +2889,7 @@ function syncChartFs_(id) {
   // Small delay so the base chart has time to update after setCmpScatterMode_ runs
   setTimeout(function() {
     if (id === 'shpiCpiScatter') {
-      renderScatterPlotFs_(lastResult)
+      renderScatterFsActive_()
     } else {
       openChartFs_(id)
       if (id === 'cmpScatterChart') {
@@ -3492,15 +3644,21 @@ renderLibraryPanel_()
 <!-- Chart fullscreen overlays -->
 <div id="chartFs-shpiCpiScatter" class="chart-fs-overlay">
   <div class="chart-fs-topbar">
-    <span class="chart-fs-title">SHPI vs CPI correlation</span>
-    <div style="display:flex;gap:6px;align-items:center;margin-left:12px">
+    <span class="chart-fs-title" id="scatterFsTitle">SHPI vs CPI correlation</span>
+    <div style="display:flex;gap:6px;align-items:center;margin-left:12px;flex-wrap:wrap">
       <button id="scatterTabBins-fs" class="cmp-tab active" onclick="setScatterViewMode_('bins')" style="font-size:11px;padding:3px 10px">Zone means</button>
       <button id="scatterTabPx-fs"   class="cmp-tab"        onclick="setScatterViewMode_('pixels')" style="font-size:11px;padding:3px 10px">All pixels</button>
       <label id="outlierToggleWrap-fs" style="display:flex;align-items:center;gap:4px;font-size:11px;color:#9FE1CB;cursor:pointer;margin-left:6px">
-        <input type="checkbox" id="outlierToggleFs" checked onchange="renderScatterPlotFs_(lastResult)" style="cursor:pointer">Filter outliers (IQR)</label>
+        <input type="checkbox" id="outlierToggleFs" checked onchange="renderScatterFsActive_()" style="cursor:pointer">Filter outliers (IQR)</label>
+      <span style="color:#3e7a6a;margin:0 4px">|</span>
+      <span style="font-size:10px;color:#9FE1CB;white-space:nowrap">Season CPI:</span>
+      <button id="scatterSeasonTab-all-fs"    class="cmp-tab active" onclick="setScatterSeasonMode_('all')"    style="font-size:11px;padding:3px 8px">All</button>
+      <button id="scatterSeasonTab-kharif-fs" class="cmp-tab"        onclick="setScatterSeasonMode_('kharif')" style="font-size:11px;padding:3px 8px">🌾 Kharif</button>
+      <button id="scatterSeasonTab-rabi-fs"   class="cmp-tab"        onclick="setScatterSeasonMode_('rabi')"   style="font-size:11px;padding:3px 8px">🌿 Rabi</button>
     </div>
     <button class="rm-ctrl-btn" onclick="closeChartFs_('shpiCpiScatter')">✕ Close</button>
   </div>
+  <div id="seasonFetchStatus-fs" style="text-align:center;font-size:11px;color:#F5A623;padding:4px 0;display:none"></div>
   <div class="chart-fs-body"><canvas id="shpiCpiScatter-fs"></canvas></div>
   <div id="scatterEq-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-top:4px"></div>
   <div id="corrSummary-fs" style="margin:3px 0 2px;font-size:11px;color:#9FE1CB;text-align:center"></div>
