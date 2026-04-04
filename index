@@ -250,7 +250,85 @@ canvas{display:block}
       </select>
     </div>
 
-    <!-- Monthly Satellite Imagery -->
+    <!-- Time Series Panel (Step 3 · Crop Time Series — set before running) -->
+    <div class="sb">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleTsPanel_()">
+        <h3 style="margin:0">Step 3 · 📈 Crop Time Series</h3>
+        <span id="tsPanelChevron" style="color:#F5A623;font-size:11px">▶</span>
+      </div>
+      <div id="tsPanelBody" style="display:none;margin-top:8px">
+        <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Process API). Load an ROI and set year range, then fetch. Select good-crop years and lock them for CPI before running analysis.</p>
+        <button class="btn btn-sec" id="tsFetchBtn" onclick="fetchTimeSeries_()" style="margin-bottom:6px">📡 Fetch Time Series</button>
+        <div id="tsIndexBtns" style="display:none;margin-bottom:4px;text-align:center">
+          <span style="font-size:9px;color:#9FE1CB;margin-right:3px">Index:</span>
+          <button class="ts-idx-btn active" onclick="setTsIndex_('evi2')" id="tsBtn_evi2">EVI2</button>
+          <button class="ts-idx-btn" onclick="setTsIndex_('ndre')" id="tsBtn_ndre">NDRE</button>
+          <button class="ts-idx-btn" onclick="setTsIndex_('nirv')" id="tsBtn_nirv">NIRv</button>
+          <button class="ts-idx-btn" onclick="setTsIndex_('ndmi')" id="tsBtn_ndmi">NDMI</button>
+        </div>
+        <div id="tsViewBtns" style="display:none;text-align:center;margin-bottom:5px">
+          <button class="ts-idx-btn active" id="tsViewTimeline" onclick="setTsViewMode_('timeline')" style="font-size:8px">📈 Timeline</button>
+          <button class="ts-idx-btn" id="tsViewSeason" onclick="setTsViewMode_('season')" style="font-size:8px">📅 By season</button>
+        </div>
+        <div id="tsChartWrap" style="display:none"><canvas id="tsChart"></canvas></div>
+        <div id="tsChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
+        <div id="tsYearWrap" style="display:none;margin-top:6px;border-top:1px solid #1e3d30;padding-top:5px">
+          <div style="font-size:8px;color:#9FE1CB;margin-bottom:3px">
+            Filter years:&nbsp;
+            <a href="#" onclick="tsSelectAllYears_();return false" style="color:#F5A623;font-size:8px">All</a>&nbsp;/&nbsp;
+            <a href="#" onclick="tsClearYears_();return false" style="color:#F5A623;font-size:8px">None</a>
+          </div>
+          <div id="tsYearChecks" style="display:flex;flex-wrap:wrap;gap:3px;font-size:8px;color:#9FE1CB;margin-bottom:5px"></div>
+          <button class="btn btn-prim" onclick="useYearsForCpi_()" style="width:100%;font-size:9px" id="tsUseCpiBtn">✅ Use selected years for CPI</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: Run -->
+    <div class="sb">
+      <button class="btn btn-run" id="runBtn" onclick="runAnalysis()" disabled>
+        ▶ Run Phase 1 Analysis
+      </button>
+      <button class="btn btn-sec" id="runAllBtn" style="margin-top:6px" onclick="runAllROIs_()">
+        ▶▶ Run All Saved ROIs
+      </button>
+      <div class="progress" id="progress">
+        <div class="prog-msg" id="progMsg">Initialising...</div>
+        <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+      </div>
+      <div class="batch-progress" id="batchProgress">
+        <div style="font-size:10px;font-weight:700;color:#F5A623;margin-bottom:6px">Batch Progress</div>
+        <div id="batchItems"></div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="results" id="results">
+      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623">Results</h3>
+      <div class="banner" id="banner"></div>
+      <div id="dataSourceBadge" style="text-align:center;font-size:10px;padding:3px 8px;border-radius:4px;display:none"></div>
+      <div class="stat-grid" id="statGrid"></div>
+      <table class="ztbl">
+        <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
+        <tbody id="zoneTbody"></tbody>
+      </table>
+      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:6px">SHPI vs CPI correlation</h3><button class="chart-expand-btn" onclick="openChartFs_('shpiCpiScatter')" title="Fullscreen">⛶</button></div>
+      <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
+      <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
+      <div id="corrSummary" style="margin:3px 0 2px;font-size:9px;color:#9FE1CB;text-align:center"></div>
+      <div id="scatterOutlierNote" style="text-align:center;font-size:8px;color:#6FA898;margin-bottom:4px"></div>
+      <div id="results-map-ctrls">
+        <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
+        <input type="range" id="rasterOpacity" min="10" max="100" value="80" oninput="updateRasterOpacity_(this.value, 'rasterOpacityVal', false)">
+        <span id="rasterOpacityVal" style="font-size:10px;color:#F5A623;width:30px">80%</span>
+        <button class="rm-ctrl-btn" onclick="toggleResultsFullscreen_()" title="Fullscreen">⛶</button>
+      </div>
+      <div id="results-map"></div>
+      <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
+      <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
+    </div>
+
+    <!-- Monthly Satellite Imagery (context overlay for reviewing results) -->
     <div class="sb mon-section">
       <h3 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px" onclick="toggleMonSection_()">
         <span>🛰 Monthly Imagery</span>
@@ -300,84 +378,6 @@ canvas{display:block}
         <button class="btn btn-sec" style="margin-top:6px;width:100%" onclick="clearMonthlyLayer_()">✕ Clear Monthly Imagery</button>
         <div id="monLoading" class="mon-loading">Loading release list…</div>
       </div>
-    </div>
-
-    <!-- Step 3: Run -->
-    <div class="sb">
-      <button class="btn btn-run" id="runBtn" onclick="runAnalysis()" disabled>
-        ▶ Run Phase 1 Analysis
-      </button>
-      <button class="btn btn-sec" id="runAllBtn" style="margin-top:6px" onclick="runAllROIs_()">
-        ▶▶ Run All Saved ROIs
-      </button>
-      <div class="progress" id="progress">
-        <div class="prog-msg" id="progMsg">Initialising...</div>
-        <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
-      </div>
-      <div class="batch-progress" id="batchProgress">
-        <div style="font-size:10px;font-weight:700;color:#F5A623;margin-bottom:6px">Batch Progress</div>
-        <div id="batchItems"></div>
-      </div>
-    </div>
-
-    <!-- Time Series Panel -->
-    <div class="sb">
-      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleTsPanel_()">
-        <h3 style="margin:0">📈 Crop Time Series</h3>
-        <span id="tsPanelChevron" style="color:#F5A623;font-size:11px">▶</span>
-      </div>
-      <div id="tsPanelBody" style="display:none;margin-top:8px">
-        <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Process API). Load an ROI and set year range, then fetch.</p>
-        <button class="btn btn-sec" id="tsFetchBtn" onclick="fetchTimeSeries_()" style="margin-bottom:6px">📡 Fetch Time Series</button>
-        <div id="tsIndexBtns" style="display:none;margin-bottom:4px;text-align:center">
-          <span style="font-size:9px;color:#9FE1CB;margin-right:3px">Index:</span>
-          <button class="ts-idx-btn active" onclick="setTsIndex_('evi2')" id="tsBtn_evi2">EVI2</button>
-          <button class="ts-idx-btn" onclick="setTsIndex_('ndre')" id="tsBtn_ndre">NDRE</button>
-          <button class="ts-idx-btn" onclick="setTsIndex_('nirv')" id="tsBtn_nirv">NIRv</button>
-          <button class="ts-idx-btn" onclick="setTsIndex_('ndmi')" id="tsBtn_ndmi">NDMI</button>
-        </div>
-        <div id="tsViewBtns" style="display:none;text-align:center;margin-bottom:5px">
-          <button class="ts-idx-btn active" id="tsViewTimeline" onclick="setTsViewMode_('timeline')" style="font-size:8px">📈 Timeline</button>
-          <button class="ts-idx-btn" id="tsViewSeason" onclick="setTsViewMode_('season')" style="font-size:8px">📅 By season</button>
-        </div>
-        <div id="tsChartWrap" style="display:none"><canvas id="tsChart"></canvas></div>
-        <div id="tsChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
-        <div id="tsYearWrap" style="display:none;margin-top:6px;border-top:1px solid #1e3d30;padding-top:5px">
-          <div style="font-size:8px;color:#9FE1CB;margin-bottom:3px">
-            Filter years:&nbsp;
-            <a href="#" onclick="tsSelectAllYears_();return false" style="color:#F5A623;font-size:8px">All</a>&nbsp;/&nbsp;
-            <a href="#" onclick="tsClearYears_();return false" style="color:#F5A623;font-size:8px">None</a>
-          </div>
-          <div id="tsYearChecks" style="display:flex;flex-wrap:wrap;gap:3px;font-size:8px;color:#9FE1CB;margin-bottom:5px"></div>
-          <button class="btn btn-prim" onclick="useYearsForCpi_()" style="width:100%;font-size:9px" id="tsUseCpiBtn">✅ Use selected years for CPI</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Results -->
-    <div class="results" id="results">
-      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623">Results</h3>
-      <div class="banner" id="banner"></div>
-      <div id="dataSourceBadge" style="text-align:center;font-size:10px;padding:3px 8px;border-radius:4px;display:none"></div>
-      <div class="stat-grid" id="statGrid"></div>
-      <table class="ztbl">
-        <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
-        <tbody id="zoneTbody"></tbody>
-      </table>
-      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:6px">SHPI vs CPI correlation</h3><button class="chart-expand-btn" onclick="openChartFs_('shpiCpiScatter')" title="Fullscreen">⛶</button></div>
-      <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
-      <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
-      <div id="corrSummary" style="margin:3px 0 2px;font-size:9px;color:#9FE1CB;text-align:center"></div>
-      <div id="scatterOutlierNote" style="text-align:center;font-size:8px;color:#6FA898;margin-bottom:4px"></div>
-      <div id="results-map-ctrls">
-        <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
-        <input type="range" id="rasterOpacity" min="10" max="100" value="80" oninput="updateRasterOpacity_(this.value, 'rasterOpacityVal', false)">
-        <span id="rasterOpacityVal" style="font-size:10px;color:#F5A623;width:30px">80%</span>
-        <button class="rm-ctrl-btn" onclick="toggleResultsFullscreen_()" title="Fullscreen">⛶</button>
-      </div>
-      <div id="results-map"></div>
-      <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
-      <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
     </div>
 
     <!-- Compare ROIs section -->
