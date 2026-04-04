@@ -1,64 +1,103 @@
 // ============================================================
-// Soil Health Stratification Tool — Apps Script Backend BE1.1.0
+// Soil Health Stratification Tool — Apps Script Backend BE1.7.0
 // Treeconomy Soil Intelligence Division
 // All strings use single quotes and + concatenation. No backticks.
 // ============================================================
 
 const SH_CLIENT_ID = '..............'
 const SH_CLIENT_SECRET = '...................'
-var SH_TOKEN_URL     = 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token';
-var SH_PROCESS_URL   = 'https://sh.dataspace.copernicus.eu/api/v1/process';
+var SH_TOKEN_URL   = 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token';
+var SH_PROCESS_URL = 'https://sh.dataspace.copernicus.eu/api/v1/process';
 
 // Default SHPI quantile-boundary thresholds (used as fallback before real histogram analysis)
 var DEFAULT_SHPI_THRESHOLDS = [0.20, 0.35, 0.50, 0.65];
 
 function buildCombinedEvalscript_() {
+  // Evalscript V3 — 4-band RGBA UINT8 output
+  // R = SHPI×254 (soil health, from bare-soil obs)
+  // G = CPI×254  (crop productivity, from crop obs)
+  // B = bare-soil observation count (0–254)
+  // A = crop observation count (0–254)
+  // B=0 AND A=0 → invalid/nodata pixel
   return '//VERSION=3\n' +
     'function setup(){\n' +
     '  return{\n' +
-    '    input:[{bands:["B02","B03","B04","B08","B11","B12","SCL"]}],\n' +
-    '    output:{bands:3,sampleType:"UINT8"},\n' +
+    '    input:[{bands:["B02","B03","B04","B05","B08","B11","B12","SCL"]}],\n' +
+    '    output:{bands:4,sampleType:"UINT8"},\n' +
     '    mosaicking:"ORBIT"\n' +
     '  };\n' +
     '}\n' +
     'function evaluatePixel(samples){\n' +
+    '  // Compute median of a named band across a sample array\n' +
     '  function med(a,k){\n' +
     '    var x=a.map(function(s){return s[k];}).sort(function(a,b){return a-b;});\n' +
     '    var m=Math.floor(x.length/2);\n' +
     '    return x.length%2?x[m]:(x[m-1]+x[m])/2;\n' +
     '  }\n' +
-    '  var bareS=samples.filter(function(s){\n' +
-    '    if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10)return false;\n' +
-    '    var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);\n' +
-    '    var lswi=(s.B08-s.B11)/(s.B08+s.B11+0.0001);\n' +
-    '    return ndvi<0.25&&lswi<0.0;\n' +
-    '  });\n' +
-    '  var cropS=samples.filter(function(s){\n' +
-    '    if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10)return false;\n' +
-    '    var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);\n' +
-    '    return ndvi>0.4;\n' +
-    '  });\n' +
-    '  if(!bareS.length&&!cropS.length)return[0,0,0];\n' +
-    '  var shpiBand=255;\n' +
+    '  // Safe division: returns 0 when denominator is zero\n' +
+    '  function div(a,b){return b===0?0:a/b;}\n' +
+    '  // Soft clamp to [0,1]\n' +
+    '  function c01(v){return v<0?0:v>1?1:v;}\n' +
+    '\n' +
+    '  // Separate bare-soil and crop observations per spec masks\n' +
+    '  var bareS=[], cropS=[];\n' +
+    '  for(var i=0;i<samples.length;i++){\n' +
+    '    var s=samples[i];\n' +
+    '    if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10) continue;\n' +
+    '    var ndvi=div(s.B08-s.B04,s.B08+s.B04);\n' +
+    '    var ndmi=div(s.B08-s.B11,s.B08+s.B11);\n' +
+    '    var nirv=Math.max(0,ndvi)*s.B08;\n' +
+    '    if(ndvi<0.2&&ndmi<0.05&&nirv<0.05) bareS.push(s);\n' +
+    '    if(ndvi>0.35&&nirv>0.1) cropS.push(s);\n' +
+    '  }\n' +
+    '\n' +
+    '  // No valid observations: return nodata (all zeros)\n' +
+    '  if(!bareS.length&&!cropS.length) return[0,0,0,0];\n' +
+    '\n' +
+    '  // ── SHPI from bare-soil observations ─────────────────────\n' +
+    '  var shpiBand=0;\n' +
     '  if(bareS.length>0){\n' +
     '    var b2=med(bareS,"B02"),b3=med(bareS,"B03"),b4=med(bareS,"B04");\n' +
-    '    var b11=med(bareS,"B11"),b12=med(bareS,"B12");\n' +
-    '    var bi=Math.sqrt((b4*b4+b3*b3+b2*b2)/3.0);\n' +
-    '    var clay=b11/(b12+0.0001);\n' +
-    '    var ri=(b4*b4)/(b2*b3+0.0001);\n' +
-    '    var biN=Math.max(0,Math.min(1,(bi-0.03)/0.22));\n' +
-    '    var clayN=Math.max(0,Math.min(1,(clay-0.85)/0.65));\n' +
-    '    var riN=Math.max(0,Math.min(1,(ri-0.50)/5.50));\n' +
-    '    var shpi=(1-biN)*0.40+clayN*0.35+riN*0.25;\n' +
-    '    shpiBand=Math.round(shpi*254);\n' +
+    '    var b8=med(bareS,"B08"),b11=med(bareS,"B11"),b12=med(bareS,"B12");\n' +
+    '    // Sub-indices: SAB, ClaySI, RI2, SMI\n' +
+    '    var sab=(b2+b3+b4)/3.0;\n' +
+    '    var claySI=div(b11-b12,b11+b12);\n' +
+    '    var ri2=div(b4-b2,b4+b2);\n' +
+    '    var smi=div(b8-b11,b8+b11);\n' +
+    '    // Normalize each sub-index to [0,1] with field-calibrated soft clamps\n' +
+    '    var sabN   =c01((sab   -0.03)/0.17);\n' +
+    '    var claySIN=c01((claySI+0.10)/0.20);\n' +
+    '    var ri2N   =c01((ri2   +0.05)/0.20);\n' +
+    '    var smiN   =c01((smi   +0.20)/0.50);\n' +
+    '    // SHPI: lower albedo = healthier; higher clay/redness/moisture = healthier\n' +
+    '    var shpi=(1-sabN)*0.35+claySIN*0.30+ri2N*0.20+smiN*0.15;\n' +
+    '    shpiBand=Math.round(c01(shpi)*254);\n' +
     '  }\n' +
-    '  var ndviBand=255;\n' +
+    '\n' +
+    '  // ── CPI from crop observations ────────────────────────────\n' +
+    '  var cpiBand=0;\n' +
     '  if(cropS.length>0){\n' +
-    '    var b4k=med(cropS,"B04"),b8k=med(cropS,"B08");\n' +
-    '    var ndvi=Math.max(0,Math.min(1,(b8k-b4k)/(b8k+b4k+0.0001)));\n' +
-    '    ndviBand=Math.round(ndvi*254);\n' +
+    '    var b4c=med(cropS,"B04"),b5c=med(cropS,"B05"),b8c=med(cropS,"B08"),b11c=med(cropS,"B11");\n' +
+    '    var ndviC=div(b8c-b4c,b8c+b4c);\n' +
+    '    // Sub-indices: EVI2, NDRE, NIRv, NDMI\n' +
+    '    var evi2=2.5*div(b8c-b4c,b8c+2.4*b4c+1);\n' +
+    '    var ndre=div(b8c-b5c,b8c+b5c);\n' +
+    '    var nirv=Math.max(0,ndviC)*b8c;\n' +
+    '    var ndmi=div(b8c-b11c,b8c+b11c);\n' +
+    '    // Normalize each sub-index to [0,1] with field-calibrated soft clamps\n' +
+    '    var e2N =c01(evi2/0.80);\n' +
+    '    var drN =c01(ndre/0.60);\n' +
+    '    var nvN =c01(nirv/0.40);\n' +
+    '    var dmN =c01((ndmi+0.10)/0.60);\n' +
+    '    // CPI: weighted composite of four crop-health spectral indices\n' +
+    '    var cpi=e2N*0.35+drN*0.30+nvN*0.20+dmN*0.15;\n' +
+    '    cpiBand=Math.round(c01(cpi)*254);\n' +
     '  }\n' +
-    '  return[shpiBand,ndviBand,1];\n' +
+    '\n' +
+    '  // Observation counts capped at 254 (255 reserved for future nodata flags)\n' +
+    '  var soilCnt=Math.min(254,bareS.length);\n' +
+    '  var cropCnt=Math.min(254,cropS.length);\n' +
+    '  return[shpiBand,cpiBand,soilCnt,cropCnt];\n' +
     '}';
 }
 
@@ -195,6 +234,456 @@ function runAnalysis(params) {
 
   } catch(e) {
     Logger.log('runAnalysis error: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ── Time-series evalscript (Process API, ORBIT mosaicking) ───
+// Returns 5 FLOAT32 bands per output pixel: EVI2, NDRE, NIRv, NDMI, NDVI.
+// samples[] is the temporal stack for the 14-day window at that spatial pixel.
+// NDVI > 0.35 threshold matches the crop-pixel gate in buildCombinedEvalscript_
+// (the main raster evalscript) — ensures only genuine crop observations are
+// averaged into the spectral indices.  Non-crop / cloud pixels return NaN.
+// ── Time-series per-window evalscript — 4-band RGBA PNG output ────────────────
+// Output channels (UINT8, 0–254):
+//   R = EVI2 soft-clamped to [0,1] × 254
+//   G = NDRE soft-clamped to [0,1] × 254
+//   B = NIRv  soft-clamped to [0,1] × 254
+//   A = NDMI  soft-clamped to [0,1] × 254
+// Pixels with no crop observations in the window return [0,0,0,0] (nodata marker).
+// NDVI dropped — redundant alongside EVI2 for phenology, and only 4 PNG channels.
+function buildTsWindowEvalscript_() {
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{input:[{bands:["B04","B05","B08","B11"],units:"REFLECTANCE"}],\n' +
+    '         output:[{id:"default",bands:4,sampleType:"UINT8"}],\n' +
+    '         mosaicking:"ORBIT"};\n' +
+    '}\n' +
+    'function evaluatePixel(samples){\n' +
+    '  var e=0,nd=0,ni=0,nm=0,cnt=0;\n' +
+    '  for(var i=0;i<samples.length;i++){\n' +
+    '    var s=samples[i];\n' +
+    '    var ndvi=(s.B08-s.B04)/(s.B08+s.B04+1e-9);\n' +
+    '    if(ndvi<=0.35) continue;\n' +  // only crop pixels (matches main evalscript gate)
+    '    e+=2.5*(s.B08-s.B04)/(s.B08+2.4*s.B04+1);\n' +
+    '    nd+=(s.B08-s.B05)/(s.B08+s.B05+1e-9);\n' +
+    '    ni+=ndvi*s.B08;\n' +
+    '    nm+=(s.B08-s.B11)/(s.B08+s.B11+1e-9);\n' +
+    '    cnt++;\n' +
+    '  }\n' +
+    '  if(cnt===0) return{default:[0,0,0,0]};\n' +   // nodata — no crop pixels in this window
+    '  var ec=e/cnt,ndc=nd/cnt,nic=ni/cnt,nmc=nm/cnt;\n' +
+    '  return{default:[\n' +
+    '    Math.round((ec<0?0:ec>1?1:ec)*254),\n' +    // R = EVI2
+    '    Math.round((ndc<0?0:ndc>1?1:ndc)*254),\n' + // G = NDRE
+    '    Math.round((nic<0?0:nic>1?1:nic)*254),\n' +  // B = NIRv
+    '    Math.round((nmc<0?0:nmc>1?1:nmc)*254)\n' +  // A = NDMI
+    '  ]};\n' +
+    '}';
+}
+
+// ── Fetch ROI time series via Process API (biweekly loop) ─────
+// Makes one Process API call per 14-day window.  Returns an array of
+// { date, img64 } objects (base64-encoded RGBA PNG) for windows that
+// returned HTTP 200.  Windows with HTTP errors are silently skipped.
+// The PNG channels encode: R=EVI2, G=NDRE, B=NIRv, A=NDMI (×254).
+// Pixels with no valid crop observations are [0,0,0,0].
+// Caller (frontend) decodes each PNG via Canvas pixel reads to compute
+// per-channel spatial means (same proven pipeline as main raster).
+// Utilities.sleep(500) between calls to avoid HTTP 429 rate limiting.
+function fetchROITimeSeries_(geojson, yearStart, yearEnd, token) {
+  var bbox = getBbox_(geojson);
+  // 0.0002° ≈ 22 m at India's latitude; image clamped to 32×32 to keep files small.
+  var DEG_PER_PIXEL = 0.0002;
+  var MS_14_DAYS    = 14 * 24 * 60 * 60 * 1000;
+  var lngSpan = bbox[2] - bbox[0];
+  var latSpan = bbox[3] - bbox[1];
+  var W = Math.max(1, Math.min(32, Math.round(lngSpan / DEG_PER_PIXEL)));
+  var H = Math.max(1, Math.min(32, Math.round(latSpan / DEG_PER_PIXEL)));
+  var evalscript = buildTsWindowEvalscript_();
+  var windows = [];
+  // Walk 14-day windows from Jan 1 of yearStart to Dec 31 of yearEnd
+  var cursor   = new Date(yearStart + '-01-01T00:00:00Z');
+  var rangeEnd = new Date(yearEnd   + '-12-31T23:59:59Z');
+  while (cursor <= rangeEnd) {
+    var wFrom = cursor.toISOString().substring(0, 10) + 'T00:00:00Z';
+    var nextCursor = new Date(cursor.getTime() + MS_14_DAYS);
+    var wEnd  = nextCursor > rangeEnd ? rangeEnd : nextCursor;
+    var wTo   = new Date(wEnd.getTime() - 1000).toISOString().substring(0, 10) + 'T23:59:59Z';
+    var payload = {
+      input: {
+        bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
+        data: [{ type: 'sentinel-2-l2a',
+                 dataFilter: { timeRange: { from: wFrom, to: wTo }, maxCloudCoverage: 80 } }]
+      },
+      output: {
+        width: W, height: H,
+        responses: [{ identifier: 'default',
+                      format: { type: 'image/png' } }]  // PNG — no TIFF compression issues
+      },
+      evalscript: evalscript
+    };
+    var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+    var code = resp.getResponseCode();
+    if (code === 200) {
+      // Return base64 PNG to frontend for Canvas-based pixel decode
+      windows.push({
+        date:  wFrom.substring(0, 10),
+        img64: Utilities.base64Encode(resp.getContent())
+      });
+    } else {
+      Logger.log('TS window ' + wFrom.substring(0,10) + ' HTTP ' + code +
+                 ': ' + resp.getContentText().substring(0, 200));
+    }
+    cursor = nextCursor;
+    // Throttle: 500 ms between requests to stay within free-tier rate limits
+    if (cursor <= rangeEnd) Utilities.sleep(500);
+  }
+  return windows;
+}
+
+// ── Public: fetch time series (called from HTML client) ───────
+// Returns { success:true, windows:[{date, img64}, ...] } — one entry per
+// 14-day window that returned HTTP 200 from the Process API.
+// The frontend decodes each img64 (base64 RGBA PNG) via Canvas pixel reads
+// to compute per-channel spatial means (EVI2/NDRE/NIRv/NDMI).
+function getTimeSeries(params) {
+  try {
+    var token   = getToken_();
+    var windows = fetchROITimeSeries_(params.geojson, params.yearStart, params.yearEnd, token);
+    if (windows.length === 0) return { success: false, error: 'No Process API windows succeeded for the specified date range.' };
+    return { success: true, windows: windows };
+  } catch(e) {
+    Logger.log('getTimeSeries error: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ── D1: SHPI bare-soil trend chart evalscript ─────────────────
+// Per-window evalscript using ORBIT mosaicking. Bare-soil mask: NDVI < 0.2 AND NDMI < 0.05.
+// Outputs: R=SAB×254, G=ClaySI×254, B=RI2×254, A=SMI×254.
+// No-soil pixels return [0,0,0,0].
+function buildShpiTsWindowEvalscript_() {
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{input:[{bands:["B02","B03","B04","B08","B11","B12"],units:"REFLECTANCE"}],\n' +
+    '         output:[{id:"default",bands:4,sampleType:"UINT8"}],\n' +
+    '         mosaicking:"ORBIT"};\n' +
+    '}\n' +
+    'function evaluatePixel(samples){\n' +
+    '  var sabS=0,claySS=0,ri2S=0,smiS=0,cnt=0;\n' +
+    '  for(var i=0;i<samples.length;i++){\n' +
+    '    var s=samples[i];\n' +
+    '    var ndvi=(s.B08-s.B04)/(s.B08+s.B04+1e-9);\n' +
+    '    var ndmi=(s.B08-s.B11)/(s.B08+s.B11+1e-9);\n' +
+    '    if(ndvi>=0.2||ndmi>=0.05) continue;\n' +  // bare-soil mask
+    '    sabS+=(s.B02+s.B03+s.B04)/3;\n' +
+    '    claySS+=(s.B11-s.B12)/(s.B11+s.B12+1e-9);\n' +
+    '    ri2S+=(s.B04-s.B02)/(s.B04+s.B02+1e-9);\n' +
+    '    smiS+=ndmi;\n' +
+    '    cnt++;\n' +
+    '  }\n' +
+    '  if(cnt===0) return{default:[0,0,0,0]};\n' +   // nodata — no bare-soil pixels in this window
+    '  function c(v){return Math.round((v<0?0:v>1?1:v)*254);}\n' +
+    '  return{default:[\n' +
+    '    c(sabS/cnt),\n' +          // R = SAB (0–0.5 typical, clamp to 1)
+    '    c((claySS/cnt+0.2)/0.6),\n' + // G = ClaySI (rescaled from [-0.2,0.4] to [0,1])
+    '    c((ri2S/cnt+0.05)/0.3),\n' +  // B = RI2 (rescaled from [-0.05,0.25] to [0,1])
+    '    c((smiS/cnt+0.5)/1.0)\n' +    // A = SMI (rescaled from [-0.5,0.5] to [0,1])
+    '  ]};\n' +
+    '}';
+}
+
+// ── D1: Fetch ROI SHPI bare-soil time series (biweekly loop) ──
+// Same structure as fetchROITimeSeries_ but using the bare-soil evalscript.
+function fetchROISoilTimeSeries_(geojson, yearStart, yearEnd, token) {
+  var bbox = getBbox_(geojson);
+  var DEG_PER_PIXEL = 0.0002;
+  var MS_14_DAYS    = 14 * 24 * 60 * 60 * 1000;
+  var lngSpan = bbox[2] - bbox[0];
+  var latSpan = bbox[3] - bbox[1];
+  var W = Math.max(1, Math.min(32, Math.round(lngSpan / DEG_PER_PIXEL)));
+  var H = Math.max(1, Math.min(32, Math.round(latSpan / DEG_PER_PIXEL)));
+  var evalscript = buildShpiTsWindowEvalscript_();
+  var windows = [];
+  var cursor   = new Date(yearStart + '-01-01T00:00:00Z');
+  var rangeEnd = new Date(yearEnd   + '-12-31T23:59:59Z');
+  while (cursor <= rangeEnd) {
+    var wFrom = cursor.toISOString().substring(0, 10) + 'T00:00:00Z';
+    var nextCursor = new Date(cursor.getTime() + MS_14_DAYS);
+    var wEnd  = nextCursor > rangeEnd ? rangeEnd : nextCursor;
+    var wTo   = new Date(wEnd.getTime() - 1000).toISOString().substring(0, 10) + 'T23:59:59Z';
+    var payload = {
+      input: {
+        bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
+        data: [{ type: 'sentinel-2-l2a',
+                 dataFilter: { timeRange: { from: wFrom, to: wTo }, maxCloudCoverage: 80 } }]
+      },
+      output: {
+        width: W, height: H,
+        responses: [{ identifier: 'default', format: { type: 'image/png' } }]
+      },
+      evalscript: evalscript
+    };
+    var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+    var code = resp.getResponseCode();
+    if (code === 200) {
+      windows.push({
+        date:  wFrom.substring(0, 10),
+        img64: Utilities.base64Encode(resp.getContent())
+      });
+    } else {
+      Logger.log('Soil TS window ' + wFrom.substring(0,10) + ' HTTP ' + code +
+                 ': ' + resp.getContentText().substring(0, 200));
+    }
+    cursor = nextCursor;
+    if (cursor <= rangeEnd) Utilities.sleep(500);
+  }
+  return windows;
+}
+
+// ── D1: Public: fetch SHPI soil time series (called from HTML client) ──
+function getSoilTimeSeries(params) {
+  try {
+    var token   = getToken_();
+    var windows = fetchROISoilTimeSeries_(params.geojson, params.yearStart, params.yearEnd, token);
+    if (windows.length === 0) return { success: false, error: 'No bare-soil observations found in any window for the specified date range.' };
+    return { success: true, windows: windows };
+  } catch(e) {
+    Logger.log('getSoilTimeSeries error: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ── Season-specific CPI raster (Stage 2) ─────────────────────
+// Builds a CPI raster using only crop observations from the requested season.
+// ── D2: Fallow-gap-anchored SHPI raster per season ───────────
+// Builds a SHPI composite from bare-soil observations in the pre-season fallow window.
+// season: 'kharif' → Feb–May of requested years (pre-monsoon fallow)
+//         'rabi'   → Oct–Nov of requested years (post-Kharif harvest gap)
+// Output: 4-band UINT8 PNG — R = SHPI×254, A = bare-soil observation count.
+// We use 4-band output for PNG compatibility: [SHPI×254, 0, 0, soilCount].
+function buildFallowShpiEvalscript_(season) {
+  var monthFilter = '';
+  if (season === 'kharif') {
+    // Pre-Kharif fallow = Feb–May (months 2–5)
+    monthFilter = 'var m_=scenes[i].date.getUTCMonth()+1;if(m_<2||m_>5)continue;';
+  } else if (season === 'rabi') {
+    // Pre-Rabi fallow = Oct–Nov (months 10–11)
+    monthFilter = 'var m_=scenes[i].date.getUTCMonth()+1;if(m_<10||m_>11)continue;';
+  }
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{\n' +
+    '    input:[{bands:["B02","B03","B04","B08","B11","B12","SCL"]}],\n' +
+    '    output:{bands:4,sampleType:"UINT8"},\n' +
+    '    mosaicking:"ORBIT"\n' +
+    '  };\n' +
+    '}\n' +
+    'function evaluatePixel(samples,scenes){\n' +
+    '  function div(a,b){return b===0?0:a/b;}\n' +
+    '  function c01(v){return v<0?0:v>1?1:v;}\n' +
+    '  function med(a,k){\n' +
+    '    var x=a.map(function(s){return s[k];}).sort(function(a,b){return a-b;});\n' +
+    '    var m=Math.floor(x.length/2);\n' +
+    '    return x.length%2?x[m]:(x[m-1]+x[m])/2;\n' +
+    '  }\n' +
+    '  var bareS=[];\n' +
+    '  for(var i=0;i<samples.length;i++){\n' +
+    (monthFilter ? '    ' + monthFilter + '\n' : '') +
+    '    var s=samples[i];\n' +
+    '    if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10) continue;\n' +
+    '    var ndvi=div(s.B08-s.B04,s.B08+s.B04);\n' +
+    '    var ndmi=div(s.B08-s.B11,s.B08+s.B11);\n' +
+    '    var nirv=Math.max(0,ndvi)*s.B08;\n' +
+    '    if(ndvi<0.2&&ndmi<0.05&&nirv<0.05) bareS.push(s);\n' +
+    '  }\n' +
+    '  if(!bareS.length) return[0,0,0,0];\n' +
+    '  var b2=med(bareS,"B02"),b3=med(bareS,"B03"),b4=med(bareS,"B04");\n' +
+    '  var b8=med(bareS,"B08"),b11=med(bareS,"B11"),b12=med(bareS,"B12");\n' +
+    '  var sab=(b2+b3+b4)/3.0;\n' +
+    '  var claySI=div(b11-b12,b11+b12);\n' +
+    '  var ri2=div(b4-b2,b4+b2);\n' +
+    '  var smi=div(b8-b11,b8+b11);\n' +
+    '  var sabN   =c01((sab   -0.03)/0.17);\n' +
+    '  var claySIN=c01((claySI+0.10)/0.20);\n' +
+    '  var ri2N   =c01((ri2   +0.05)/0.20);\n' +
+    '  var smiN   =c01((smi   +0.20)/0.50);\n' +
+    '  var shpi=(1-sabN)*0.35+claySIN*0.30+ri2N*0.20+smiN*0.15;\n' +
+    '  return[Math.round(c01(shpi)*254),0,0,Math.min(254,bareS.length)];\n' +
+    '}';
+}
+
+function fetchFallowShpiRaster_(bbox, season, yearStart, yearEnd, token) {
+  try {
+    var from = yearStart + '-01-01T00:00:00Z';
+    var to   = yearEnd   + '-12-31T23:59:59Z';
+    var lngSpan = bbox[2] - bbox[0];
+    var latSpan = bbox[3] - bbox[1];
+    var W, H;
+    if (lngSpan >= latSpan) {
+      W = 512; H = Math.max(1, Math.round(512 * latSpan / lngSpan));
+    } else {
+      H = 512; W = Math.max(1, Math.round(512 * lngSpan / latSpan));
+    }
+    var payload = {
+      input: {
+        bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
+        data: [{ dataFilter: { timeRange: { from: from, to: to } }, type: 'sentinel-2-l2a' }]
+      },
+      output: {
+        width: W, height: H,
+        responses: [{ identifier: 'default', format: { type: 'image/png' } }]
+      },
+      evalscript: buildFallowShpiEvalscript_(season)
+    };
+    var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+    Logger.log('Fallow SHPI (' + season + ') status: ' + resp.getResponseCode());
+    if (resp.getResponseCode() !== 200) {
+      Logger.log('Fallow SHPI error: ' + resp.getContentText().substring(0, 400));
+      return null;
+    }
+    return Utilities.base64Encode(resp.getContent());
+  } catch(e) {
+    Logger.log('fetchFallowShpiRaster_ error: ' + e.message);
+    return null;
+  }
+}
+
+// ── Public: fetch fallow-gap SHPI raster (called from HTML client) ──────────
+// params: { geojson, season ('kharif'|'rabi'), yearStart, yearEnd }
+// Returns { success:true, img64 } — base64-encoded 4-band PNG where R=SHPI×254, A=soil obs count.
+function getFallowShpiRaster(params) {
+  try {
+    var token = getToken_();
+    var bbox  = getBbox_(params.geojson);
+    var img64 = fetchFallowShpiRaster_(bbox, params.season, params.yearStart, params.yearEnd, token);
+    if (!img64) return { success: false, error: 'Fallow SHPI raster fetch failed — check Sentinel Hub credentials and ROI size' };
+    return { success: true, img64: img64 };
+  } catch(e) {
+    Logger.log('getFallowShpiRaster error: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// season: 'all' = no month filter, 'kharif' = Jun–Oct, 'rabi' = Nov–Mar, 'zaid' = Mar–Jun.
+// Month filtering uses scenes[i].date (available in ORBIT mosaicking evaluatePixel).
+// Output: 4-band RGBA PNG where R=0, G=CPI×254, B=0, A=crop_obs_count.
+// The G and A channels match the main raster layout so the same frontend decoder works.
+function buildSeasonCpiEvalscript_(season) {
+  var monthFilter = '';
+  if (season === 'kharif') {
+    // Kharif = June–October (months 6–10; monsoon sowing to post-harvest)
+    monthFilter = 'var m_=scenes[i].date.getUTCMonth()+1;if(m_<6||m_>10)continue;';
+  } else if (season === 'rabi') {
+    // Rabi = November–March (months 11,12,1,2,3; winter sowing to spring harvest)
+    monthFilter = 'var m_=scenes[i].date.getUTCMonth()+1;if(m_>=4&&m_<=10)continue;';
+  } else if (season === 'zaid') {
+    // Zaid = March–June (months 3–6; summer/short-duration crops)
+    monthFilter = 'var m_=scenes[i].date.getUTCMonth()+1;if(m_<3||m_>6)continue;';
+  }
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{\n' +
+    '    input:[{bands:["B04","B05","B08","B11","SCL"]}],\n' +
+    '    output:{bands:4,sampleType:"UINT8"},\n' +
+    '    mosaicking:"ORBIT"\n' +
+    '  };\n' +
+    '}\n' +
+    'function evaluatePixel(samples,scenes){\n' +
+    '  function div(a,b){return b===0?0:a/b;}\n' +
+    '  function c01(v){return v<0?0:v>1?1:v;}\n' +
+    '  function med(a,k){\n' +
+    '    var x=a.map(function(s){return s[k];}).sort(function(a,b){return a-b;});\n' +
+    '    var m=Math.floor(x.length/2);\n' +
+    '    return x.length%2?x[m]:(x[m-1]+x[m])/2;\n' +
+    '  }\n' +
+    '  var cropS=[];\n' +
+    '  for(var i=0;i<samples.length;i++){\n' +
+    (monthFilter ? '    ' + monthFilter + '\n' : '') +
+    '    var s=samples[i];\n' +
+    '    if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10) continue;\n' +
+    '    var ndvi=div(s.B08-s.B04,s.B08+s.B04);\n' +
+    '    var nirv2=Math.max(0,ndvi)*s.B08;\n' +
+    '    if(ndvi>0.35&&nirv2>0.1) cropS.push(s);\n' +
+    '  }\n' +
+    '  if(!cropS.length) return[0,0,0,0];\n' +
+    '  var b4c=med(cropS,"B04"),b5c=med(cropS,"B05"),b8c=med(cropS,"B08"),b11c=med(cropS,"B11");\n' +
+    '  var ndviC=div(b8c-b4c,b8c+b4c);\n' +
+    '  var evi2=2.5*div(b8c-b4c,b8c+2.4*b4c+1);\n' +
+    '  var ndre=div(b8c-b5c,b8c+b5c);\n' +
+    '  var nirvC=Math.max(0,ndviC)*b8c;\n' +
+    '  var ndmi=div(b8c-b11c,b8c+b11c);\n' +
+    '  var e2N=c01(evi2/0.80),drN=c01(ndre/0.60),nvN=c01(nirvC/0.40),dmN=c01((ndmi+0.10)/0.60);\n' +
+    '  var cpi=e2N*0.35+drN*0.30+nvN*0.20+dmN*0.15;\n' +
+    '  return[0,Math.round(c01(cpi)*254),0,Math.min(254,cropS.length)];\n' +
+    '}';
+}
+
+function fetchSeasonCpiRaster_(bbox, season, yearStart, yearEnd, token) {
+  try {
+    var from = yearStart + '-01-01T00:00:00Z';
+    var to   = yearEnd   + '-12-31T23:59:59Z';
+    var lngSpan = bbox[2] - bbox[0];
+    var latSpan = bbox[3] - bbox[1];
+    var W, H;
+    if (lngSpan >= latSpan) {
+      W = 512; H = Math.max(1, Math.round(512 * latSpan / lngSpan));
+    } else {
+      H = 512; W = Math.max(1, Math.round(512 * lngSpan / latSpan));
+    }
+    var payload = {
+      input: {
+        bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
+        data: [{ dataFilter: { timeRange: { from: from, to: to } }, type: 'sentinel-2-l2a' }]
+      },
+      output: {
+        width: W, height: H,
+        responses: [{ identifier: 'default', format: { type: 'image/png' } }]
+      },
+      evalscript: buildSeasonCpiEvalscript_(season)
+    };
+    var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+    Logger.log('Season CPI (' + season + ') status: ' + resp.getResponseCode());
+    if (resp.getResponseCode() !== 200) {
+      Logger.log('Season CPI error: ' + resp.getContentText().substring(0, 400));
+      return null;
+    }
+    return Utilities.base64Encode(resp.getContent());
+  } catch(e) {
+    Logger.log('fetchSeasonCpiRaster_ error: ' + e.message);
+    return null;
+  }
+}
+
+// ── Public: fetch season-specific CPI raster (called from HTML client) ──────
+// params: { geojson, season, yearStart, yearEnd }
+// Returns { success:true, img64 } — base64-encoded RGBA PNG where G = CPI×254, A = crop obs count.
+function getSeasonCpiRaster(params) {
+  try {
+    var token = getToken_();
+    var bbox  = getBbox_(params.geojson);
+    var img64 = fetchSeasonCpiRaster_(bbox, params.season, params.yearStart, params.yearEnd, token);
+    if (!img64) return { success: false, error: 'Season CPI raster fetch failed — check Sentinel Hub credentials and ROI size' };
+    return { success: true, img64: img64 };
+  } catch(e) {
+    Logger.log('getSeasonCpiRaster error: ' + e.message);
     return { success: false, error: e.message };
   }
 }
