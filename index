@@ -976,8 +976,8 @@ function decodeRasterToResult_(rawData, callback) {
         dd[base] = 0; dd[base+1] = 0; dd[base+2] = 0; dd[base+3] = 0
       }
 
-      // SHPI gradient raster: valid when soilCount (B channel) > 0
-      if (B2 > 0) {
+      // SHPI gradient raster: valid when soilCount (B channel) > 0 AND inside polygon
+      if (B2 > 0 && (!polyMask || polyMask[j])) {
         var sv = R2 / 254, st = sv * 4
         var si = Math.min(3, Math.floor(st)), sf = st - si
         sd[base]   = Math.round(shpiStops[si][0] + (shpiStops[si+1][0] - shpiStops[si][0]) * sf)
@@ -988,10 +988,10 @@ function decodeRasterToResult_(rawData, callback) {
         sd[base] = 0; sd[base+1] = 0; sd[base+2] = 0; sd[base+3] = 0
       }
 
-      // CPI gradient raster: valid when cropCount (A channel) > 0
+      // CPI gradient raster: valid when cropCount (A channel) > 0 AND inside polygon
       // CPI is already normalised to [0,1] by the evalscript composite formula,
       // so no sub-range rescaling (unlike old raw-NDVI 0.4→1.0 mapping).
-      if (A2 > 0) {
+      if (A2 > 0 && (!polyMask || polyMask[j])) {
         var cv = G2 / 254, cn = Math.max(0, Math.min(1, cv))
         var cseg = cn * (cpiStops.length - 1)
         var ci = Math.min(cpiStops.length - 2, Math.floor(cseg)), cf = cseg - ci
