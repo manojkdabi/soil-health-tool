@@ -199,8 +199,8 @@ canvas{display:block}
   <div class="hdr-logo">SH</div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
-    <span class="ver-pill ver-pill-be">BE1.5.0</span>
-    <span class="ver-pill ver-pill-fe">FE1.6.0</span>
+    <span class="ver-pill ver-pill-be">BE1.6.0</span>
+    <span class="ver-pill ver-pill-fe">FE1.7.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -253,33 +253,58 @@ canvas{display:block}
     <!-- Time Series Panel (Step 3 · Crop Time Series — set before running) -->
     <div class="sb">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleTsPanel_()">
-        <h3 style="margin:0">Step 3 · 📈 Crop Time Series</h3>
+        <h3 style="margin:0">Step 3 · 📈 Time Series</h3>
         <span id="tsPanelChevron" style="color:#F5A623;font-size:11px">▶</span>
       </div>
       <div id="tsPanelBody" style="display:none;margin-top:8px">
         <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Process API). Load an ROI and set year range, then fetch. Select good-crop years and lock them for CPI before running analysis.</p>
-        <button class="btn btn-sec" id="tsFetchBtn" onclick="fetchTimeSeries_()" style="margin-bottom:6px">📡 Fetch Time Series</button>
-        <div id="tsIndexBtns" style="display:none;margin-bottom:4px;text-align:center">
-          <span style="font-size:9px;color:#9FE1CB;margin-right:3px">Index:</span>
-          <button class="ts-idx-btn active" onclick="setTsIndex_('evi2')" id="tsBtn_evi2">EVI2</button>
-          <button class="ts-idx-btn" onclick="setTsIndex_('ndre')" id="tsBtn_ndre">NDRE</button>
-          <button class="ts-idx-btn" onclick="setTsIndex_('nirv')" id="tsBtn_nirv">NIRv</button>
-          <button class="ts-idx-btn" onclick="setTsIndex_('ndmi')" id="tsBtn_ndmi">NDMI</button>
+        <!-- D1: Crop / Soil toggle tabs -->
+        <div style="display:flex;gap:4px;margin-bottom:6px">
+          <button class="ts-idx-btn active" id="tsPanelCropTab" onclick="setTsPanelMode_('crop')" style="flex:1;font-size:9px">🌿 Crop (CPI)</button>
+          <button class="ts-idx-btn" id="tsPanelSoilTab" onclick="setTsPanelMode_('soil')" style="flex:1;font-size:9px">🟤 Soil (SHPI)</button>
         </div>
-        <div id="tsViewBtns" style="display:none;text-align:center;margin-bottom:5px">
-          <button class="ts-idx-btn active" id="tsViewTimeline" onclick="setTsViewMode_('timeline')" style="font-size:8px">📈 Timeline</button>
-          <button class="ts-idx-btn" id="tsViewSeason" onclick="setTsViewMode_('season')" style="font-size:8px">📅 By season</button>
-        </div>
-        <div id="tsChartWrap" style="display:none"><canvas id="tsChart"></canvas></div>
-        <div id="tsChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
-        <div id="tsYearWrap" style="display:none;margin-top:6px;border-top:1px solid #1e3d30;padding-top:5px">
-          <div style="font-size:8px;color:#9FE1CB;margin-bottom:3px">
-            Filter years:&nbsp;
-            <a href="#" onclick="tsSelectAllYears_();return false" style="color:#F5A623;font-size:8px">All</a>&nbsp;/&nbsp;
-            <a href="#" onclick="tsClearYears_();return false" style="color:#F5A623;font-size:8px">None</a>
+        <!-- Crop panel -->
+        <div id="tsCropPanel">
+          <button class="btn btn-sec" id="tsFetchBtn" onclick="fetchTimeSeries_()" style="margin-bottom:6px">📡 Fetch Crop Series</button>
+          <div id="tsIndexBtns" style="display:none;margin-bottom:4px;text-align:center">
+            <span style="font-size:9px;color:#9FE1CB;margin-right:3px">Index:</span>
+            <button class="ts-idx-btn active" onclick="setTsIndex_('evi2')" id="tsBtn_evi2">EVI2</button>
+            <button class="ts-idx-btn" onclick="setTsIndex_('ndre')" id="tsBtn_ndre">NDRE</button>
+            <button class="ts-idx-btn" onclick="setTsIndex_('nirv')" id="tsBtn_nirv">NIRv</button>
+            <button class="ts-idx-btn" onclick="setTsIndex_('ndmi')" id="tsBtn_ndmi">NDMI</button>
           </div>
-          <div id="tsYearChecks" style="display:flex;flex-wrap:wrap;gap:3px;font-size:8px;color:#9FE1CB;margin-bottom:5px"></div>
-          <button class="btn btn-prim" onclick="useYearsForCpi_()" style="width:100%;font-size:9px" id="tsUseCpiBtn">✅ Use selected years for CPI</button>
+          <div id="tsViewBtns" style="display:none;text-align:center;margin-bottom:5px">
+            <button class="ts-idx-btn active" id="tsViewTimeline" onclick="setTsViewMode_('timeline')" style="font-size:8px">📈 Timeline</button>
+            <button class="ts-idx-btn" id="tsViewSeason" onclick="setTsViewMode_('season')" style="font-size:8px">📅 By season</button>
+          </div>
+          <div id="tsChartWrap" style="display:none"><canvas id="tsChart"></canvas></div>
+          <div id="tsChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
+          <div id="tsYearWrap" style="display:none;margin-top:6px;border-top:1px solid #1e3d30;padding-top:5px">
+            <div style="font-size:8px;color:#9FE1CB;margin-bottom:3px">
+              Filter years:&nbsp;
+              <a href="#" onclick="tsSelectAllYears_();return false" style="color:#F5A623;font-size:8px">All</a>&nbsp;/&nbsp;
+              <a href="#" onclick="tsClearYears_();return false" style="color:#F5A623;font-size:8px">None</a>
+            </div>
+            <div id="tsYearChecks" style="display:flex;flex-wrap:wrap;gap:3px;font-size:8px;color:#9FE1CB;margin-bottom:5px"></div>
+            <button class="btn btn-prim" onclick="useYearsForCpi_()" style="width:100%;font-size:9px" id="tsUseCpiBtn">✅ Use selected years for CPI</button>
+          </div>
+        </div>
+        <!-- D1: Soil (SHPI sub-indices) panel -->
+        <div id="tsSoilPanel" style="display:none">
+          <button class="btn btn-sec" id="soilFetchBtn" onclick="fetchSoilTimeSeries_()" style="margin-bottom:6px">📡 Fetch Soil Series</button>
+          <div id="soilIndexBtns" style="display:none;margin-bottom:4px;text-align:center">
+            <span style="font-size:9px;color:#9FE1CB;margin-right:3px">Index:</span>
+            <button class="ts-idx-btn active" onclick="setSoilTsIndex_('sab')" id="soilBtn_sab">SAB</button>
+            <button class="ts-idx-btn" onclick="setSoilTsIndex_('claysi')" id="soilBtn_claysi">ClaySI</button>
+            <button class="ts-idx-btn" onclick="setSoilTsIndex_('ri2')" id="soilBtn_ri2">RI2</button>
+            <button class="ts-idx-btn" onclick="setSoilTsIndex_('smi')" id="soilBtn_smi">SMI</button>
+          </div>
+          <div id="soilViewBtns" style="display:none;text-align:center;margin-bottom:5px">
+            <button class="ts-idx-btn active" id="soilViewTimeline" onclick="setSoilTsViewMode_('timeline')" style="font-size:8px">📈 Timeline</button>
+            <button class="ts-idx-btn" id="soilViewSeason" onclick="setSoilTsViewMode_('season')" style="font-size:8px">📅 By season</button>
+          </div>
+          <div id="soilChartWrap" style="display:none"><canvas id="soilTsChart"></canvas></div>
+          <div id="soilChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
         </div>
       </div>
     </div>
@@ -307,6 +332,8 @@ canvas{display:block}
       <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623">Results</h3>
       <div class="banner" id="banner"></div>
       <div id="dataSourceBadge" style="text-align:center;font-size:10px;padding:3px 8px;border-radius:4px;display:none"></div>
+      <!-- D4: ROI clip verification stats -->
+      <div id="clipStats" style="display:none;margin:4px 0;padding:4px 6px;background:rgba(0,0,0,0.3);border-radius:4px;border:1px solid #2E6B4F;font-size:9px;color:#9FE1CB;line-height:1.7"></div>
       <div class="stat-grid" id="statGrid"></div>
       <table class="ztbl">
         <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
@@ -446,11 +473,16 @@ let seasonCpiCache = {}        // {season: scatter pts array} — cached season 
 let compareMapFs = null
 let chartFsInstances = {}      // chart-id → Chart instance for fullscreen canvases
 let tsChart        = null         // time-series Chart instance
-let tsData         = null         // fetched time-series array
+let tsData         = null         // fetched time-series array (crop CPI)
 let tsCurIndex     = 'evi2'       // active index key
 let tsViewMode     = 'timeline'   // 'timeline' | 'season'
 let tsSelectedYears = null        // Set<string> of checked years (populated after fetch)
 let tsYearsForCpi  = []           // confirmed year list stored for Stage 2 CPI computation
+// D1: SHPI bare-soil time series state
+let soilTsData        = null      // fetched soil time-series array (bare-soil SHPI sub-indices)
+let soilTsChart       = null      // soil TS Chart instance
+let soilCurIndex      = 'sab'     // active soil index key (sab|claysi|ri2|smi)
+let tsPanelMode       = 'crop'    // 'crop' | 'soil' — which TS tab is active
 const ZONE_COLORS         = ['#a50026','#d73027','#f46d43','#fdae61','#fee090','#d9ef8b','#a6d96a','#66bd63','#1a9850','#006837']
 const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','#ff9f43','#54a0ff','#5f27cd','#ee5a24','#0abde3']
 const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
@@ -797,8 +829,13 @@ function decodeRasterToResult_(rawData, callback) {
     var shpiPixels = [], cpiPixels = [], pixelPairs = []
     var zoneMap = new Array(W * H).fill(0)  // zone assignment per pixel (0=invalid)
 
+    // D4: pixel count tracking for ROI clip verification
+    var bboxCount  = W * H
+    var polyCount  = 0  // pixels inside polygon (or bbox if no mask)
+
     for (var i = 0; i < W * H; i++) {
       if (polyMask && !polyMask[i]) continue  // outside ROI polygon
+      polyCount++
       var R = pixels[i * 4]     // SHPI × 254  (valid when B > 0)
       var G = pixels[i * 4 + 1] // CPI  × 254  (valid when A > 0)
       var B = pixels[i * 4 + 2] // soil observation count  (0 = no bare-soil obs)
@@ -810,6 +847,8 @@ function decodeRasterToResult_(rawData, callback) {
       if (cpi  !== null) cpiPixels.push({ idx: i, val: cpi })
       if (shpi !== null && cpi !== null) pixelPairs.push({ idx: i, shpi: shpi, cpi: cpi })
     }
+    // If no polyMask was built (no valid bbox/geojson), all bbox pixels are inside
+    if (!polyMask) polyCount = bboxCount
 
     // Compute SHPI percentile thresholds from ALL valid SHPI pixels
     var shpiSorted = shpiPixels.map(function(p) { return p.val }).sort(function(a,b) { return a-b })
@@ -1020,6 +1059,12 @@ function decodeRasterToResult_(rawData, callback) {
       pixel_sample:   pixelSample,
       shpi_sample:    shpiSample,
       kmeans5:        kmeans5,
+      clip_stats: {
+        bbox_pixels:       bboxCount,
+        polygon_pixels:    polyCount,
+        valid_soil_pixels: shpiPixels.length,
+        valid_crop_pixels: cpiPixels.length
+      },
       validation: {
         spearman_r:      rho,
         r_squared:       rho_r2,
@@ -1096,6 +1141,24 @@ function renderResults(data) {
     badge.style.border = '1px solid #6d4a2a'
   }
   badge.style.display = 'block'
+
+  // D4: ROI clip verification — bbox/polygon/valid-obs pixel counts
+  var clipEl = document.getElementById('clipStats')
+  if (clipEl && data.clip_stats) {
+    var cs = data.clip_stats
+    var polyPct  = cs.bbox_pixels > 0 ? Math.round(cs.polygon_pixels / cs.bbox_pixels * 100) : 100
+    var soilPct  = cs.polygon_pixels > 0 ? Math.round(cs.valid_soil_pixels / cs.polygon_pixels * 100) : 0
+    var cropPct  = cs.polygon_pixels > 0 ? Math.round(cs.valid_crop_pixels / cs.polygon_pixels * 100) : 0
+    clipEl.innerHTML =
+      '📐 <b>Pixel coverage</b>&nbsp;—&nbsp;' +
+      'bbox: ' + formatPixelCount(cs.bbox_pixels) + 'px&nbsp;│&nbsp;' +
+      'polygon: ' + formatPixelCount(cs.polygon_pixels) + 'px (' + polyPct + '%)&nbsp;│&nbsp;' +
+      '🟤 soil: ' + formatPixelCount(cs.valid_soil_pixels) + ' (' + soilPct + '%)&nbsp;│&nbsp;' +
+      '🌿 crop: ' + formatPixelCount(cs.valid_crop_pixels) + ' (' + cropPct + '%)'
+    clipEl.style.display = 'block'
+  } else if (clipEl) {
+    clipEl.style.display = 'none'
+  }
 
   // Stat cards — use Spearman ρ (zone-level, consistent with scatter) with fallback for old cached results
   const statGrid = document.getElementById('statGrid')
@@ -2935,6 +2998,19 @@ function toggleTsPanel_() {
   chevron.textContent   = open ? '▶' : '▼'
 }
 
+// ── D1: Time Series — switch between Crop and Soil tabs ───────
+function setTsPanelMode_(mode) {
+  tsPanelMode = mode
+  var cropTab  = document.getElementById('tsPanelCropTab')
+  var soilTab  = document.getElementById('tsPanelSoilTab')
+  var cropPanel = document.getElementById('tsCropPanel')
+  var soilPanel = document.getElementById('tsSoilPanel')
+  if (cropTab) cropTab.classList.toggle('active', mode === 'crop')
+  if (soilTab) soilTab.classList.toggle('active', mode === 'soil')
+  if (cropPanel) cropPanel.style.display = mode === 'crop' ? 'block' : 'none'
+  if (soilPanel) soilPanel.style.display = mode === 'soil' ? 'block' : 'none'
+}
+
 // ── Time Series — decode one window PNG (RGBA → index means) ────────
 // Decodes a base64-encoded RGBA PNG returned by getTimeSeries().
 // Channel mapping: R=EVI2×254, G=NDRE×254, B=NIRv×254, A=NDMI×254.
@@ -3383,6 +3459,264 @@ function renderTsChartSeason_(indexKey) {
   document.getElementById('tsChartLabel').textContent =
     'Seasons overlaid — ' + selYears.length + ' year' + (selYears.length > 1 ? 's' : '') +
     ' (' + selYears.join(', ') + ')  |  orange line = mean'
+}
+
+// ── D1: Soil TS — decode one window PNG (RGBA → soil index means) ─
+// Channel mapping: R=SAB×254, G=ClaySI×254 (rescaled), B=RI2×254 (rescaled), A=SMI×254 (rescaled).
+// Pixels with [0,0,0,0] are nodata (no valid bare-soil observations) and skipped.
+// Returns Promise<{sab, claysi, ri2, smi, n}|null>.
+function decodeSoilTsWindowPng_(img64) {
+  return new Promise(function(resolve) {
+    const img = new Image()
+    img.onload = function() {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0)
+      const px = ctx.getImageData(0, 0, img.width, img.height).data
+      let rS=0, gS=0, bS=0, aS=0, n=0
+      for (let i=0; i<px.length; i+=4) {
+        if (px[i]===0 && px[i+1]===0 && px[i+2]===0 && px[i+3]===0) continue
+        rS += px[i]; gS += px[i+1]; bS += px[i+2]; aS += px[i+3]
+        n++
+      }
+      if (n === 0) { resolve(null); return }
+      const sc = v => Math.round(v / 254 * 1000) / 1000
+      resolve({ sab: sc(rS/n), claysi: sc(gS/n), ri2: sc(bS/n), smi: sc(aS/n), n })
+    }
+    img.onerror = function() { resolve(null) }
+    img.src = 'data:image/png;base64,' + img64
+  })
+}
+
+// ── D1: Soil TS — switch active index ─────────────────────────
+function setSoilTsIndex_(key) {
+  soilCurIndex = key
+  document.querySelectorAll('#soilIndexBtns .ts-idx-btn').forEach(b => b.classList.remove('active'))
+  var btn = document.getElementById('soilBtn_' + key)
+  if (btn) btn.classList.add('active')
+  if (soilTsData) renderSoilTsChart_(key)
+}
+
+// ── D1: Soil TS — switch view mode ────────────────────────────
+let soilTsViewMode = 'timeline'
+function setSoilTsViewMode_(mode) {
+  soilTsViewMode = mode
+  var tlBtn = document.getElementById('soilViewTimeline')
+  var snBtn = document.getElementById('soilViewSeason')
+  if (tlBtn) tlBtn.classList.toggle('active', mode === 'timeline')
+  if (snBtn) snBtn.classList.toggle('active', mode === 'season')
+  if (soilTsData) renderSoilTsChart_(soilCurIndex)
+}
+
+// ── D1: Soil TS — fetch from Process API (biweekly loop) ──────
+function fetchSoilTimeSeries_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+  const yearStart = parseInt(document.getElementById('yearStart').value, 10)
+  const yearEnd   = parseInt(document.getElementById('yearEnd').value, 10)
+  if (isNaN(yearStart) || isNaN(yearEnd)) { alert('Set a valid year range first.'); return }
+  const btn = document.getElementById('soilFetchBtn')
+  btn.disabled    = true
+  btn.textContent = '⏳ Fetching...'
+  document.getElementById('soilChartLabel').textContent = ''
+  google.script.run
+    .withSuccessHandler(async function(data) {
+      btn.disabled    = false
+      btn.textContent = '📡 Fetch Soil Series'
+      if (!data.success) {
+        document.getElementById('soilChartLabel').textContent = '⚠ ' + data.error
+        return
+      }
+      const decoded = await Promise.all(data.windows.map(async w => {
+        const v = await decodeSoilTsWindowPng_(w.img64)
+        return v ? Object.assign({ date: w.date }, v) : null
+      }))
+      soilTsData = decoded.filter(Boolean)
+      if (soilTsData.length === 0) {
+        document.getElementById('soilChartLabel').textContent =
+          '⚠ No valid bare-soil observations found in any window.'
+        return
+      }
+      document.getElementById('soilIndexBtns').style.display = 'block'
+      document.getElementById('soilViewBtns').style.display = 'block'
+      document.getElementById('soilChartWrap').style.display = 'block'
+      renderSoilTsChart_(soilCurIndex)
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled    = false
+      btn.textContent = '📡 Fetch Soil Series'
+      document.getElementById('soilChartLabel').textContent = '⚠ ' + err.message
+    })
+    .getSoilTimeSeries({ geojson: roi, yearStart, yearEnd })
+}
+
+// ── D1: Soil TS — render Chart.js line chart ──────────────────
+function renderSoilTsChart_(indexKey) {
+  if (!soilTsData || !soilTsData.length) return
+  if (soilTsChart) { soilTsChart.destroy(); soilTsChart = null }
+  if (soilTsViewMode === 'season') {
+    renderSoilTsChartSeason_(indexKey)
+  } else {
+    renderSoilTsChartTimeline_(indexKey)
+  }
+}
+
+// D1: Soil TS timeline mode
+function renderSoilTsChartTimeline_(indexKey) {
+  const labelMap = { sab: 'SAB (Brightness)', claysi: 'ClaySI', ri2: 'RI2 (Redness)', smi: 'SMI (Moisture)' }
+  const labels   = soilTsData.map(d => d.date)
+  const rawVals  = soilTsData.map(d => (d[indexKey] != null ? d[indexKey] : null))
+  const dense    = rawVals.slice()
+  for (let i = 0; i < dense.length; i++) {
+    if (dense[i] === null) {
+      const prev = dense.slice(0, i).reverse().find(v => v !== null) ?? null
+      const next = dense.slice(i + 1).find(v => v !== null) ?? null
+      dense[i] = prev !== null && next !== null ? (prev + next) / 2 : (prev ?? next ?? null)
+    }
+  }
+  const smoothed = gaussianSmooth_(dense, 1.2)
+  const ctx = document.getElementById('soilTsChart').getContext('2d')
+  soilTsChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: labelMap[indexKey] || indexKey,
+          data: rawVals,
+          borderColor: 'rgba(205,133,63,0.65)',
+          borderWidth: 1.2,
+          pointBackgroundColor: 'rgba(205,133,63,0.45)',
+          pointRadius: 2,
+          pointHoverRadius: 6,
+          fill: false,
+          tension: 0.3,
+          spanGaps: true
+        },
+        {
+          label: 'Smoothed',
+          data: smoothed.map(v => v !== null ? Math.round(v * 1000) / 1000 : null),
+          borderColor: '#cd853f',
+          borderWidth: 1.8,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.4,
+          spanGaps: true
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => items[0].label,
+            label: item => (item.datasetIndex === 0
+              ? (labelMap[indexKey] || indexKey) + ': ' + item.raw
+              : 'Smoothed: ' + item.raw)
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#9FE1CB', font: { size: 7 }, maxRotation: 45, minRotation: 30, maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.07)' } },
+        y: { ticks: { color: '#9FE1CB', font: { size: 8 } }, grid: { color: 'rgba(255,255,255,0.07)' } }
+      }
+    }
+  })
+  document.getElementById('soilChartLabel').textContent =
+    (labelMap[indexKey] || indexKey) + ' — ' + soilTsData.length + ' bare-soil windows'
+}
+
+// D1: Soil TS season (DOY overlay) mode
+function renderSoilTsChartSeason_(indexKey) {
+  const labelMap = { sab: 'SAB', claysi: 'ClaySI', ri2: 'RI2', smi: 'SMI' }
+  const years = Array.from(new Set(soilTsData.map(d => d.date.substring(0, 4)))).sort()
+  const yearPalette = ['#cd853f','#d4a56a','#b8860b','#daa520','#c68e3a','#e8b96a','#a0522d','#8b6914']
+
+  const byYear = {}
+  soilTsData.forEach(function(d) {
+    const yr = d.date.substring(0, 4)
+    if (!byYear[yr]) byYear[yr] = []
+    byYear[yr].push({ doy: dateToDoy_(d.date), val: d[indexKey] })
+  })
+
+  const datasets = years.map(function(yr, i) {
+    const col = yearPalette[i % yearPalette.length]
+    const pts = (byYear[yr] || [])
+      .filter(p => p.val != null)
+      .sort((a, b) => a.doy - b.doy)
+      .map(p => ({ x: p.doy, y: Math.round(p.val * 1000) / 1000 }))
+    return {
+      type: 'scatter', label: yr, data: pts,
+      borderColor: col, backgroundColor: col,
+      pointRadius: 3, pointHoverRadius: 6,
+      showLine: true, borderWidth: 1.4,
+      fill: false, tension: 0.3, spanGaps: false
+    }
+  })
+
+  // Mean line
+  const buckets = {}
+  years.forEach(function(yr) {
+    ;(byYear[yr] || []).forEach(function(p) {
+      if (p.val == null) return
+      const bkt = Math.round(p.doy / 14) * 14
+      if (!buckets[bkt]) buckets[bkt] = []
+      buckets[bkt].push(p.val)
+    })
+  })
+  const meanPts = Object.keys(buckets).map(Number).sort((a, b) => a - b)
+    .map(doy => {
+      const vals = buckets[doy]
+      return { x: doy, y: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 1000) / 1000 }
+    })
+  datasets.push({
+    type: 'line', label: 'Mean', data: meanPts,
+    borderColor: '#cd853f', backgroundColor: 'transparent',
+    borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.4, spanGaps: true
+  })
+
+  const MONTH_DOYS   = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+  const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+  const ctx = document.getElementById('soilTsChart').getContext('2d')
+  soilTsChart = new Chart(ctx, {
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 8, padding: 4 } },
+        tooltip: {
+          callbacks: {
+            title: items => {
+              const doy = items[0].raw.x
+              const ref = new Date(new Date(2001, 0, 1).getTime() + (doy - 1) * 86400000)
+              return 'DOY ' + doy + ' (~' + ref.toLocaleDateString('en', { month: 'short', day: 'numeric' }) + ')'
+            },
+            label: item => item.dataset.label + ':  ' + (labelMap[indexKey] || indexKey) + ' = ' + item.raw.y
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear', min: 1, max: 365,
+          title: { display: true, text: 'Day of year', color: '#9FE1CB', font: { size: 8 } },
+          afterBuildTicks: axis => { axis.ticks = MONTH_DOYS.map(v => ({ value: v })) },
+          ticks: {
+            color: '#9FE1CB', font: { size: 7 }, maxRotation: 0, minRotation: 0,
+            callback: val => { const i = MONTH_DOYS.indexOf(val); return i >= 0 ? MONTH_LABELS[i] : '' }
+          },
+          grid: { color: 'rgba(255,255,255,0.07)' }
+        },
+        y: { ticks: { color: '#9FE1CB', font: { size: 8 } }, grid: { color: 'rgba(255,255,255,0.07)' } }
+      }
+    }
+  })
+  document.getElementById('soilChartLabel').textContent =
+    'Bare-soil seasons overlaid — ' + years.length + ' year' + (years.length > 1 ? 's' : '') +
+    ' (' + years.join(', ') + ')  |  brown line = mean'
 }
 
 // ── UI helpers ────────────────────────────────────────────────

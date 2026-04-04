@@ -1,5 +1,5 @@
 // ============================================================
-// Soil Health Stratification Tool — Apps Script Backend BE1.5.0
+// Soil Health Stratification Tool — Apps Script Backend BE1.6.0
 // Treeconomy Soil Intelligence Division
 // All strings use single quotes and + concatenation. No backticks.
 // ============================================================
@@ -359,6 +359,106 @@ function getTimeSeries(params) {
     return { success: true, windows: windows };
   } catch(e) {
     Logger.log('getTimeSeries error: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ── D1: SHPI bare-soil trend chart evalscript ─────────────────
+// Per-window evalscript using ORBIT mosaicking. Bare-soil mask: NDVI < 0.2 AND NDMI < 0.05.
+// Outputs: R=SAB×254, G=ClaySI×254, B=RI2×254, A=SMI×254.
+// No-soil pixels return [0,0,0,0].
+function buildShpiTsWindowEvalscript_() {
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{input:[{bands:["B02","B03","B04","B08","B11","B12"],units:"REFLECTANCE"}],\n' +
+    '         output:[{id:"default",bands:4,sampleType:"UINT8"}],\n' +
+    '         mosaicking:"ORBIT"};\n' +
+    '}\n' +
+    'function evaluatePixel(samples){\n' +
+    '  var sabS=0,claySS=0,ri2S=0,smiS=0,cnt=0;\n' +
+    '  for(var i=0;i<samples.length;i++){\n' +
+    '    var s=samples[i];\n' +
+    '    var ndvi=(s.B08-s.B04)/(s.B08+s.B04+1e-9);\n' +
+    '    var ndmi=(s.B08-s.B11)/(s.B08+s.B11+1e-9);\n' +
+    '    if(ndvi>=0.2||ndmi>=0.05) continue;\n' +  // bare-soil mask
+    '    sabS+=(s.B02+s.B03+s.B04)/3;\n' +
+    '    claySS+=(s.B11-s.B12)/(s.B11+s.B12+1e-9);\n' +
+    '    ri2S+=(s.B04-s.B02)/(s.B04+s.B02+1e-9);\n' +
+    '    smiS+=ndmi;\n' +
+    '    cnt++;\n' +
+    '  }\n' +
+    '  if(cnt===0) return{default:[0,0,0,0]};\n' +   // nodata — no bare-soil pixels in this window
+    '  function c(v){return Math.round((v<0?0:v>1?1:v)*254);}\n' +
+    '  return{default:[\n' +
+    '    c(sabS/cnt),\n' +          // R = SAB (0–0.5 typical, clamp to 1)
+    '    c((claySS/cnt+0.2)/0.6),\n' + // G = ClaySI (rescaled from [-0.2,0.4] to [0,1])
+    '    c((ri2S/cnt+0.05)/0.3),\n' +  // B = RI2 (rescaled from [-0.05,0.25] to [0,1])
+    '    c((smiS/cnt+0.5)/1.0)\n' +    // A = SMI (rescaled from [-0.5,0.5] to [0,1])
+    '  ]};\n' +
+    '}';
+}
+
+// ── D1: Fetch ROI SHPI bare-soil time series (biweekly loop) ──
+// Same structure as fetchROITimeSeries_ but using the bare-soil evalscript.
+function fetchROISoilTimeSeries_(geojson, yearStart, yearEnd, token) {
+  var bbox = getBbox_(geojson);
+  var DEG_PER_PIXEL = 0.0002;
+  var MS_14_DAYS    = 14 * 24 * 60 * 60 * 1000;
+  var lngSpan = bbox[2] - bbox[0];
+  var latSpan = bbox[3] - bbox[1];
+  var W = Math.max(1, Math.min(32, Math.round(lngSpan / DEG_PER_PIXEL)));
+  var H = Math.max(1, Math.min(32, Math.round(latSpan / DEG_PER_PIXEL)));
+  var evalscript = buildShpiTsWindowEvalscript_();
+  var windows = [];
+  var cursor   = new Date(yearStart + '-01-01T00:00:00Z');
+  var rangeEnd = new Date(yearEnd   + '-12-31T23:59:59Z');
+  while (cursor <= rangeEnd) {
+    var wFrom = cursor.toISOString().substring(0, 10) + 'T00:00:00Z';
+    var nextCursor = new Date(cursor.getTime() + MS_14_DAYS);
+    var wEnd  = nextCursor > rangeEnd ? rangeEnd : nextCursor;
+    var wTo   = new Date(wEnd.getTime() - 1000).toISOString().substring(0, 10) + 'T23:59:59Z';
+    var payload = {
+      input: {
+        bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
+        data: [{ type: 'sentinel-2-l2a',
+                 dataFilter: { timeRange: { from: wFrom, to: wTo }, maxCloudCoverage: 80 } }]
+      },
+      output: {
+        width: W, height: H,
+        responses: [{ identifier: 'default', format: { type: 'image/png' } }]
+      },
+      evalscript: evalscript
+    };
+    var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+    var code = resp.getResponseCode();
+    if (code === 200) {
+      windows.push({
+        date:  wFrom.substring(0, 10),
+        img64: Utilities.base64Encode(resp.getContent())
+      });
+    } else {
+      Logger.log('Soil TS window ' + wFrom.substring(0,10) + ' HTTP ' + code +
+                 ': ' + resp.getContentText().substring(0, 200));
+    }
+    cursor = nextCursor;
+    if (cursor <= rangeEnd) Utilities.sleep(500);
+  }
+  return windows;
+}
+
+// ── D1: Public: fetch SHPI soil time series (called from HTML client) ──
+function getSoilTimeSeries(params) {
+  try {
+    var token   = getToken_();
+    var windows = fetchROISoilTimeSeries_(params.geojson, params.yearStart, params.yearEnd, token);
+    if (windows.length === 0) return { success: false, error: 'No bare-soil observations found in any window for the specified date range.' };
+    return { success: true, windows: windows };
+  } catch(e) {
+    Logger.log('getSoilTimeSeries error: ' + e.message);
     return { success: false, error: e.message };
   }
 }
