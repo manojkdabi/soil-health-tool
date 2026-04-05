@@ -904,7 +904,7 @@ function decodeRasterToResult_(rawData, callback) {
     if (nBins >= 2) {
       var pairShpiSorted = pixelPairs.map(function(p) { return p.shpi }).sort(function(a, b) { return a - b })
       for (var ki = 1; ki < nBins; ki++) {
-        cutPoints.push(percentile_(pairShpiSorted, Math.round(ki / nBins * 100)))
+        cutPoints.push(percentile_(pairShpiSorted, ki / nBins * 100))
       }
     }
 
@@ -1058,7 +1058,7 @@ function decodeRasterToResult_(rawData, callback) {
       var R2 = pixels[j * 4], G2 = pixels[j * 4 + 1], B2 = pixels[j * 4 + 2], A2 = pixels[j * 4 + 3]
       var base = j * 4
 
-      // Zone display raster — map zone 1..nBins proportionally to the 10-colour palette
+      // Zone display raster — map zone 1..nBins proportionally to the 10-color palette
       var zn = zoneMap[j]
       if (zn > 0) {
         var colorIdx = nBins > 1 ? Math.round((zn - 1) / (nBins - 1) * 9) : 0
@@ -1229,7 +1229,7 @@ function renderResults(data) {
   const stats = [
     { val: rhoVal,  lbl: rhoLbl },
     { val: v.r_squared,  lbl: r2Lbl },
-    { val: v.cpi_ratio ? v.cpi_ratio + '×' : '—', lbl: 'CPI Z10/Z1 ratio' },
+    { val: v.cpi_ratio ? v.cpi_ratio + 'x' : '—', lbl: 'CPI Hi/Lo zone ratio' },
     { val: v.confirmed === null ? '—' : v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
   ]
   stats.forEach(s => {
