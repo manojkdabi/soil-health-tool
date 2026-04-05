@@ -189,6 +189,7 @@ canvas{display:block}
 /* Time-series panel */
 .ts-idx-btn{font-size:9px;padding:2px 7px;border:1px solid #2E6B4F;border-radius:3px;background:#1a2535;color:#9FE1CB;cursor:pointer;margin:0 2px;line-height:1.6}
 .ts-idx-btn.active{background:#F5A623;color:#111;border-color:#F5A623;font-weight:700}
+.autoLogWarn{color:#F5A623}
 .ts-idx-btn:hover:not(.active){background:#2E6B4F}
 #tsChartWrap{height:140px;margin-top:4px}
 </style>
@@ -199,8 +200,8 @@ canvas{display:block}
   <div class="hdr-logo">SH</div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
-    <span class="ver-pill ver-pill-be">BE1.7.0</span>
-    <span class="ver-pill ver-pill-fe">FE1.9.0</span>
+    <span class="ver-pill ver-pill-be">BE1.8.0</span>
+    <span class="ver-pill ver-pill-fe">FE2.2.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -258,6 +259,11 @@ canvas{display:block}
       </div>
       <div id="tsPanelBody" style="display:none;margin-top:8px">
         <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Process API). Load an ROI and set year range, then fetch. Select good-crop years and lock them for CPI before running analysis.</p>
+        <!-- E3/E4: Auto-Run Pipeline -->
+        <div style="margin-bottom:7px">
+          <button class="btn btn-prim" id="autoRunBtn" onclick="autoRunPipeline_()" style="width:100%;font-size:10px">🚀 Auto-Run Pipeline</button>
+          <div id="autoRunLog" style="display:none;margin-top:5px;background:rgba(0,0,0,0.4);border:1px solid #1e3d30;border-radius:4px;padding:5px 7px;max-height:120px;overflow-y:auto;font-size:8px;color:#9FE1CB;font-family:monospace"></div>
+        </div>
         <!-- D1: Crop / Soil toggle tabs -->
         <div style="display:flex;gap:4px;margin-bottom:6px">
           <button class="ts-idx-btn active" id="tsPanelCropTab" onclick="setTsPanelMode_('crop')" style="flex:1;font-size:9px">🌿 Crop (CPI)</button>
@@ -873,22 +879,41 @@ function decodeRasterToResult_(rawData, callback) {
     // If no polyMask was built (no valid bbox/geojson), all bbox pixels are inside
     if (!polyMask) polyCount = bboxCount
 
-    // Compute SHPI percentile thresholds from ALL valid SHPI pixels
-    var shpiSorted = shpiPixels.map(function(p) { return p.val }).sort(function(a,b) { return a-b })
-    var thresholds
-    if (shpiSorted.length >= 10) {
-      thresholds = [10,20,30,40,50,60,70,80,90].map(function(pct) { return percentile_(shpiSorted, pct) })
-    } else {
-      thresholds = [0.10,0.20,0.30,0.40,0.50,0.60,0.70,0.80,0.90]
+    // F3: If fallow SHPI cache is available with matching dimensions, use it to build richer
+    // pixelPairs — breaks the seasonal mutual-exclusion bottleneck in the combined raster.
+    var activeSeason = (typeof d3SeasonTab !== 'undefined' ? d3SeasonTab : null) || 'kharif'
+    if (fallowShpiCache[activeSeason] && fallowShpiCache[activeSeason].length === W * H) {
+      var fallowPairs = []
+      for (var fi = 0; fi < W * H; fi++) {
+        if (polyMask && !polyMask[fi]) continue
+        var fshpi = fallowShpiCache[activeSeason][fi]
+        if (fshpi < 0) continue
+        var fA = pixels[fi * 4 + 3]
+        if (fA === 0) continue
+        fallowPairs.push({ idx: fi, shpi: fshpi, cpi: pixels[fi * 4 + 1] / 254 })
+      }
+      if (fallowPairs.length > pixelPairs.length) pixelPairs = fallowPairs
     }
-    var p10=thresholds[0], p20=thresholds[1], p30=thresholds[2], p40=thresholds[3],
-        p50=thresholds[4], p60=thresholds[5], p70=thresholds[6], p80=thresholds[7], p90=thresholds[8]
+
+    // F1: Adaptive density-based bins — equal-frequency quantile cuts on actual pixelPairs SHPI.
+    // nBins = floor(n/3) capped [2,10]. Fewer than 6 pairs: skip zone correlation (nBins=0).
+    var nBins = pixelPairs.length < 6
+      ? 0
+      : Math.min(10, Math.max(2, Math.floor(pixelPairs.length / 3)))
+    var cutPoints = []
+    if (nBins >= 2) {
+      var pairShpiSorted = pixelPairs.map(function(p) { return p.shpi }).sort(function(a, b) { return a - b })
+      for (var ki = 1; ki < nBins; ki++) {
+        cutPoints.push(percentile_(pairShpiSorted, ki / nBins * 100))
+      }
+    }
 
     function assignZone_(v) {
-      if (v < p10) return 1; if (v < p20) return 2; if (v < p30) return 3
-      if (v < p40) return 4; if (v < p50) return 5; if (v < p60) return 6
-      if (v < p70) return 7; if (v < p80) return 8; if (v < p90) return 9
-      return 10
+      if (nBins === 0) return 0
+      for (var ci = 0; ci < cutPoints.length; ci++) {
+        if (v < cutPoints[ci]) return ci + 1
+      }
+      return nBins
     }
 
     // Assign zones to ALL valid SHPI pixels (for display raster)
@@ -897,9 +922,11 @@ function decodeRasterToResult_(rawData, callback) {
     })
 
     // Zone stats from pixelPairs (pixels with BOTH SHPI and CPI)
-    var zones = [[],[],[],[],[],[],[],[],[],[]]
+    var zones = []
+    for (var zi = 0; zi < nBins; zi++) zones.push([])
     pixelPairs.forEach(function(p) {
-      zones[assignZone_(p.shpi) - 1].push(p)
+      var zn = assignZone_(p.shpi)
+      if (zn >= 1) zones[zn - 1].push(p)
     })
 
     function mean_(arr, key) {
@@ -977,7 +1004,9 @@ function decodeRasterToResult_(rawData, callback) {
 
     // mono / ratio describe the ordinal zone pattern
     var mono  = zoneMeanCpi.every(function(v, i) { return i === 0 || v >= zoneMeanCpi[i - 1] })
-    var ratio = zoneMeanCpi[0] > 0.01 ? Math.round(zoneMeanCpi[9] / zoneMeanCpi[0] * 100) / 100 : null
+    var ratio = (nBins >= 2 && zoneMeanCpi[0] > 0.01)
+      ? Math.round(zoneMeanCpi[nBins - 1] / zoneMeanCpi[0] * 100) / 100
+      : null
 
     // K-means k=5 clustering on SHPI pixel values (supplementary analytics)
     var kmeans5 = null
@@ -1029,10 +1058,11 @@ function decodeRasterToResult_(rawData, callback) {
       var R2 = pixels[j * 4], G2 = pixels[j * 4 + 1], B2 = pixels[j * 4 + 2], A2 = pixels[j * 4 + 3]
       var base = j * 4
 
-      // Zone display raster
+      // Zone display raster — map zone 1..nBins proportionally to the 10-color palette
       var zn = zoneMap[j]
       if (zn > 0) {
-        var zc = hexToRgbArr_(ZONE_COLORS[zn - 1])
+        var colorIdx = nBins > 1 ? Math.round((zn - 1) / (nBins - 1) * 9) : 0
+        var zc = hexToRgbArr_(ZONE_COLORS[colorIdx])
         dd[base] = zc[0]; dd[base+1] = zc[1]; dd[base+2] = zc[2]; dd[base+3] = 180
       } else {
         dd[base] = 0; dd[base+1] = 0; dd[base+2] = 0; dd[base+3] = 0
@@ -1093,10 +1123,13 @@ function decodeRasterToResult_(rawData, callback) {
         r_squared:       rho_r2,
         is_monotonic:    mono,
         cpi_ratio:       ratio,
-        confirmed:       rho > 0.60 && mono,
-        n_zones:         10,
+        confirmed:       nBins === 0 ? null
+                       : nBins >= 8 ? (rho > 0.60 && mono)
+                       : nBins >= 4 ? (rho > 0.55)
+                       : (rho > 0.50),
+        n_zones:         nBins,
         data_source:     'real',
-        shpi_thresholds: thresholds
+        shpi_thresholds: cutPoints
       },
       raster_png_b64: canvasToB64_(dispCanvas),
       shpi_png_b64:   canvasToB64_(shpiCanvas),
@@ -1142,11 +1175,14 @@ function renderResults(data) {
 
   // Banner
   const banner = document.getElementById('banner')
-  if (v.confirmed) {
-    banner.textContent = '✓ Hypothesis confirmed — CPI increases Zone 1→10'
+  if (v.confirmed === null) {
+    banner.textContent = '⚠ Insufficient spatial data — zone correlation skipped; see D3 Paired Scatter'
+    banner.className   = 'banner banner-no'
+  } else if (v.confirmed) {
+    banner.textContent = '✓ Hypothesis confirmed — CPI increases across ' + (v.n_zones || 10) + ' SHPI zones'
     banner.className   = 'banner banner-yes'
   } else {
-    banner.textContent = '⚠ Hypothesis not confirmed — check data coverage'
+    banner.textContent = '⚠ Hypothesis not confirmed — check data coverage (' + (v.n_zones || 10) + ' zones)'
     banner.className   = 'banner banner-no'
   }
 
@@ -1193,8 +1229,8 @@ function renderResults(data) {
   const stats = [
     { val: rhoVal,  lbl: rhoLbl },
     { val: v.r_squared,  lbl: r2Lbl },
-    { val: v.cpi_ratio ? v.cpi_ratio + '×' : '—', lbl: 'CPI Z10/Z1 ratio' },
-    { val: v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
+    { val: v.cpi_ratio ? v.cpi_ratio + 'x' : '—', lbl: 'CPI Hi/Lo zone ratio' },
+    { val: v.confirmed === null ? '—' : v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
   ]
   stats.forEach(s => {
     const card = document.createElement('div')
@@ -1216,13 +1252,14 @@ function renderResults(data) {
   // Zone table
   const tbody = document.getElementById('zoneTbody')
   tbody.innerHTML = ''
+  const nz = v.n_zones || z.length
   z.forEach((zs, i) => {
     const tr = document.createElement('tr')
 
     const tdZone = document.createElement('td')
     const zdot = document.createElement('span')
     zdot.className = 'zdot'
-    zdot.style.background = ZONE_COLORS[i]
+    zdot.style.background = ZONE_COLORS[nz > 1 ? Math.round(i / (nz - 1) * 9) : 0]
     tdZone.appendChild(zdot)
     tdZone.appendChild(document.createTextNode('Zone ' + zs.zone))
 
@@ -4299,6 +4336,246 @@ function clearMonthlyLayer_() {
 
 // Auto-populate library table on page load
 renderLibraryPanel_()
+
+// ── E1: Tukey 1.5-IQR fence helper ──────────────────────────────────────────
+// perYearMeans: [{year:string, mean:number}]
+// Returns {retained:string[], rejected:[{year,value,lo,hi,side}]}
+// n<4: retain all. IQR==0: fallback to mean+/-1.5*std.
+function tukeyFence_(perYearMeans) {
+  var n = perYearMeans.length
+  if (n < 4) return { retained: perYearMeans.map(function(d) { return d.year }), rejected: [] }
+  var sorted = perYearMeans.slice().sort(function(a, b) { return a.mean - b.mean })
+  var vals = sorted.map(function(d) { return d.mean })
+  function nearestRankPct(v, p) {
+    var idx = Math.ceil(p / 100 * v.length) - 1
+    return v[Math.max(0, Math.min(idx, v.length - 1))]
+  }
+  var Q1 = nearestRankPct(vals, 25)
+  var Q3 = nearestRankPct(vals, 75)
+  var IQR = Q3 - Q1
+  var lo, hi
+  if (IQR === 0) {
+    var mean = vals.reduce(function(s, v) { return s + v }, 0) / n
+    var std = Math.sqrt(vals.reduce(function(s, v) { return s + (v - mean) * (v - mean) }, 0) / (n - 1))
+    lo = mean - 1.5 * std
+    hi = mean + 1.5 * std
+  } else {
+    lo = Q1 - 1.5 * IQR
+    hi = Q3 + 1.5 * IQR
+  }
+  var retained = [], rejected = []
+  perYearMeans.forEach(function(d) {
+    if (d.mean >= lo && d.mean <= hi) {
+      retained.push(d.year)
+    } else {
+      rejected.push({ year: d.year, value: d.mean, lo: lo, hi: hi,
+                      side: d.mean < lo ? 'below' : 'above' })
+    }
+  })
+  return { retained: retained, rejected: rejected }
+}
+
+// ── E1: CPI year filter (per-year seasonal mean → Tukey fence) ───────────────
+// season: 'kharif' (months 6-10) | 'rabi' (months 11/12 of Y + 1-3 of Y+1 → year Y)
+// Updates tsSelectedYears and checkboxes. Returns tukeyFence_ result.
+function congruentCpiYears_(season) {
+  if (!tsData || tsData.length === 0) return { retained: [], rejected: [] }
+  var byYear = {}
+  tsData.forEach(function(d) {
+    var yr = d.date.substring(0, 4)
+    var mo = parseInt(d.date.substring(5, 7), 10)
+    var inWindow
+    if (season === 'kharif') {
+      inWindow = (mo >= 6 && mo <= 10)
+    } else {
+      inWindow = (mo >= 11 || mo <= 3)
+      if (inWindow && mo <= 3) yr = String(parseInt(yr, 10) - 1)
+    }
+    if (!inWindow) return
+    if (!byYear[yr]) byYear[yr] = []
+    byYear[yr].push(computeCpiFromRow_(d))
+  })
+  var perYearMeans = Object.keys(byYear).map(function(yr) {
+    var v = byYear[yr]
+    return { year: yr, mean: v.reduce(function(s, x) { return s + x }, 0) / v.length }
+  })
+  var result = tukeyFence_(perYearMeans)
+  if (tsSelectedYears) {
+    tsSelectedYears = new Set(result.retained)
+    document.querySelectorAll('#tsYearChecks input[type=checkbox]').forEach(function(cb) {
+      cb.checked = tsSelectedYears.has(cb.value)
+    })
+    if (tsData && tsViewMode === 'season') renderTsChart_(tsCurIndex)
+  }
+  return result
+}
+
+// ── E2: SHPI year filter (per-year fallow-window mean → Tukey fence) ─────────
+// season: 'kharif' (pre-Kharif fallow: months 2-5) | 'rabi' (pre-Rabi fallow: months 10-11)
+// Updates soilSelectedYears and checkboxes. Returns tukeyFence_ result.
+function congruentShpiYears_(season) {
+  if (!soilTsData || soilTsData.length === 0) return { retained: [], rejected: [] }
+  var byYear = {}
+  soilTsData.forEach(function(d) {
+    var yr = d.date.substring(0, 4)
+    var mo = parseInt(d.date.substring(5, 7), 10)
+    var inWindow
+    if (season === 'kharif') {
+      inWindow = (mo >= 2 && mo <= 5)
+    } else {
+      inWindow = (mo >= 10 && mo <= 11)
+    }
+    if (!inWindow) return
+    if (!byYear[yr]) byYear[yr] = []
+    byYear[yr].push(computeShpiFromRow_(d))
+  })
+  var perYearMeans = Object.keys(byYear).map(function(yr) {
+    var v = byYear[yr]
+    return { year: yr, mean: v.reduce(function(s, x) { return s + x }, 0) / v.length }
+  })
+  var result = tukeyFence_(perYearMeans)
+  if (soilSelectedYears) {
+    soilSelectedYears = new Set(result.retained)
+    document.querySelectorAll('#soilYearChecks input[type=checkbox]').forEach(function(cb) {
+      cb.checked = soilSelectedYears.has(cb.value)
+    })
+    if (soilTsData && soilTsViewMode === 'season') renderSoilTsChart_(soilCurIndex)
+  }
+  return result
+}
+
+// ── E4: Auto-run log helpers ─────────────────────────────────────────────────
+function autoLogLine_(msg, warn) {
+  var log = document.getElementById('autoRunLog')
+  if (!log) return
+  var p = document.createElement('div')
+  p.style.cssText = 'line-height:1.5;margin-bottom:1px'
+  if (warn) {
+    p.innerHTML = '<span class="autoLogWarn">' + msg + '</span>'
+  } else {
+    p.textContent = msg
+  }
+  log.appendChild(p)
+  log.scrollTop = log.scrollHeight
+}
+function autoLogClear_() {
+  var log = document.getElementById('autoRunLog')
+  if (log) { log.innerHTML = ''; log.style.display = 'block' }
+}
+
+// ── E3: Auto-Run Pipeline (async chain) ──────────────────────────────────────
+// Steps: Fetch Crop TS → E1 CPI filter → lock CPI → Fetch Soil TS →
+//        E2 SHPI filter → lock SHPI → Run Analysis
+async function autoRunPipeline_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+  var btn = document.getElementById('autoRunBtn')
+  if (btn) { btn.disabled = true; btn.textContent = 'Running...' }
+  autoLogClear_()
+  var season = d3SeasonTab || 'kharif'
+  var yearStart = parseInt(document.getElementById('yearStart').value, 10)
+  var yearEnd   = parseInt(document.getElementById('yearEnd').value, 10)
+  if (isNaN(yearStart) || isNaN(yearEnd)) {
+    autoLogLine_('[ERROR] Set a valid year range first.', true)
+    if (btn) { btn.disabled = false; btn.textContent = '🚀 Auto-Run Pipeline' }
+    return
+  }
+  try {
+    // [1/7] Fetch crop time series
+    autoLogLine_('[1/7] Fetching crop time series...')
+    await new Promise(function(resolve, reject) {
+      google.script.run
+        .withSuccessHandler(async function(data) {
+          if (!data.success) { reject(new Error(data.error)); return }
+          var decoded = await Promise.all(data.windows.map(async function(w) {
+            var v = await decodeTsWindowPng_(w.img64)
+            return v ? Object.assign({ date: w.date }, v) : null
+          }))
+          tsData = decoded.filter(Boolean)
+          if (tsData.length === 0) { reject(new Error('No valid crop observations.')); return }
+          var years = Array.from(new Set(tsData.map(function(d) { return d.date.substring(0, 4) }))).sort()
+          buildYearCheckboxes_(years)
+          document.getElementById('tsIndexBtns').style.display = 'block'
+          document.getElementById('tsViewBtns').style.display = 'block'
+          document.getElementById('tsChartWrap').style.display = 'block'
+          renderTsChart_(tsCurIndex)
+          resolve()
+        })
+        .withFailureHandler(reject)
+        .getTimeSeries({ geojson: roi, yearStart: yearStart, yearEnd: yearEnd })
+    })
+    var allCropYrs = Array.from(new Set(tsData.map(function(d) { return d.date.substring(0, 4) }))).sort()
+    autoLogLine_('[1/7] Crop TS fetched (' + allCropYrs[0] + '-' + allCropYrs[allCropYrs.length - 1] + ')')
+
+    // [2/7] CPI year filter
+    autoLogLine_('[2/7] CPI filter (' + season + ')...')
+    var cpiResult = congruentCpiYears_(season)
+    var cpiMsg = '[2/7] CPI filter: retained ' + cpiResult.retained.sort().join(', ')
+    if (cpiResult.rejected.length > 0) {
+      cpiMsg += '; rejected ' + cpiResult.rejected.map(function(r) {
+        return r.year + ' (' + r.side + ' fence, val=' + r.value.toFixed(3) + ')'
+      }).join(', ')
+      autoLogLine_(cpiMsg, true)
+    } else {
+      autoLogLine_(cpiMsg)
+    }
+
+    // [3/7] Lock CPI years
+    useYearsForCpi_()
+    autoLogLine_('[3/7] CPI locked: ' + tsYearsForCpi.join(', '))
+
+    // [4/7] Fetch soil time series
+    autoLogLine_('[4/7] Fetching soil time series...')
+    await new Promise(function(resolve, reject) {
+      google.script.run
+        .withSuccessHandler(async function(data) {
+          if (!data.success) { reject(new Error(data.error)); return }
+          var decoded = await Promise.all(data.windows.map(async function(w) {
+            var v = await decodeSoilTsWindowPng_(w.img64)
+            return v ? Object.assign({ date: w.date }, v) : null
+          }))
+          soilTsData = decoded.filter(Boolean)
+          if (soilTsData.length === 0) { reject(new Error('No valid bare-soil observations.')); return }
+          document.getElementById('soilIndexBtns').style.display = 'block'
+          document.getElementById('soilViewBtns').style.display = 'block'
+          document.getElementById('soilChartWrap').style.display = 'block'
+          renderSoilTsChart_(soilCurIndex)
+          var soilYrs = Array.from(new Set(soilTsData.map(function(d) { return d.date.substring(0, 4) }))).sort()
+          buildSoilYearCheckboxes_(soilYrs)
+          resolve()
+        })
+        .withFailureHandler(reject)
+        .getSoilTimeSeries({ geojson: roi, yearStart: yearStart, yearEnd: yearEnd })
+    })
+    var allSoilYrs = Array.from(new Set(soilTsData.map(function(d) { return d.date.substring(0, 4) }))).sort()
+    autoLogLine_('[4/7] Soil TS fetched (' + allSoilYrs[0] + '-' + allSoilYrs[allSoilYrs.length - 1] + ')')
+
+    // [5/7] SHPI year filter
+    autoLogLine_('[5/7] SHPI filter (' + season + ' fallow)...')
+    var shpiResult = congruentShpiYears_(season)
+    var shpiMsg = '[5/7] SHPI filter: retained ' + shpiResult.retained.sort().join(', ')
+    if (shpiResult.rejected.length > 0) {
+      shpiMsg += '; rejected ' + shpiResult.rejected.map(function(r) {
+        return r.year + ' (' + r.side + ' fence, val=' + r.value.toFixed(3) + ')'
+      }).join(', ')
+      autoLogLine_(shpiMsg, true)
+    } else {
+      autoLogLine_(shpiMsg)
+    }
+
+    // [6/7] Lock SHPI years
+    useYearsForShpi_()
+    autoLogLine_('[6/7] SHPI locked: ' + tsYearsForShpi.join(', '))
+
+    // [7/7] Run Phase 1 Analysis
+    autoLogLine_('[7/7] Running Phase 1 Analysis...')
+    runAnalysis()
+
+  } catch (err) {
+    autoLogLine_('[ERROR] ' + err.message, true)
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🚀 Auto-Run Pipeline' }
+  }
+}
 </script>
 
 <!-- Fullscreen results map -->
