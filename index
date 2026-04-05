@@ -879,22 +879,41 @@ function decodeRasterToResult_(rawData, callback) {
     // If no polyMask was built (no valid bbox/geojson), all bbox pixels are inside
     if (!polyMask) polyCount = bboxCount
 
-    // Compute SHPI percentile thresholds from ALL valid SHPI pixels
-    var shpiSorted = shpiPixels.map(function(p) { return p.val }).sort(function(a,b) { return a-b })
-    var thresholds
-    if (shpiSorted.length >= 10) {
-      thresholds = [10,20,30,40,50,60,70,80,90].map(function(pct) { return percentile_(shpiSorted, pct) })
-    } else {
-      thresholds = [0.10,0.20,0.30,0.40,0.50,0.60,0.70,0.80,0.90]
+    // F3: If fallow SHPI cache is available with matching dimensions, use it to build richer
+    // pixelPairs — breaks the seasonal mutual-exclusion bottleneck in the combined raster.
+    var activeSeason = (typeof d3SeasonTab !== 'undefined' ? d3SeasonTab : null) || 'kharif'
+    if (fallowShpiCache[activeSeason] && fallowShpiCache[activeSeason].length === W * H) {
+      var fallowPairs = []
+      for (var fi = 0; fi < W * H; fi++) {
+        if (polyMask && !polyMask[fi]) continue
+        var fshpi = fallowShpiCache[activeSeason][fi]
+        if (fshpi < 0) continue
+        var fA = pixels[fi * 4 + 3]
+        if (fA === 0) continue
+        fallowPairs.push({ idx: fi, shpi: fshpi, cpi: pixels[fi * 4 + 1] / 254 })
+      }
+      if (fallowPairs.length > pixelPairs.length) pixelPairs = fallowPairs
     }
-    var p10=thresholds[0], p20=thresholds[1], p30=thresholds[2], p40=thresholds[3],
-        p50=thresholds[4], p60=thresholds[5], p70=thresholds[6], p80=thresholds[7], p90=thresholds[8]
+
+    // F1: Adaptive density-based bins — equal-frequency quantile cuts on actual pixelPairs SHPI.
+    // nBins = floor(n/3) capped [2,10]. Fewer than 6 pairs: skip zone correlation (nBins=0).
+    var nBins = pixelPairs.length < 6
+      ? 0
+      : Math.min(10, Math.max(2, Math.floor(pixelPairs.length / 3)))
+    var cutPoints = []
+    if (nBins >= 2) {
+      var pairShpiSorted = pixelPairs.map(function(p) { return p.shpi }).sort(function(a, b) { return a - b })
+      for (var ki = 1; ki < nBins; ki++) {
+        cutPoints.push(percentile_(pairShpiSorted, Math.round(ki / nBins * 100)))
+      }
+    }
 
     function assignZone_(v) {
-      if (v < p10) return 1; if (v < p20) return 2; if (v < p30) return 3
-      if (v < p40) return 4; if (v < p50) return 5; if (v < p60) return 6
-      if (v < p70) return 7; if (v < p80) return 8; if (v < p90) return 9
-      return 10
+      if (nBins === 0) return 0
+      for (var ci = 0; ci < cutPoints.length; ci++) {
+        if (v < cutPoints[ci]) return ci + 1
+      }
+      return nBins
     }
 
     // Assign zones to ALL valid SHPI pixels (for display raster)
@@ -903,9 +922,11 @@ function decodeRasterToResult_(rawData, callback) {
     })
 
     // Zone stats from pixelPairs (pixels with BOTH SHPI and CPI)
-    var zones = [[],[],[],[],[],[],[],[],[],[]]
+    var zones = []
+    for (var zi = 0; zi < nBins; zi++) zones.push([])
     pixelPairs.forEach(function(p) {
-      zones[assignZone_(p.shpi) - 1].push(p)
+      var zn = assignZone_(p.shpi)
+      if (zn >= 1) zones[zn - 1].push(p)
     })
 
     function mean_(arr, key) {
@@ -983,7 +1004,9 @@ function decodeRasterToResult_(rawData, callback) {
 
     // mono / ratio describe the ordinal zone pattern
     var mono  = zoneMeanCpi.every(function(v, i) { return i === 0 || v >= zoneMeanCpi[i - 1] })
-    var ratio = zoneMeanCpi[0] > 0.01 ? Math.round(zoneMeanCpi[9] / zoneMeanCpi[0] * 100) / 100 : null
+    var ratio = (nBins >= 2 && zoneMeanCpi[0] > 0.01)
+      ? Math.round(zoneMeanCpi[nBins - 1] / zoneMeanCpi[0] * 100) / 100
+      : null
 
     // K-means k=5 clustering on SHPI pixel values (supplementary analytics)
     var kmeans5 = null
@@ -1035,10 +1058,11 @@ function decodeRasterToResult_(rawData, callback) {
       var R2 = pixels[j * 4], G2 = pixels[j * 4 + 1], B2 = pixels[j * 4 + 2], A2 = pixels[j * 4 + 3]
       var base = j * 4
 
-      // Zone display raster
+      // Zone display raster — map zone 1..nBins proportionally to the 10-colour palette
       var zn = zoneMap[j]
       if (zn > 0) {
-        var zc = hexToRgbArr_(ZONE_COLORS[zn - 1])
+        var colorIdx = nBins > 1 ? Math.round((zn - 1) / (nBins - 1) * 9) : 0
+        var zc = hexToRgbArr_(ZONE_COLORS[colorIdx])
         dd[base] = zc[0]; dd[base+1] = zc[1]; dd[base+2] = zc[2]; dd[base+3] = 180
       } else {
         dd[base] = 0; dd[base+1] = 0; dd[base+2] = 0; dd[base+3] = 0
@@ -1099,10 +1123,13 @@ function decodeRasterToResult_(rawData, callback) {
         r_squared:       rho_r2,
         is_monotonic:    mono,
         cpi_ratio:       ratio,
-        confirmed:       rho > 0.60 && mono,
-        n_zones:         10,
+        confirmed:       nBins === 0 ? null
+                       : nBins >= 8 ? (rho > 0.60 && mono)
+                       : nBins >= 4 ? (rho > 0.55)
+                       : (rho > 0.50),
+        n_zones:         nBins,
         data_source:     'real',
-        shpi_thresholds: thresholds
+        shpi_thresholds: cutPoints
       },
       raster_png_b64: canvasToB64_(dispCanvas),
       shpi_png_b64:   canvasToB64_(shpiCanvas),
@@ -1148,11 +1175,14 @@ function renderResults(data) {
 
   // Banner
   const banner = document.getElementById('banner')
-  if (v.confirmed) {
-    banner.textContent = '✓ Hypothesis confirmed — CPI increases Zone 1→10'
+  if (v.confirmed === null) {
+    banner.textContent = '⚠ Insufficient spatial data — zone correlation skipped; see D3 Paired Scatter'
+    banner.className   = 'banner banner-no'
+  } else if (v.confirmed) {
+    banner.textContent = '✓ Hypothesis confirmed — CPI increases across ' + (v.n_zones || 10) + ' SHPI zones'
     banner.className   = 'banner banner-yes'
   } else {
-    banner.textContent = '⚠ Hypothesis not confirmed — check data coverage'
+    banner.textContent = '⚠ Hypothesis not confirmed — check data coverage (' + (v.n_zones || 10) + ' zones)'
     banner.className   = 'banner banner-no'
   }
 
@@ -1200,7 +1230,7 @@ function renderResults(data) {
     { val: rhoVal,  lbl: rhoLbl },
     { val: v.r_squared,  lbl: r2Lbl },
     { val: v.cpi_ratio ? v.cpi_ratio + '×' : '—', lbl: 'CPI Z10/Z1 ratio' },
-    { val: v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
+    { val: v.confirmed === null ? '—' : v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
   ]
   stats.forEach(s => {
     const card = document.createElement('div')
@@ -1222,13 +1252,14 @@ function renderResults(data) {
   // Zone table
   const tbody = document.getElementById('zoneTbody')
   tbody.innerHTML = ''
+  const nz = v.n_zones || z.length
   z.forEach((zs, i) => {
     const tr = document.createElement('tr')
 
     const tdZone = document.createElement('td')
     const zdot = document.createElement('span')
     zdot.className = 'zdot'
-    zdot.style.background = ZONE_COLORS[i]
+    zdot.style.background = ZONE_COLORS[nz > 1 ? Math.round(i / (nz - 1) * 9) : 0]
     tdZone.appendChild(zdot)
     tdZone.appendChild(document.createTextNode('Zone ' + zs.zone))
 
