@@ -4325,7 +4325,7 @@ function tukeyFence_(perYearMeans) {
   var lo, hi
   if (IQR === 0) {
     var mean = vals.reduce(function(s, v) { return s + v }, 0) / n
-    var std = Math.sqrt(vals.reduce(function(s, v) { return s + (v - mean) * (v - mean) }, 0) / n)
+    var std = Math.sqrt(vals.reduce(function(s, v) { return s + (v - mean) * (v - mean) }, 0) / (n - 1))
     lo = mean - 1.5 * std
     hi = mean + 1.5 * std
   } else {
