@@ -123,6 +123,13 @@ input:focus,select:focus{border-color:#F5A623}
 .mon-row button:hover{background:#2E6B4F;color:#F5A623}
 .mon-hint{font-size:9px;color:#5a8a6a;margin-top:3px;line-height:1.4}
 .mon-loading{font-size:9px;color:#F5A623;margin-top:3px;display:none}
+/* Period stepper (weekly/biweekly browse) */
+.mon-stepper{display:flex;align-items:center;gap:4px;margin-top:4px}
+.mon-stepper button{background:#1e3d30;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;flex-shrink:0}
+.mon-stepper button:hover{background:#2E6B4F;color:#F5A623}
+.mon-stepper span{flex:1;text-align:center;font-size:10px;color:#9FE1CB;background:#0f1a17;border:1px solid #2E6B4F;border-radius:4px;padding:3px 5px}
+.mon-sep{border-top:1px solid #1e3d30;margin:8px 0 4px}
+.mon-win-label{font-size:10px;color:#9FE1CB;margin-top:4px;margin-bottom:2px;font-weight:600}
 /* Boundary layer status */
 .bound-badge{font-size:9px;color:#9FE1CB;background:#1a3d30;border:1px solid #2E6B4F;border-radius:3px;padding:1px 5px;margin-left:4px;display:none}
 
@@ -201,7 +208,7 @@ canvas{display:block}
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
     <span class="ver-pill ver-pill-be">BE1.8.0</span>
-    <span class="ver-pill ver-pill-fe">FE2.2.0</span>
+    <span class="ver-pill ver-pill-fe">FE2.3.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -384,14 +391,14 @@ canvas{display:block}
       <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
     </div>
 
-    <!-- Monthly Satellite Imagery (context overlay for reviewing results) -->
+    <!-- Browse Imagery + Set Windows (Stage G) -->
     <div class="sb mon-section">
       <h3 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px" onclick="toggleMonSection_()">
-        <span>🛰 Monthly Imagery</span>
+        <span>🛰 Browse Imagery</span>
         <span id="monToggleIcon" style="font-size:10px;margin-left:auto">▶</span>
       </h3>
       <div id="monBody" style="display:none">
-        <p class="hint" style="margin:0 0 6px">View satellite imagery for any month. Uses ESRI Wayback (no setup) or Sentinel-2 via your SH/CDS instance ID.</p>
+        <p class="hint" style="margin:0 0 6px">Browse satellite imagery to identify bare-soil and crop periods. Set windows below, then run analysis.</p>
         <label class="field">Source</label>
         <select id="monSource" onchange="onMonSourceChange_()">
           <option value="esri">🌍 ESRI Wayback (free, no login)</option>
@@ -415,24 +422,93 @@ canvas{display:block}
         <div id="shWmsCtrl" style="display:none">
           <label class="field">Instance ID (from CDS/SH dashboard)</label>
           <input type="text" id="shInstanceId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="width:100%;background:#0f1a17;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:4px 6px;font-size:10px;box-sizing:border-box">
-          <label class="field" style="margin-top:6px">Month / Year</label>
+          <label class="field" style="margin-top:6px">Browse cadence</label>
           <div class="mon-row">
-            <select id="shMonth">
-              <option value="01">January</option><option value="02">February</option>
-              <option value="03">March</option><option value="04">April</option>
-              <option value="05">May</option><option value="06">June</option>
-              <option value="07">July</option><option value="08">August</option>
-              <option value="09">September</option><option value="10">October</option>
-              <option value="11">November</option><option value="12">December</option>
+            <select id="shCadence" onchange="onMonCadenceChange_()">
+              <option value="monthly">Monthly</option>
+              <option value="biweekly">Biweekly (14-day)</option>
+              <option value="weekly">Weekly (7-day)</option>
             </select>
-            <input type="number" id="shYear" value="2023" min="2017" max="2025" style="max-width:64px">
-            <button onclick="applyShWms_()">▶ Apply</button>
           </div>
-          <div class="mon-hint">Requires a WMS Configuration created in your Copernicus Browser account (sh.dataspace.copernicus.eu → Dashboard → Configurations). Paste the Configuration ID above.</div>
+          <!-- Monthly picker -->
+          <div id="shMonthlyCtrl">
+            <label class="field" style="margin-top:6px">Month / Year</label>
+            <div class="mon-row">
+              <select id="shMonth">
+                <option value="01">January</option><option value="02">February</option>
+                <option value="03">March</option><option value="04">April</option>
+                <option value="05">May</option><option value="06">June</option>
+                <option value="07">July</option><option value="08">August</option>
+                <option value="09">September</option><option value="10">October</option>
+                <option value="11">November</option><option value="12">December</option>
+              </select>
+              <input type="number" id="shYear" value="2023" min="2017" max="2025" style="max-width:64px">
+              <button onclick="applyShWms_()">▶ Load</button>
+            </div>
+          </div>
+          <!-- Weekly / Biweekly period stepper -->
+          <div id="shPeriodCtrl" style="display:none">
+            <label class="field" style="margin-top:6px">Year</label>
+            <div class="mon-row">
+              <input type="number" id="shPeriodYear" value="2023" min="2017" max="2025" style="max-width:64px" onchange="updateShPeriodLabel_()">
+            </div>
+            <label class="field" style="margin-top:4px">Period</label>
+            <div class="mon-stepper">
+              <button onclick="stepPeriod_(-1)">◀</button>
+              <span id="shPeriodLabel">W01 — Jan 1–7</span>
+              <button onclick="stepPeriod_(1)">▶</button>
+            </div>
+            <button class="btn btn-sec" style="width:100%;margin-top:4px" onclick="applyShWms_()">▶ Load tile</button>
+          </div>
+          <div class="mon-hint" style="margin-top:4px">Requires a WMS Configuration created in your Copernicus Browser account. Paste the Configuration ID above.</div>
         </div>
 
-        <button class="btn btn-sec" style="margin-top:6px;width:100%" onclick="clearMonthlyLayer_()">✕ Clear Monthly Imagery</button>
+        <button class="btn btn-sec" style="margin-top:6px;width:100%" onclick="clearMonthlyLayer_()">✕ Clear imagery</button>
         <div id="monLoading" class="mon-loading">Loading release list…</div>
+
+        <!-- ── Set analysis windows ── -->
+        <div class="mon-sep"></div>
+        <div class="mon-win-label">📐 Set analysis windows</div>
+        <p class="hint" style="margin:0 0 4px;font-size:9px">Browse above, then set the month ranges where your field is bare (SHPI) and cropped (CPI).</p>
+        <label class="field" style="margin-top:2px">🟤 Bare soil (SHPI) window</label>
+        <div class="mon-row">
+          <select id="wBareStart" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2" selected>Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+          <span style="color:#5a8a6a;flex-shrink:0">→</span>
+          <select id="wBareEnd" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5" selected>May</option><option value="6">Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+        </div>
+        <label class="field" style="margin-top:4px">🌾 Cropped (CPI) window</label>
+        <div class="mon-row">
+          <select id="wCropStart" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5">May</option><option value="6" selected>Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+          <span style="color:#5a8a6a;flex-shrink:0">→</span>
+          <select id="wCropEnd" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10" selected>Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+        </div>
+        <div class="mon-row" style="margin-top:6px;gap:12px">
+          <label style="font-size:10px;color:#9FE1CB;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="wSeason" value="kharif" checked> Kharif</label>
+          <label style="font-size:10px;color:#9FE1CB;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="wSeason" value="rabi"> Rabi</label>
+        </div>
+        <div id="wOverlapWarn" class="mon-hint" style="color:#F5A623;display:none">⚠ Windows overlap — separate bare-soil and crop periods.</div>
+        <button class="btn btn-prim" style="width:100%;margin-top:6px;font-size:10px" onclick="runWithWindows_()">▶ Run CPI + SHPI with these windows</button>
+        <div class="mon-hint" style="margin-top:2px">Runs full Auto-Run pipeline using the month ranges above instead of hard-coded season defaults.</div>
       </div>
     </div>
 
@@ -4171,6 +4247,7 @@ function setProgress(show, pct, msg) {
 // ── Monthly Imagery (ESRI Wayback + SH WMS) ────────────────────
 var monthlyLayer = null
 var esriWaybackReleases = null  // cached release list
+var MON_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 function toggleMonSection_() {
   var body = document.getElementById('monBody')
@@ -4194,10 +4271,9 @@ function fmtWaybackDate_(dateStr) {
   var datePart = dateStr.length > 10 ? dateStr.substring(0, 10) : dateStr
   var d = new Date(datePart + 'T00:00:00Z') // parse as UTC to avoid timezone shift
   if (isNaN(d.getTime())) return dateStr
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   var jan1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
   var wk = Math.ceil(((d - jan1) / 86400000 + jan1.getUTCDay() + 1) / 7)
-  return d.getUTCDate() + ' ' + months[d.getUTCMonth()] + ' ' + d.getUTCFullYear() +
+  return d.getUTCDate() + ' ' + MON_ABBR[d.getUTCMonth()] + ' ' + d.getUTCFullYear() +
          ' (Wk ' + wk + ')'
 }
 
@@ -4301,11 +4377,18 @@ function loadEsriRelease_() {
 function applyShWms_() {
   var instanceId = document.getElementById('shInstanceId').value.trim()
   if (!instanceId) { alert('Please enter your Sentinel Hub / CDS Instance ID.'); return }
-  var month = document.getElementById('shMonth').value
-  var year  = document.getElementById('shYear').value
-  // date range: first to last day of month
-  var daysInMonth = new Date(year, parseInt(month), 0).getDate()
-  var timeParam = year + '-' + month + '-01/' + year + '-' + month + '-' + daysInMonth
+  var cadence = document.getElementById('shCadence') ? document.getElementById('shCadence').value : 'monthly'
+  var timeParam
+  if (cadence === 'monthly') {
+    var month = document.getElementById('shMonth').value
+    var year  = document.getElementById('shYear').value
+    var daysInMonth = new Date(year, parseInt(month, 10), 0).getDate()
+    timeParam = year + '-' + month + '-01/' + year + '-' + month + '-' + String(daysInMonth).padStart(2, '0')
+  } else {
+    var pd = currentPeriodDates_()
+    if (!pd) return
+    timeParam = pd.start + '/' + pd.end
+  }
   clearMonthlyLayer_()
   var wmsUrl = 'https://sh.dataspace.copernicus.eu/ogc/wms/' + instanceId
   monthlyLayer = L.tileLayer.wms(wmsUrl, {
@@ -4325,6 +4408,105 @@ function applyShWms_() {
 function clearMonthlyLayer_() {
   if (monthlyLayer) { map.removeLayer(monthlyLayer); monthlyLayer = null }
   document.getElementById('esriReleaseMsg').textContent = ''
+}
+
+// ── Stage G: Cadence toggle + period stepper ────────────────────────────────
+var shCurrentPeriod = 1   // period index (1-based) for weekly/biweekly stepper
+
+// Returns {start:'YYYY-MM-DD', end:'YYYY-MM-DD', label:'W06 — Feb 6–12'} for current period
+function currentPeriodDates_() {
+  var cadence = document.getElementById('shCadence').value
+  var year    = parseInt(document.getElementById('shPeriodYear').value, 10)
+  if (isNaN(year)) return null
+  var cadenceDays = cadence === 'weekly' ? 7 : 14
+  var maxPeriods  = cadence === 'weekly' ? 52 : 26
+  var p = Math.max(1, Math.min(shCurrentPeriod, maxPeriods))
+  var jan1 = new Date(Date.UTC(year, 0, 1))
+  var startMs = jan1.getTime() + (p - 1) * cadenceDays * 86400000
+  var endMs   = startMs + (cadenceDays - 1) * 86400000
+  // Cap end at Dec 31 of the year
+  var dec31 = new Date(Date.UTC(year, 11, 31)).getTime()
+  if (endMs > dec31) endMs = dec31
+  function fmtDate(ms) {
+    var d = new Date(ms)
+    var mo = String(d.getUTCMonth() + 1).padStart(2, '0')
+    var dy = String(d.getUTCDate()).padStart(2, '0')
+    return d.getUTCFullYear() + '-' + mo + '-' + dy
+  }
+  function fmtShort(ms) {
+    var d = new Date(ms)
+    return MON_ABBR[d.getUTCMonth()] + ' ' + d.getUTCDate()
+  }
+  var prefix = cadence === 'weekly' ? ('W' + String(p).padStart(2, '0')) : ('BW' + String(p).padStart(2, '0'))
+  return {
+    start: fmtDate(startMs),
+    end:   fmtDate(endMs),
+    label: prefix + ' — ' + fmtShort(startMs) + '–' + fmtShort(endMs)
+  }
+}
+
+function updateShPeriodLabel_() {
+  var pd = currentPeriodDates_()
+  if (pd) document.getElementById('shPeriodLabel').textContent = pd.label
+}
+
+function onMonCadenceChange_() {
+  var cadence = document.getElementById('shCadence').value
+  document.getElementById('shMonthlyCtrl').style.display  = cadence === 'monthly' ? 'block' : 'none'
+  document.getElementById('shPeriodCtrl').style.display   = cadence !== 'monthly' ? 'block' : 'none'
+  shCurrentPeriod = 1
+  updateShPeriodLabel_()
+}
+
+function stepPeriod_(delta) {
+  var cadence    = document.getElementById('shCadence').value
+  var maxPeriods = cadence === 'weekly' ? 52 : 26
+  shCurrentPeriod = shCurrentPeriod + delta
+  if (shCurrentPeriod < 1) shCurrentPeriod = maxPeriods
+  if (shCurrentPeriod > maxPeriods) shCurrentPeriod = 1
+  updateShPeriodLabel_()
+}
+
+// ── Stage G: Analysis window pickers ───────────────────────────────────────
+// Globals set by runWithWindows_(); null = use hard-coded season defaults
+var customCropMonthStart = null
+var customCropMonthEnd   = null
+var customBareMonthStart = null
+var customBareMonthEnd   = null
+
+function onWindowChange_() {
+  var bs = parseInt(document.getElementById('wBareStart').value, 10)
+  var be = parseInt(document.getElementById('wBareEnd').value, 10)
+  var cs = parseInt(document.getElementById('wCropStart').value, 10)
+  var ce = parseInt(document.getElementById('wCropEnd').value, 10)
+  // Overlap check: bare range [bs,be] vs crop range [cs,ce] (within one year, no wrap assumed)
+  var bLo = Math.min(bs, be), bHi = Math.max(bs, be)
+  var cLo = Math.min(cs, ce), cHi = Math.max(cs, ce)
+  var overlap = bLo <= cHi && cLo <= bHi
+  document.getElementById('wOverlapWarn').style.display = overlap ? 'block' : 'none'
+}
+
+function runWithWindows_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+  var bs = parseInt(document.getElementById('wBareStart').value, 10)
+  var be = parseInt(document.getElementById('wBareEnd').value, 10)
+  var cs = parseInt(document.getElementById('wCropStart').value, 10)
+  var ce = parseInt(document.getElementById('wCropEnd').value, 10)
+  var bLo = Math.min(bs, be), bHi = Math.max(bs, be)
+  var cLo = Math.min(cs, ce), cHi = Math.max(cs, ce)
+  if (bLo <= cHi && cLo <= bHi) {
+    alert('Bare-soil and crop windows overlap. Please separate them before running.')
+    return
+  }
+  // Store custom windows — picked up by congruentCpiYears_ / congruentShpiYears_
+  customCropMonthStart = cLo
+  customCropMonthEnd   = cHi
+  customBareMonthStart = bLo
+  customBareMonthEnd   = bHi
+  // Set active season from radio
+  var seasonEl = document.querySelector('input[name="wSeason"]:checked')
+  if (seasonEl) d3SeasonTab = seasonEl.value
+  autoRunPipeline_()
 }
 
 // Tooltip CSS for boundary tooltips (inject dynamically)
@@ -4380,12 +4562,17 @@ function tukeyFence_(perYearMeans) {
 // Updates tsSelectedYears and checkboxes. Returns tukeyFence_ result.
 function congruentCpiYears_(season) {
   if (!tsData || tsData.length === 0) return { retained: [], rejected: [] }
+  // Use custom crop window if set by runWithWindows_(); otherwise fall back to hard-coded season defaults
+  var useCustom = (customCropMonthStart !== null && customCropMonthEnd !== null)
   var byYear = {}
   tsData.forEach(function(d) {
     var yr = d.date.substring(0, 4)
     var mo = parseInt(d.date.substring(5, 7), 10)
     var inWindow
-    if (season === 'kharif') {
+    if (useCustom) {
+      // Custom window is always within one calendar year (no year rollback needed)
+      inWindow = (mo >= customCropMonthStart && mo <= customCropMonthEnd)
+    } else if (season === 'kharif') {
       inWindow = (mo >= 6 && mo <= 10)
     } else {
       inWindow = (mo >= 11 || mo <= 3)
@@ -4415,12 +4602,16 @@ function congruentCpiYears_(season) {
 // Updates soilSelectedYears and checkboxes. Returns tukeyFence_ result.
 function congruentShpiYears_(season) {
   if (!soilTsData || soilTsData.length === 0) return { retained: [], rejected: [] }
+  // Use custom bare-soil window if set by runWithWindows_(); otherwise fall back to hard-coded season defaults
+  var useCustom = (customBareMonthStart !== null && customBareMonthEnd !== null)
   var byYear = {}
   soilTsData.forEach(function(d) {
     var yr = d.date.substring(0, 4)
     var mo = parseInt(d.date.substring(5, 7), 10)
     var inWindow
-    if (season === 'kharif') {
+    if (useCustom) {
+      inWindow = (mo >= customBareMonthStart && mo <= customBareMonthEnd)
+    } else if (season === 'kharif') {
       inWindow = (mo >= 2 && mo <= 5)
     } else {
       inWindow = (mo >= 10 && mo <= 11)
@@ -4478,6 +4669,11 @@ async function autoRunPipeline_() {
     autoLogLine_('[ERROR] Set a valid year range first.', true)
     if (btn) { btn.disabled = false; btn.textContent = '🚀 Auto-Run Pipeline' }
     return
+  }
+  // Log custom windows if active
+  if (customCropMonthStart !== null) {
+    autoLogLine_('[G] Custom windows: bare ' + MON_ABBR[customBareMonthStart - 1] + '–' + MON_ABBR[customBareMonthEnd - 1] +
+      ', crop ' + MON_ABBR[customCropMonthStart - 1] + '–' + MON_ABBR[customCropMonthEnd - 1] + ', season: ' + season)
   }
   try {
     // [1/7] Fetch crop time series
@@ -4574,6 +4770,9 @@ async function autoRunPipeline_() {
     autoLogLine_('[ERROR] ' + err.message, true)
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🚀 Auto-Run Pipeline' }
+    // Reset custom windows so next plain Auto-Run uses season defaults
+    customCropMonthStart = null; customCropMonthEnd = null
+    customBareMonthStart = null; customBareMonthEnd = null
   }
 }
 </script>
