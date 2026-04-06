@@ -4676,7 +4676,7 @@ async function autoRunPipeline_() {
     autoLogLine_('[8/7] Stage I: will start after Phase 1 raster decodes...')
     await new Promise(function(resolve) {
       var attempts = 0
-      var maxAttempts = 60  // wait up to 30 s (500 ms × 60)
+      var maxAttempts = 60  // wait up to 30 seconds (500 ms × 60)
       var poll = setInterval(function() {
         attempts++
         if (lastResult || attempts >= maxAttempts) {
@@ -4863,6 +4863,7 @@ function stageIAdaptiveBins_(pooledPairs) {
     return { confirmed: null, n_zones: 0, spearman_r: 0, r_squared: 0, is_monotonic: false,
              cpi_ratio: null, shpi_thresholds: [], data_source: 'stage_i' }
   }
+  // F1: nBins = floor(n/3) — 3 pairs per bin is the minimum for a meaningful bin mean; capped [2,10]
   var nBins = Math.min(10, Math.max(2, Math.floor(pooledPairs.length / 3)))
   var shpiSorted = pooledPairs.map(function(p) { return p.shpi }).sort(function(a, b) { return a - b })
   var cuts = []
@@ -4881,12 +4882,14 @@ function stageIAdaptiveBins_(pooledPairs) {
   var rho = spearmanRhoArr_(binMeansShpi, binMeansCpi)
   rho = Math.round(rho * 1000) / 1000
   var mono = binMeansCpi.every(function(v, i) { return i === 0 || v >= binMeansCpi[i - 1] })
+  // CPI ratio: lowest to highest bin; guard against near-zero denominator (< 0.01 = bare soil / no crop)
   var ratio = (nBins >= 2 && binMeansCpi[0] > 0.01)
     ? Math.round(binMeansCpi[nBins - 1] / binMeansCpi[0] * 100) / 100 : null
+  // F2: relaxed confirmation thresholds — lower nBins = fewer data points = stricter rho-only test
   var confirmed = nBins === 0 ? null
-    : nBins >= 8 ? (rho > 0.60 && mono)
-    : nBins >= 4 ? (rho > 0.55)
-    : (rho > 0.50)
+    : nBins >= 8 ? (rho > 0.60 && mono)   // enough bins for monotone + rho test
+    : nBins >= 4 ? (rho > 0.55)            // moderate bins: rho-only
+    : (rho > 0.50)                         // sparse bins: minimal rho threshold
   return {
     confirmed: confirmed, n_zones: nBins, spearman_r: rho, r_squared: Math.round(rho * rho * 1000) / 1000,
     is_monotonic: mono, cpi_ratio: ratio, shpi_thresholds: cuts, data_source: 'stage_i',
@@ -5015,7 +5018,7 @@ function renderStageIPanel_(result) {
 
     // Draw mini scatter
     var ctx = canvas.getContext('2d')
-    if (pairs.length < 2) { ctx.fillStyle = '#555'; ctx.font = '8px sans-serif'; ctx.fillText('< 3 pairs', 20, 40); return }
+    if (pairs.length < 3) { ctx.fillStyle = '#555'; ctx.font = '8px sans-serif'; ctx.fillText('< 3 pairs', 20, 40); return }
     var xs = pairs.map(function(p) { return p.shpi }), ys = pairs.map(function(p) { return p.cpi })
     var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs)
     var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys)
@@ -5105,7 +5108,7 @@ function renderStageIFsPanel_() {
     wrap.appendChild(canvas)
     grid.appendChild(wrap)
 
-    if (pairs.length < 2) return
+    if (pairs.length < 3) return
     var step = Math.max(1, Math.floor(pairs.length / 500))
     var ptData = []
     for (var pi = 0; pi < pairs.length; pi += step) ptData.push({ x: pairs[pi].shpi, y: pairs[pi].cpi })
