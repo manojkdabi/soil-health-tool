@@ -204,7 +204,8 @@ canvas{display:block}
 .ts-idx-btn:hover:not(.active){background:#2E6B4F}
 #tsChartWrap{height:140px;margin-top:4px}
 #soilChartWrap{height:140px;margin-top:4px}
-#bothSeasonsChartWrap{height:160px;margin-top:4px}
+#bothCpiChartWrap{height:130px;margin-top:4px}
+#bothSoilChartWrap{height:130px;margin-top:8px}
 #d3PairedChartWrap{height:140px;margin-top:4px}
 /* Research workflow steps */
 .research-step{border-bottom:1px solid #1e3d30}
@@ -496,8 +497,10 @@ canvas{display:block}
         <div id="tsBothPanel" style="display:none">
           <div id="bothSeasonsStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-bottom:4px">ⓘ Run Kharif pipeline then Rabi pipeline to populate both trendlines.</div>
           <div id="bothSeasonsChartWrap" style="display:none">
-            <div class="chart-heading-row"><span style="font-size:9px;color:#9FE1CB;font-weight:600">Kharif &amp; Rabi field-mean per year</span></div>
-            <canvas id="bothSeasonsChart"></canvas>
+            <div class="chart-heading-row"><span style="font-size:9px;color:#9FE1CB;font-weight:600">🌾 Crop Index (CPI) — Kharif vs Rabi</span></div>
+            <div id="bothCpiChartWrap"><canvas id="bothCpiChart"></canvas></div>
+            <div class="chart-heading-row" style="margin-top:6px"><span style="font-size:9px;color:#9FE1CB;font-weight:600">🟤 Soil Index (SHPI) — Kharif vs Rabi</span></div>
+            <div id="bothSoilChartWrap"><canvas id="bothSoilChart"></canvas></div>
           </div>
           <div id="bothSeasonsLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
         </div>
@@ -662,7 +665,8 @@ let kharifTsCache     = null      // tsData saved after a Kharif auto-run
 let kharifSoilTsCache = null      // soilTsData saved after a Kharif auto-run
 let rabiTsCache       = null      // tsData saved after a Rabi auto-run
 let rabiSoilTsCache   = null      // soilTsData saved after a Rabi auto-run
-let bothSeasonsChartInst = null   // Chart instance for Both-seasons chart
+let bothSeasonsChartInst  = null   // Chart.js instance for CPI comparison chart
+let bothSeasonsChartInst2 = null   // Chart.js instance for SHPI comparison chart
 const ZONE_COLORS         = ['#a50026','#d73027','#f46d43','#fdae61','#fee090','#d9ef8b','#a6d96a','#66bd63','#1a9850','#006837']
 const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','#ff9f43','#54a0ff','#5f27cd','#ee5a24','#0abde3']
 const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
@@ -3752,7 +3756,7 @@ function computeSeasonMeans_(season, tsArr, soilArr) {
   return result
 }
 
-// ── Both-seasons view: render 4-line trendline chart ──────────
+// ── Both-seasons view: two separate charts (CPI vs CPI, SHPI vs SHPI) ────────
 function renderBothSeasonsChart_() {
   var wrapEl   = document.getElementById('bothSeasonsChartWrap')
   var statusEl = document.getElementById('bothSeasonsStatus')
@@ -3775,56 +3779,75 @@ function renderBothSeasonsChart_() {
   )).sort()
   var kMap = {}; kMeans.forEach(function(d){ kMap[d.year] = d })
   var rMap = {}; rMeans.forEach(function(d){ rMap[d.year] = d })
-  var datasets = []
-  if (hasK) {
-    datasets.push({
-      label: 'Kharif CPI (Jun–Oct)',
-      data: allYears.map(function(y){ return kMap[y] ? kMap[y].cpi : null }),
-      borderColor: '#4CAF50', backgroundColor: 'rgba(76,175,80,0.15)',
-      tension: 0.3, spanGaps: true, pointRadius: 4
-    })
-    datasets.push({
-      label: 'Kharif SHPI (Feb–May)',
-      data: allYears.map(function(y){ return kMap[y] ? kMap[y].shpi : null }),
-      borderColor: '#A0522D', backgroundColor: 'rgba(160,82,45,0.15)',
-      tension: 0.3, spanGaps: true, pointRadius: 4, borderDash: [4,3]
-    })
+
+  var sharedScaleOpts = {
+    x: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: 'rgba(30,61,48,0.8)' } },
+    y: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: 'rgba(30,61,48,0.8)' },
+         min: 0, max: 1 }
   }
-  if (hasR) {
-    datasets.push({
-      label: 'Rabi CPI (Nov–Mar)',
-      data: allYears.map(function(y){ return rMap[y] ? rMap[y].cpi : null }),
-      borderColor: '#81C784', backgroundColor: 'rgba(129,199,132,0.15)',
-      tension: 0.3, spanGaps: true, pointRadius: 4
-    })
-    datasets.push({
-      label: 'Rabi SHPI (Oct–Nov)',
-      data: allYears.map(function(y){ return rMap[y] ? rMap[y].shpi : null }),
-      borderColor: '#CD853F', backgroundColor: 'rgba(205,133,63,0.15)',
-      tension: 0.3, spanGaps: true, pointRadius: 4, borderDash: [4,3]
-    })
+  var sharedPlugins = function(unit) {
+    return {
+      legend: { labels: { color: '#9FE1CB', font: { size: 9 }, boxWidth: 12 } },
+      tooltip: { callbacks: { label: function(c) {
+        return c.dataset.label + ': ' + (c.parsed.y != null ? c.parsed.y.toFixed(3) : 'N/A')
+      }}}
+    }
   }
+
+  // ── Chart 1: CPI comparison ───────────────────────────────────
+  var cpiDatasets = []
+  if (hasK) cpiDatasets.push({
+    label: 'Kharif CPI (Jun–Oct)',
+    data: allYears.map(function(y){ return kMap[y] ? kMap[y].cpi : null }),
+    borderColor: '#4CAF50', backgroundColor: 'rgba(76,175,80,0.15)',
+    tension: 0.3, spanGaps: true, pointRadius: 4
+  })
+  if (hasR) cpiDatasets.push({
+    label: 'Rabi CPI (Nov–Mar)',
+    data: allYears.map(function(y){ return rMap[y] ? rMap[y].cpi : null }),
+    borderColor: '#26C6DA', backgroundColor: 'rgba(38,198,218,0.15)',
+    tension: 0.3, spanGaps: true, pointRadius: 4
+  })
   if (bothSeasonsChartInst) { bothSeasonsChartInst.destroy(); bothSeasonsChartInst = null }
-  var ctx = document.getElementById('bothSeasonsChart').getContext('2d')
-  bothSeasonsChartInst = new Chart(ctx, {
+  var ctx1 = document.getElementById('bothCpiChart').getContext('2d')
+  bothSeasonsChartInst = new Chart(ctx1, {
     type: 'line',
-    data: { labels: allYears, datasets: datasets },
+    data: { labels: allYears, datasets: cpiDatasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { labels: { color: '#9FE1CB', font: { size: 9 }, boxWidth: 12 } },
-        tooltip: { callbacks: { label: function(ctx) {
-          return ctx.dataset.label + ': ' + (ctx.parsed.y != null ? ctx.parsed.y.toFixed(3) : 'N/A')
-        }}}
-      },
-      scales: {
-        x: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: 'rgba(30,61,48,0.8)' } },
-        y: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: 'rgba(30,61,48,0.8)' },
-             min: 0, max: 1 }
-      }
+      plugins: sharedPlugins('cpi'),
+      scales: sharedScaleOpts
     }
   })
+
+  // ── Chart 2: SHPI comparison ──────────────────────────────────
+  var shpiDatasets = []
+  if (hasK) shpiDatasets.push({
+    label: 'Kharif SHPI (Feb–May fallow)',
+    data: allYears.map(function(y){ return kMap[y] ? kMap[y].shpi : null }),
+    borderColor: '#A0522D', backgroundColor: 'rgba(160,82,45,0.15)',
+    tension: 0.3, spanGaps: true, pointRadius: 4
+  })
+  if (hasR) shpiDatasets.push({
+    label: 'Rabi SHPI (Oct–Nov fallow)',
+    data: allYears.map(function(y){ return rMap[y] ? rMap[y].shpi : null }),
+    borderColor: '#F4A460', backgroundColor: 'rgba(244,164,96,0.15)',
+    tension: 0.3, spanGaps: true, pointRadius: 4
+  })
+  if (bothSeasonsChartInst2) { bothSeasonsChartInst2.destroy(); bothSeasonsChartInst2 = null }
+  var ctx2 = document.getElementById('bothSoilChart').getContext('2d')
+  bothSeasonsChartInst2 = new Chart(ctx2, {
+    type: 'line',
+    data: { labels: allYears, datasets: shpiDatasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: sharedPlugins('shpi'),
+      scales: sharedScaleOpts
+    }
+  })
+
   var parts = []
   if (hasK) parts.push('Kharif ✓')
   if (hasR) parts.push('Rabi ✓')
