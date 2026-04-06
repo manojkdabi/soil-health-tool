@@ -498,7 +498,7 @@ canvas{display:block}
       <div class="step-hdr" onclick="toggleResearchStep_('perYearBody',this)">
         <span class="step-num step-sub">③b</span>
         <span class="step-title">PER-YEAR SCATTER<small>Stage I</small></span>
-        <span class="step-badge show" id="perYearBadge"></span>
+        <span class="step-badge" id="perYearBadge"></span>
         <span class="step-chevron">▼</span>
       </div>
       <div id="perYearBody" class="step-body">
@@ -516,7 +516,7 @@ canvas{display:block}
       <div class="step-hdr" onclick="toggleResearchStep_('pooledBody',this)">
         <span class="step-num step-sub">③c</span>
         <span class="step-title">POOLED SCATTER<small>All pixels</small></span>
-        <span class="step-badge show" id="pooledBadge"></span>
+        <span class="step-badge" id="pooledBadge"></span>
         <span class="step-chevron">▼</span>
       </div>
       <div id="pooledBody" class="step-body">
@@ -533,7 +533,7 @@ canvas{display:block}
       <div class="step-hdr" onclick="toggleResearchStep_('zonesBody',this)">
         <span class="step-num step-sub">③d</span>
         <span class="step-title">ZONE MEANS<small>Adaptive bins</small></span>
-        <span class="step-badge show" id="zonesBadge"></span>
+        <span class="step-badge" id="zonesBadge"></span>
         <span class="step-chevron">▶</span>
       </div>
       <div id="zonesBody" class="step-body" style="display:none">
@@ -1473,6 +1473,9 @@ function renderResults(data) {
   ['pooledScatterStep','zoneMeansStep','concludeStep'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.style.display='';
   })
+  setBadge_('pooledBadge', '✓')
+  setBadge_('zonesBadge', '✓')
+  setBadge_('concludeBadge', '✓')
 
   // Zone map — rendered after sections are visible so the container has layout
   setTimeout(function() { renderResultsMap_(data) }, 50)
