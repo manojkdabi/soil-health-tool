@@ -204,6 +204,7 @@ canvas{display:block}
 .ts-idx-btn:hover:not(.active){background:#2E6B4F}
 #tsChartWrap{height:140px;margin-top:4px}
 #soilChartWrap{height:140px;margin-top:4px}
+#bothSeasonsChartWrap{height:160px;margin-top:4px}
 #d3PairedChartWrap{height:140px;margin-top:4px}
 /* Research workflow steps */
 .research-step{border-bottom:1px solid #1e3d30}
@@ -415,6 +416,7 @@ canvas{display:block}
           <button class="ts-idx-btn active" id="tsPanelCropTab" onclick="setTsPanelMode_('crop')" style="flex:1;font-size:9px">🌿 Crop (CPI)</button>
           <button class="ts-idx-btn" id="tsPanelSoilTab" onclick="setTsPanelMode_('soil')" style="flex:1;font-size:9px">🟤 Soil (SHPI)</button>
           <button class="ts-idx-btn" id="tsPanelPairedTab" onclick="setTsPanelMode_('paired')" style="flex:1;font-size:9px">📊 Paired</button>
+          <button class="ts-idx-btn" id="tsPanelBothTab" onclick="setTsPanelMode_('both')" style="flex:1;font-size:9px">🔀 Both</button>
         </div>
         <!-- Crop panel -->
         <div id="tsCropPanel">
@@ -489,6 +491,15 @@ canvas{display:block}
           <div id="d3PairedCorr" style="text-align:center;font-size:9px;color:#9FE1CB;margin-bottom:3px"></div>
           <div id="d3PairedStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
           <div id="fallowShpiFetchStatus" style="display:none;font-size:8px;color:#F5A623;text-align:center;margin-top:3px"></div>
+        </div>
+        <!-- Both seasons panel -->
+        <div id="tsBothPanel" style="display:none">
+          <div id="bothSeasonsStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-bottom:4px">ⓘ Run Kharif pipeline then Rabi pipeline to populate both trendlines.</div>
+          <div id="bothSeasonsChartWrap" style="display:none">
+            <div class="chart-heading-row"><span style="font-size:9px;color:#9FE1CB;font-weight:600">Kharif &amp; Rabi field-mean per year</span></div>
+            <canvas id="bothSeasonsChart"></canvas>
+          </div>
+          <div id="bothSeasonsLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
         </div>
       </div>
     </div>
@@ -645,7 +656,13 @@ let tsYearsForCpi  = []           // confirmed year list stored for Stage 2 CPI 
 let soilTsData        = null      // fetched soil time-series array (bare-soil SHPI sub-indices)
 let soilTsChart       = null      // soil TS Chart instance
 let soilCurIndex      = 'sab'     // active soil index key (sab|claysi|ri2|smi)
-let tsPanelMode       = 'crop'    // 'crop' | 'soil' — which TS tab is active
+let tsPanelMode       = 'crop'    // 'crop' | 'soil' | 'paired' | 'both' — which TS tab is active
+// Per-season TS caches for the Both-seasons view
+let kharifTsCache     = null      // tsData saved after a Kharif auto-run
+let kharifSoilTsCache = null      // soilTsData saved after a Kharif auto-run
+let rabiTsCache       = null      // tsData saved after a Rabi auto-run
+let rabiSoilTsCache   = null      // soilTsData saved after a Rabi auto-run
+let bothSeasonsChartInst = null   // Chart instance for Both-seasons chart
 const ZONE_COLORS         = ['#a50026','#d73027','#f46d43','#fdae61','#fee090','#d9ef8b','#a6d96a','#66bd63','#1a9850','#006837']
 const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','#ff9f43','#54a0ff','#5f27cd','#ee5a24','#0abde3']
 const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
@@ -3283,19 +3300,24 @@ function setBadge_(id, text) {
 // ── D1: Time Series — switch between Crop and Soil tabs ───────
 function setTsPanelMode_(mode) {
   tsPanelMode = mode
-  var cropTab  = document.getElementById('tsPanelCropTab')
-  var soilTab  = document.getElementById('tsPanelSoilTab')
+  var cropTab   = document.getElementById('tsPanelCropTab')
+  var soilTab   = document.getElementById('tsPanelSoilTab')
   var pairedTab = document.getElementById('tsPanelPairedTab')
-  var cropPanel = document.getElementById('tsCropPanel')
-  var soilPanel = document.getElementById('tsSoilPanel')
+  var bothTab   = document.getElementById('tsPanelBothTab')
+  var cropPanel   = document.getElementById('tsCropPanel')
+  var soilPanel   = document.getElementById('tsSoilPanel')
   var pairedPanel = document.getElementById('tsPairedPanel')
-  if (cropTab) cropTab.classList.toggle('active', mode === 'crop')
-  if (soilTab) soilTab.classList.toggle('active', mode === 'soil')
+  var bothPanel   = document.getElementById('tsBothPanel')
+  if (cropTab)   cropTab.classList.toggle('active',   mode === 'crop')
+  if (soilTab)   soilTab.classList.toggle('active',   mode === 'soil')
   if (pairedTab) pairedTab.classList.toggle('active', mode === 'paired')
-  if (cropPanel) cropPanel.style.display = mode === 'crop' ? 'block' : 'none'
-  if (soilPanel) soilPanel.style.display = mode === 'soil' ? 'block' : 'none'
+  if (bothTab)   bothTab.classList.toggle('active',   mode === 'both')
+  if (cropPanel)   cropPanel.style.display   = mode === 'crop'   ? 'block' : 'none'
+  if (soilPanel)   soilPanel.style.display   = mode === 'soil'   ? 'block' : 'none'
   if (pairedPanel) pairedPanel.style.display = mode === 'paired' ? 'block' : 'none'
+  if (bothPanel)   bothPanel.style.display   = mode === 'both'   ? 'block' : 'none'
   if (mode === 'paired') renderPairedScatter_(d3SeasonTab)
+  if (mode === 'both')   renderBothSeasonsChart_()
 }
 
 // ── Time Series — decode one window PNG (RGBA → index means) ────────
@@ -3672,6 +3694,143 @@ function setD3Season_(season) {
   if (kTab) kTab.classList.toggle('active', season === 'kharif')
   if (rTab) rTab.classList.toggle('active', season === 'rabi')
   renderPairedScatter_(season)
+}
+
+// ── Both-seasons view: compute per-year means from explicit TS arrays ─────
+// Returns [{year, shpi, cpi}] for the given season using arbitrary tsArr/soilArr.
+function computeSeasonMeans_(season, tsArr, soilArr) {
+  if (!tsArr || !soilArr || tsArr.length === 0 || soilArr.length === 0) return []
+  var shpiByYear = {}
+  var cpiByYear  = {}
+  if (season === 'kharif') {
+    soilArr.forEach(function(d) {
+      var mo = parseInt(d.date.substring(5, 7))
+      if (mo >= 2 && mo <= 5) {
+        var yr = d.date.substring(0, 4)
+        if (!shpiByYear[yr]) shpiByYear[yr] = []
+        shpiByYear[yr].push(computeShpiFromRow_(d))
+      }
+    })
+    tsArr.forEach(function(d) {
+      var mo = parseInt(d.date.substring(5, 7))
+      if (mo >= 6 && mo <= 10) {
+        var yr = d.date.substring(0, 4)
+        if (!cpiByYear[yr]) cpiByYear[yr] = []
+        cpiByYear[yr].push(computeCpiFromRow_(d))
+      }
+    })
+  } else {
+    soilArr.forEach(function(d) {
+      var mo = parseInt(d.date.substring(5, 7))
+      if (mo >= 10 && mo <= 11) {
+        var yr = d.date.substring(0, 4)
+        if (!shpiByYear[yr]) shpiByYear[yr] = []
+        shpiByYear[yr].push(computeShpiFromRow_(d))
+      }
+    })
+    tsArr.forEach(function(d) {
+      var yr = parseInt(d.date.substring(0, 4))
+      var mo = parseInt(d.date.substring(5, 7))
+      var rabiYr
+      if (mo >= 11) rabiYr = String(yr)
+      else if (mo <= 3) rabiYr = String(yr - 1)
+      else return
+      if (!cpiByYear[rabiYr]) cpiByYear[rabiYr] = []
+      cpiByYear[rabiYr].push(computeCpiFromRow_(d))
+    })
+  }
+  var result = []
+  var allYears = new Set(Object.keys(shpiByYear).concat(Object.keys(cpiByYear)))
+  Array.from(allYears).sort().forEach(function(yr) {
+    var shpi = null, cpi = null
+    if (shpiByYear[yr] && shpiByYear[yr].length > 0)
+      shpi = shpiByYear[yr].reduce(function(s,v){return s+v},0) / shpiByYear[yr].length
+    if (cpiByYear[yr] && cpiByYear[yr].length > 0)
+      cpi = cpiByYear[yr].reduce(function(s,v){return s+v},0) / cpiByYear[yr].length
+    result.push({ year: yr, shpi: shpi, cpi: cpi })
+  })
+  return result
+}
+
+// ── Both-seasons view: render 4-line trendline chart ──────────
+function renderBothSeasonsChart_() {
+  var wrapEl   = document.getElementById('bothSeasonsChartWrap')
+  var statusEl = document.getElementById('bothSeasonsStatus')
+  var labelEl  = document.getElementById('bothSeasonsLabel')
+  var hasK = (kharifTsCache && kharifSoilTsCache)
+  var hasR = (rabiTsCache   && rabiSoilTsCache)
+  if (!hasK && !hasR) {
+    if (statusEl) statusEl.style.display = 'block'
+    if (wrapEl)   wrapEl.style.display   = 'none'
+    if (labelEl)  labelEl.textContent    = ''
+    return
+  }
+  if (statusEl) statusEl.style.display = 'none'
+  if (wrapEl)   wrapEl.style.display   = 'block'
+  var kMeans = hasK ? computeSeasonMeans_('kharif', kharifTsCache, kharifSoilTsCache) : []
+  var rMeans = hasR ? computeSeasonMeans_('rabi',   rabiTsCache,   rabiSoilTsCache)   : []
+  // Union of all years
+  var allYears = Array.from(new Set(
+    kMeans.map(function(d){return d.year}).concat(rMeans.map(function(d){return d.year}))
+  )).sort()
+  var kMap = {}; kMeans.forEach(function(d){ kMap[d.year] = d })
+  var rMap = {}; rMeans.forEach(function(d){ rMap[d.year] = d })
+  var datasets = []
+  if (hasK) {
+    datasets.push({
+      label: 'Kharif CPI (Jun–Oct)',
+      data: allYears.map(function(y){ return kMap[y] ? kMap[y].cpi : null }),
+      borderColor: '#4CAF50', backgroundColor: 'rgba(76,175,80,0.15)',
+      tension: 0.3, spanGaps: true, pointRadius: 4
+    })
+    datasets.push({
+      label: 'Kharif SHPI (Feb–May)',
+      data: allYears.map(function(y){ return kMap[y] ? kMap[y].shpi : null }),
+      borderColor: '#A0522D', backgroundColor: 'rgba(160,82,45,0.15)',
+      tension: 0.3, spanGaps: true, pointRadius: 4, borderDash: [4,3]
+    })
+  }
+  if (hasR) {
+    datasets.push({
+      label: 'Rabi CPI (Nov–Mar)',
+      data: allYears.map(function(y){ return rMap[y] ? rMap[y].cpi : null }),
+      borderColor: '#81C784', backgroundColor: 'rgba(129,199,132,0.15)',
+      tension: 0.3, spanGaps: true, pointRadius: 4
+    })
+    datasets.push({
+      label: 'Rabi SHPI (Oct–Nov)',
+      data: allYears.map(function(y){ return rMap[y] ? rMap[y].shpi : null }),
+      borderColor: '#CD853F', backgroundColor: 'rgba(205,133,63,0.15)',
+      tension: 0.3, spanGaps: true, pointRadius: 4, borderDash: [4,3]
+    })
+  }
+  if (bothSeasonsChartInst) { bothSeasonsChartInst.destroy(); bothSeasonsChartInst = null }
+  var ctx = document.getElementById('bothSeasonsChart').getContext('2d')
+  bothSeasonsChartInst = new Chart(ctx, {
+    type: 'line',
+    data: { labels: allYears, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#9FE1CB', font: { size: 9 }, boxWidth: 12 } },
+        tooltip: { callbacks: { label: function(ctx) {
+          return ctx.dataset.label + ': ' + (ctx.parsed.y != null ? ctx.parsed.y.toFixed(3) : 'N/A')
+        }}}
+      },
+      scales: {
+        x: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: 'rgba(30,61,48,0.8)' } },
+        y: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: 'rgba(30,61,48,0.8)' },
+             min: 0, max: 1 }
+      }
+    }
+  })
+  var parts = []
+  if (hasK) parts.push('Kharif ✓')
+  if (hasR) parts.push('Rabi ✓')
+  if (!hasK) parts.push('Kharif – run pipeline')
+  if (!hasR) parts.push('Rabi – run pipeline')
+  if (labelEl) labelEl.textContent = parts.join('  ·  ')
 }
 
 // ── D3: Render year×season paired scatter ─────────────────────
@@ -4753,6 +4912,8 @@ async function autoRunPipeline_() {
           }))
           tsData = decoded.filter(Boolean)
           if (tsData.length === 0) { reject(new Error('No valid crop observations.')); return }
+          // Cache for Both-seasons view
+          if (season === 'kharif') kharifTsCache = tsData; else rabiTsCache = tsData
           var years = Array.from(new Set(tsData.map(function(d) { return d.date.substring(0, 4) }))).sort()
           buildYearCheckboxes_(years)
           document.getElementById('tsIndexBtns').style.display = 'block'
@@ -4796,6 +4957,8 @@ async function autoRunPipeline_() {
           }))
           soilTsData = decoded.filter(Boolean)
           if (soilTsData.length === 0) { reject(new Error('No valid bare-soil observations.')); return }
+          // Cache for Both-seasons view
+          if (season === 'kharif') kharifSoilTsCache = soilTsData; else rabiSoilTsCache = soilTsData
           document.getElementById('soilIndexBtns').style.display = 'block'
           document.getElementById('soilViewBtns').style.display = 'block'
           document.getElementById('soilChartWrap').style.display = 'block'
@@ -4859,6 +5022,9 @@ async function autoRunPipeline_() {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🚀 Auto-Run Pipeline' }
     setBadge_('fetchBadge', '✓ done')
+    // Update Both-seasons chart if the Both tab is visible
+    if (tsPanelMode === 'both') renderBothSeasonsChart_()
+    else if (kharifTsCache && rabiTsCache) setBadge_('fieldTsBadge', '✓')
     // Reset custom windows so next plain Auto-Run uses season defaults
     customCropMonthStart = null; customCropMonthEnd = null
     customBareMonthStart = null; customBareMonthEnd = null
