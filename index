@@ -4232,7 +4232,7 @@ function toggleMonSection_() {
 }
 
 function applyGasTile_() {
-  if (!drawn || drawn.getLayers().length === 0) { alert('Draw an ROI first.'); return }
+  if (drawn.getLayers().length === 0) { alert('Draw an ROI first.'); return }
   var cadence = document.getElementById('shCadence') ? document.getElementById('shCadence').value : 'monthly'
   var startDate, endDate
   if (cadence === 'monthly') {
@@ -4248,7 +4248,7 @@ function applyGasTile_() {
     endDate   = pd.end
   }
   var bounds = drawn.getBounds()
-  if (!bounds || !bounds.isValid()) { alert('Draw an ROI first.'); return }
+  if (!bounds || !bounds.isValid()) { alert('Invalid ROI bounds — please redraw the polygon.'); return }
   var bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]
   clearMonthlyLayer_()
   var msgEl = document.getElementById('monMsg')
