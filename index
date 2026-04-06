@@ -205,6 +205,20 @@ canvas{display:block}
 #tsChartWrap{height:140px;margin-top:4px}
 #soilChartWrap{height:140px;margin-top:4px}
 #d3PairedChartWrap{height:140px;margin-top:4px}
+/* Research workflow steps */
+.research-step{border-bottom:1px solid #1e3d30}
+.step-hdr{display:flex;align-items:center;gap:6px;padding:10px 16px;cursor:pointer;user-select:none;background:#13241e;transition:background .15s}
+.step-hdr:hover{background:#172c22}
+.step-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#1e3d30;border:1px solid #2E6B4F;color:#F5A623;font-size:10px;font-weight:700;flex-shrink:0}
+.step-num.step-sub{border-radius:4px;width:auto;padding:0 4px}
+.step-title{flex:1;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#F5A623;display:flex;flex-direction:column;gap:1px}
+.step-title small{font-size:9px;color:#9FE1CB;text-transform:none;letter-spacing:0;font-weight:400}
+.step-badge{font-size:9px;color:#7FE07F;background:#1a3d1a;border:1px solid #3a6d3a;border-radius:3px;padding:1px 5px;display:none;flex-shrink:0}
+.step-badge.show{display:inline-block}
+.step-chevron{font-size:10px;color:#5a8a6a;flex-shrink:0}
+.step-body{padding:10px 16px}
+.btn-prim{background:#2E6B4F;border:1px solid #3a8a60;color:#e8f4ee}
+.btn-prim:hover{background:#3a8a60}
 </style>
 </head>
 <body>
@@ -264,20 +278,139 @@ canvas{display:block}
       </select>
     </div>
 
-    <!-- Time Series Panel (Step 3 · Crop Time Series — set before running) -->
-    <div class="sb">
-      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleTsPanel_()">
-        <h3 style="margin:0">Step 3 · 📈 Time Series</h3>
-        <span id="tsPanelChevron" style="color:#F5A623;font-size:11px">▶</span>
+    <!-- ① IDENTIFY — Browse Imagery (moved to top of research workflow) -->
+    <div class="research-step">
+      <div class="step-hdr" onclick="toggleResearchStep_('identifyBody',this)">
+        <span class="step-num">①</span>
+        <span class="step-title">IDENTIFY<small>Browse Imagery</small></span>
+        <span class="step-badge" id="identifyBadge"></span>
+        <span class="step-chevron">▼</span>
       </div>
-      <div id="tsPanelBody" style="display:none;margin-top:8px">
-        <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Process API). Load an ROI and set year range, then fetch. Select good-crop years and lock them for CPI before running analysis.</p>
-        <!-- E3/E4: Auto-Run Pipeline -->
-        <div style="margin-bottom:7px">
-          <button class="btn btn-prim" id="autoRunBtn" onclick="autoRunPipeline_()" style="width:100%;font-size:10px">🚀 Auto-Run Pipeline</button>
-          <div id="autoRunLog" style="display:none;margin-top:5px;background:rgba(0,0,0,0.4);border:1px solid #1e3d30;border-radius:4px;padding:5px 7px;max-height:120px;overflow-y:auto;font-size:8px;color:#9FE1CB;font-family:monospace"></div>
+      <div id="identifyBody" class="step-body">
+        <p class="hint" style="margin:0 0 6px">Browse Sentinel-2 true-colour imagery to identify bare-soil and crop periods. Set windows below, then run analysis.</p>
+        <label class="field">Browse cadence</label>
+        <div class="mon-row">
+          <select id="shCadence" onchange="onMonCadenceChange_()">
+            <option value="monthly">Monthly</option>
+            <option value="biweekly">Biweekly (14-day)</option>
+            <option value="weekly">Weekly (7-day)</option>
+          </select>
         </div>
-        <!-- D1: Crop / Soil toggle tabs -->
+        <!-- Monthly picker -->
+        <div id="shMonthlyCtrl">
+          <label class="field" style="margin-top:6px">Month / Year</label>
+          <div class="mon-row">
+            <select id="shMonth">
+              <option value="01">January</option><option value="02">February</option>
+              <option value="03">March</option><option value="04">April</option>
+              <option value="05">May</option><option value="06">June</option>
+              <option value="07">July</option><option value="08">August</option>
+              <option value="09">September</option><option value="10">October</option>
+              <option value="11">November</option><option value="12">December</option>
+            </select>
+            <input type="number" id="shYear" value="2023" min="2017" max="2025" style="max-width:64px">
+            <button onclick="applyGasTile_()">▶ Load</button>
+          </div>
+        </div>
+        <!-- Weekly / Biweekly period stepper -->
+        <div id="shPeriodCtrl" style="display:none">
+          <label class="field" style="margin-top:6px">Year</label>
+          <div class="mon-row">
+            <input type="number" id="shPeriodYear" value="2023" min="2017" max="2025" style="max-width:64px" onchange="updateShPeriodLabel_()">
+          </div>
+          <label class="field" style="margin-top:4px">Period</label>
+          <div class="mon-stepper">
+            <button onclick="stepPeriod_(-1)">◀</button>
+            <span id="shPeriodLabel">W01 — Jan 1–7</span>
+            <button onclick="stepPeriod_(1)">▶</button>
+          </div>
+          <button class="btn btn-sec" style="width:100%;margin-top:4px" onclick="applyGasTile_()">▶ Load tile</button>
+        </div>
+        <div id="monMsg" class="mon-hint" style="color:#9FE1CB;margin-top:4px"></div>
+        <button class="btn btn-sec" style="margin-top:6px;width:100%" onclick="clearMonthlyLayer_()">✕ Clear imagery</button>
+        <!-- ── Set analysis windows ── -->
+        <div class="mon-sep"></div>
+        <div class="mon-win-label">📐 Set analysis windows</div>
+        <p class="hint" style="margin:0 0 4px;font-size:9px">Browse above, then set the month ranges where your field is bare (SHPI) and cropped (CPI).</p>
+        <label class="field" style="margin-top:2px">🟤 Bare soil (SHPI) window</label>
+        <div class="mon-row">
+          <select id="wBareStart" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2" selected>Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+          <span style="color:#5a8a6a;flex-shrink:0">→</span>
+          <select id="wBareEnd" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5" selected>May</option><option value="6">Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+        </div>
+        <label class="field" style="margin-top:4px">🌾 Cropped (CPI) window</label>
+        <div class="mon-row">
+          <select id="wCropStart" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5">May</option><option value="6" selected>Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+          <span style="color:#5a8a6a;flex-shrink:0">→</span>
+          <select id="wCropEnd" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10" selected>Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+        </div>
+        <div class="mon-row" style="margin-top:6px;gap:12px">
+          <label style="font-size:10px;color:#9FE1CB;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="wSeason" value="kharif" checked> Kharif</label>
+          <label style="font-size:10px;color:#9FE1CB;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="wSeason" value="rabi"> Rabi</label>
+        </div>
+        <div id="wOverlapWarn" class="mon-hint" style="color:#F5A623;display:none">⚠ Windows overlap — separate bare-soil and crop periods.</div>
+        <button class="btn btn-prim" style="width:100%;margin-top:6px;font-size:10px" onclick="runWithWindows_()">▶ Run CPI + SHPI with these windows</button>
+        <div class="mon-hint" style="margin-top:2px">Runs full Auto-Run pipeline using the month ranges above instead of hard-coded season defaults.</div>
+      </div>
+    </div>
+
+    <!-- ② FETCH — Auto-Run Pipeline -->
+    <div class="research-step">
+      <div class="step-hdr" onclick="toggleResearchStep_('fetchBody',this)">
+        <span class="step-num">②</span>
+        <span class="step-title">FETCH<small>Auto-Run Pipeline</small></span>
+        <span class="step-badge" id="fetchBadge"></span>
+        <span class="step-chevron">▼</span>
+      </div>
+      <div id="fetchBody" class="step-body">
+        <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Process API). Auto-Run fetches CPI + SHPI rasters for all years, applies Tukey fence filters, and runs the full hypothesis pipeline.</p>
+        <button class="btn btn-prim" id="autoRunBtn" onclick="autoRunPipeline_()" style="width:100%;font-size:10px">🚀 Auto-Run Pipeline</button>
+        <div id="autoRunLog" style="display:none;margin-top:5px;background:rgba(0,0,0,0.4);border:1px solid #1e3d30;border-radius:4px;padding:5px 7px;max-height:120px;overflow-y:auto;font-size:8px;color:#9FE1CB;font-family:monospace"></div>
+        <div class="mon-sep" style="margin:8px 0 4px"></div>
+        <div style="font-size:9px;color:#5a8a6a;margin-bottom:4px;text-align:center">— or run manually —</div>
+        <button class="btn btn-run" id="runBtn" onclick="runAnalysis()" disabled>▶ Run Phase 1 Analysis</button>
+        <button class="btn btn-sec" id="runAllBtn" style="margin-top:6px" onclick="runAllROIs_()">▶▶ Run All Saved ROIs</button>
+        <div class="progress" id="progress">
+          <div class="prog-msg" id="progMsg">Initialising...</div>
+          <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+        </div>
+        <div class="batch-progress" id="batchProgress">
+          <div style="font-size:10px;font-weight:700;color:#F5A623;margin-bottom:6px">Batch Progress</div>
+          <div id="batchItems"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③a FIELD TIME SERIES -->
+    <div class="research-step">
+      <div class="step-hdr" onclick="toggleResearchStep_('fieldTsBody',this)">
+        <span class="step-num step-sub">③a</span>
+        <span class="step-title">FIELD TIME SERIES<small>CPI + SHPI</small></span>
+        <span class="step-badge" id="fieldTsBadge"></span>
+        <span class="step-chevron">▼</span>
+      </div>
+      <div id="fieldTsBody" class="step-body">
+        <!-- D1: Crop / Soil / Paired toggle tabs -->
         <div style="display:flex;gap:4px;margin-bottom:6px">
           <button class="ts-idx-btn active" id="tsPanelCropTab" onclick="setTsPanelMode_('crop')" style="flex:1;font-size:9px">🌿 Crop (CPI)</button>
           <button class="ts-idx-btn" id="tsPanelSoilTab" onclick="setTsPanelMode_('soil')" style="flex:1;font-size:9px">🟤 Soil (SHPI)</button>
@@ -341,7 +474,7 @@ canvas{display:block}
             <button class="btn btn-prim" onclick="useYearsForShpi_()" style="width:100%;font-size:9px" id="tsUseShpiBtn">🟤 Use selected years for SHPI</button>
           </div>
         </div>
-        <!-- D3: Paired Scatter (SHPI fallow × CPI season per year) -->
+        <!-- D3: Paired Scatter -->
         <div id="tsPairedPanel" style="display:none">
           <div style="font-size:8px;color:#9FE1CB;margin-bottom:5px">Year-by-year fallow SHPI vs crop CPI scatter. Requires both Crop and Soil series to be fetched.</div>
           <div style="display:flex;gap:4px;margin-bottom:6px;text-align:center">
@@ -360,158 +493,79 @@ canvas{display:block}
       </div>
     </div>
 
-    <!-- Step 4: Run -->
-    <div class="sb">
-      <button class="btn btn-run" id="runBtn" onclick="runAnalysis()" disabled>
-        ▶ Run Phase 1 Analysis
-      </button>
-      <button class="btn btn-sec" id="runAllBtn" style="margin-top:6px" onclick="runAllROIs_()">
-        ▶▶ Run All Saved ROIs
-      </button>
-      <div class="progress" id="progress">
-        <div class="prog-msg" id="progMsg">Initialising...</div>
-        <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+    <!-- ③b PER-YEAR SCATTER (Stage I) -->
+    <div class="research-step" id="perYearScatterStep" style="display:none">
+      <div class="step-hdr" onclick="toggleResearchStep_('perYearBody',this)">
+        <span class="step-num step-sub">③b</span>
+        <span class="step-title">PER-YEAR SCATTER<small>Stage I</small></span>
+        <span class="step-badge show" id="perYearBadge"></span>
+        <span class="step-chevron">▼</span>
       </div>
-      <div class="batch-progress" id="batchProgress">
-        <div style="font-size:10px;font-weight:700;color:#F5A623;margin-bottom:6px">Batch Progress</div>
-        <div id="batchItems"></div>
+      <div id="perYearBody" class="step-body">
+        <div id="stageIPanel">
+          <div id="stageIBanner" style="font-size:9px;color:#9FE1CB;text-align:center;margin-bottom:4px;padding:3px;border-radius:3px"></div>
+          <div id="stageIYearGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:4px;margin-bottom:5px"></div>
+          <div id="stageIRhoTable" style="font-size:8px;color:#9FE1CB;margin-top:3px"></div>
+        </div>
+        <button class="chart-expand-btn" style="width:100%;margin-top:6px;font-size:11px" onclick="openChartFs_('shpiCpiScatter');setTimeout(function(){setScatterViewMode_('stagei')},80)">⛶ Full scatter grid</button>
       </div>
     </div>
 
-    <!-- Results -->
-    <div class="results" id="results">
-      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623">Results</h3>
-      <div class="banner" id="banner"></div>
-      <div id="dataSourceBadge" style="text-align:center;font-size:10px;padding:3px 8px;border-radius:4px;display:none"></div>
-      <!-- D4: ROI clip verification stats -->
-      <div id="clipStats" style="display:none;margin:4px 0;padding:4px 6px;background:rgba(0,0,0,0.3);border-radius:4px;border:1px solid #2E6B4F;font-size:9px;color:#9FE1CB;line-height:1.7"></div>
-      <div class="stat-grid" id="statGrid"></div>
-      <table class="ztbl">
-        <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
-        <tbody id="zoneTbody"></tbody>
-      </table>
-      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:6px">SHPI vs CPI correlation</h3><button class="chart-expand-btn" onclick="openChartFs_('shpiCpiScatter')" title="Fullscreen">⛶</button></div>
-      <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
-      <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
-      <div id="corrSummary" style="margin:3px 0 2px;font-size:9px;color:#9FE1CB;text-align:center"></div>
-      <div id="scatterOutlierNote" style="text-align:center;font-size:8px;color:#6FA898;margin-bottom:4px"></div>
-
-      <!-- Stage I: Per-year spatial filter panel -->
-      <div id="stageIPanel" style="display:none;margin:6px 0;padding:6px 8px;background:rgba(0,0,0,0.3);border:1px solid #2E6B4F;border-radius:5px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <span style="font-size:9px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em">Stage I — Per-Year Spatial Filter</span>
-          <button class="chart-expand-btn" style="font-size:11px;padding:1px 6px;margin-right:4px" onclick="openChartFs_('shpiCpiScatter');setTimeout(function(){setScatterViewMode_('stagei')},80)" title="Fullscreen">⛶</button>
-          <button class="rm-ctrl-btn" style="font-size:8px;padding:1px 5px" onclick="document.getElementById('stageIPanel').style.display='none'">✕</button>
-        </div>
-        <div id="stageIBanner" style="font-size:9px;color:#9FE1CB;text-align:center;margin-bottom:4px;padding:3px;border-radius:3px"></div>
-        <div id="stageIYearGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:4px;margin-bottom:5px"></div>
-        <div id="stageIRhoTable" style="font-size:8px;color:#9FE1CB;margin-top:3px"></div>
+    <!-- ③c POOLED SCATTER (All pixels) -->
+    <div class="research-step" id="pooledScatterStep" style="display:none">
+      <div class="step-hdr" onclick="toggleResearchStep_('pooledBody',this)">
+        <span class="step-num step-sub">③c</span>
+        <span class="step-title">POOLED SCATTER<small>All pixels</small></span>
+        <span class="step-badge show" id="pooledBadge"></span>
+        <span class="step-chevron">▼</span>
       </div>
-
-      <div id="results-map-ctrls">
-        <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
-        <input type="range" id="rasterOpacity" min="10" max="100" value="80" oninput="updateRasterOpacity_(this.value, 'rasterOpacityVal', false)">
-        <span id="rasterOpacityVal" style="font-size:10px;color:#F5A623;width:30px">80%</span>
-        <button class="rm-ctrl-btn" onclick="toggleResultsFullscreen_()" title="Fullscreen">⛶</button>
+      <div id="pooledBody" class="step-body">
+        <div class="chart-heading-row"><span style="font-size:9px;color:#9FE1CB;font-weight:600">All (SHPI_y, CPI_y) — colour by year</span><button class="chart-expand-btn" onclick="openChartFs_('shpiCpiScatter')" title="Fullscreen">⛶</button></div>
+        <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
+        <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
+        <div id="corrSummary" style="margin:3px 0 2px;font-size:9px;color:#9FE1CB;text-align:center"></div>
+        <div id="scatterOutlierNote" style="text-align:center;font-size:8px;color:#6FA898;margin-bottom:4px"></div>
       </div>
-      <div id="results-map"></div>
-      <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
-      <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
     </div>
 
-    <!-- Browse Imagery + Set Windows (Stage G) -->
-    <div class="sb mon-section">
-      <h3 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px" onclick="toggleMonSection_()">
-        <span>🛰 Browse Imagery</span>
-        <span id="monToggleIcon" style="font-size:10px;margin-left:auto">▶</span>
-      </h3>
-      <div id="monBody" style="display:none">
-        <p class="hint" style="margin:0 0 6px">Browse Sentinel-2 true-colour imagery to identify bare-soil and crop periods. Set windows below, then run analysis.</p>
-        <label class="field">Browse cadence</label>
-        <div class="mon-row">
-          <select id="shCadence" onchange="onMonCadenceChange_()">
-            <option value="monthly">Monthly</option>
-            <option value="biweekly">Biweekly (14-day)</option>
-            <option value="weekly">Weekly (7-day)</option>
-          </select>
-        </div>
-        <!-- Monthly picker -->
-        <div id="shMonthlyCtrl">
-          <label class="field" style="margin-top:6px">Month / Year</label>
-          <div class="mon-row">
-            <select id="shMonth">
-              <option value="01">January</option><option value="02">February</option>
-              <option value="03">March</option><option value="04">April</option>
-              <option value="05">May</option><option value="06">June</option>
-              <option value="07">July</option><option value="08">August</option>
-              <option value="09">September</option><option value="10">October</option>
-              <option value="11">November</option><option value="12">December</option>
-            </select>
-            <input type="number" id="shYear" value="2023" min="2017" max="2025" style="max-width:64px">
-            <button onclick="applyGasTile_()">▶ Load</button>
-          </div>
-        </div>
-        <!-- Weekly / Biweekly period stepper -->
-        <div id="shPeriodCtrl" style="display:none">
-          <label class="field" style="margin-top:6px">Year</label>
-          <div class="mon-row">
-            <input type="number" id="shPeriodYear" value="2023" min="2017" max="2025" style="max-width:64px" onchange="updateShPeriodLabel_()">
-          </div>
-          <label class="field" style="margin-top:4px">Period</label>
-          <div class="mon-stepper">
-            <button onclick="stepPeriod_(-1)">◀</button>
-            <span id="shPeriodLabel">W01 — Jan 1–7</span>
-            <button onclick="stepPeriod_(1)">▶</button>
-          </div>
-          <button class="btn btn-sec" style="width:100%;margin-top:4px" onclick="applyGasTile_()">▶ Load tile</button>
-        </div>
-        <div id="monMsg" class="mon-hint" style="color:#9FE1CB;margin-top:4px"></div>
+    <!-- ③d ZONE MEANS (collapsed by default) -->
+    <div class="research-step" id="zoneMeansStep" style="display:none">
+      <div class="step-hdr" onclick="toggleResearchStep_('zonesBody',this)">
+        <span class="step-num step-sub">③d</span>
+        <span class="step-title">ZONE MEANS<small>Adaptive bins</small></span>
+        <span class="step-badge show" id="zonesBadge"></span>
+        <span class="step-chevron">▶</span>
+      </div>
+      <div id="zonesBody" class="step-body" style="display:none">
+        <div id="dataSourceBadge" style="text-align:center;font-size:10px;padding:3px 8px;border-radius:4px;display:none"></div>
+        <div id="clipStats" style="display:none;margin:4px 0;padding:4px 6px;background:rgba(0,0,0,0.3);border-radius:4px;border:1px solid #2E6B4F;font-size:9px;color:#9FE1CB;line-height:1.7"></div>
+        <div class="stat-grid" id="statGrid"></div>
+        <table class="ztbl">
+          <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
+          <tbody id="zoneTbody"></tbody>
+        </table>
+      </div>
+    </div>
 
-        <button class="btn btn-sec" style="margin-top:6px;width:100%" onclick="clearMonthlyLayer_()">✕ Clear imagery</button>
-
-        <!-- ── Set analysis windows ── -->
-        <div class="mon-sep"></div>
-        <div class="mon-win-label">📐 Set analysis windows</div>
-        <p class="hint" style="margin:0 0 4px;font-size:9px">Browse above, then set the month ranges where your field is bare (SHPI) and cropped (CPI).</p>
-        <label class="field" style="margin-top:2px">🟤 Bare soil (SHPI) window</label>
-        <div class="mon-row">
-          <select id="wBareStart" onchange="onWindowChange_()">
-            <option value="1">Jan</option><option value="2" selected>Feb</option><option value="3">Mar</option>
-            <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
-            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
-            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
-          </select>
-          <span style="color:#5a8a6a;flex-shrink:0">→</span>
-          <select id="wBareEnd" onchange="onWindowChange_()">
-            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
-            <option value="4">Apr</option><option value="5" selected>May</option><option value="6">Jun</option>
-            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
-            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
-          </select>
+    <!-- ④ CONCLUDE — Hypothesis -->
+    <div class="research-step" id="concludeStep" style="display:none">
+      <div class="step-hdr" onclick="toggleResearchStep_('concludeBody',this)">
+        <span class="step-num">④</span>
+        <span class="step-title">CONCLUDE<small>Hypothesis</small></span>
+        <span class="step-badge" id="concludeBadge"></span>
+        <span class="step-chevron">▼</span>
+      </div>
+      <div id="concludeBody" class="step-body">
+        <div class="banner" id="banner"></div>
+        <div id="results-map-ctrls">
+          <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
+          <input type="range" id="rasterOpacity" min="10" max="100" value="80" oninput="updateRasterOpacity_(this.value, 'rasterOpacityVal', false)">
+          <span id="rasterOpacityVal" style="font-size:10px;color:#F5A623;width:30px">80%</span>
+          <button class="rm-ctrl-btn" onclick="toggleResultsFullscreen_()" title="Fullscreen">⛶</button>
         </div>
-        <label class="field" style="margin-top:4px">🌾 Cropped (CPI) window</label>
-        <div class="mon-row">
-          <select id="wCropStart" onchange="onWindowChange_()">
-            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
-            <option value="4">Apr</option><option value="5">May</option><option value="6" selected>Jun</option>
-            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
-            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
-          </select>
-          <span style="color:#5a8a6a;flex-shrink:0">→</span>
-          <select id="wCropEnd" onchange="onWindowChange_()">
-            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
-            <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
-            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
-            <option value="10" selected>Oct</option><option value="11">Nov</option><option value="12">Dec</option>
-          </select>
-        </div>
-        <div class="mon-row" style="margin-top:6px;gap:12px">
-          <label style="font-size:10px;color:#9FE1CB;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="wSeason" value="kharif" checked> Kharif</label>
-          <label style="font-size:10px;color:#9FE1CB;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="wSeason" value="rabi"> Rabi</label>
-        </div>
-        <div id="wOverlapWarn" class="mon-hint" style="color:#F5A623;display:none">⚠ Windows overlap — separate bare-soil and crop periods.</div>
-        <button class="btn btn-prim" style="width:100%;margin-top:6px;font-size:10px" onclick="runWithWindows_()">▶ Run CPI + SHPI with these windows</button>
-        <div class="mon-hint" style="margin-top:2px">Runs full Auto-Run pipeline using the month ranges above instead of hard-coded season defaults.</div>
+        <div id="results-map"></div>
+        <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
+        <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
       </div>
     </div>
 
@@ -828,7 +882,9 @@ function clearROI() {
   currentRoiId = null
   document.getElementById('runBtn').disabled = true
   document.getElementById('roiStatus').classList.remove('show')
-  document.getElementById('results').classList.remove('show')
+  ['pooledScatterStep','zoneMeansStep','concludeStep','perYearScatterStep'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.style.display='none';
+  })
   updateAreaDisplay_()
   renderLibraryPanel_()
 }
@@ -855,7 +911,9 @@ function runAnalysis() {
   showOverlay(true, 'Fetching satellite archive (all months, all years)...')
   setProgress(true, 10, 'Fetching satellite archive (all months, all years)...')
   document.getElementById('runBtn').disabled = true
-  document.getElementById('results').classList.remove('show')
+  ['pooledScatterStep','zoneMeansStep','concludeStep','perYearScatterStep'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.style.display='none';
+  })
 
   const params = { geojson: roi, yearStart, yearEnd, resolution }
 
@@ -1279,6 +1337,8 @@ function decodeRasterAndAnalyse_(rawData) {
     stageIResult = null
     var stageIPanelEl = document.getElementById('stageIPanel')
     if (stageIPanelEl) stageIPanelEl.style.display = 'none'
+    var perYearEl = document.getElementById('perYearScatterStep')
+    if (perYearEl) perYearEl.style.display = 'none'
     if (currentRoiId) {
       var cache = loadResultsCache_()
       cache[currentRoiId] = result
@@ -1409,10 +1469,12 @@ function renderResults(data) {
   // ── SHPI vs CPI scatter plot — delegated to renderScatterPlot_() ──────────
   renderScatterPlot_(data)
 
-  document.getElementById('results').classList.add('show')
   document.getElementById('results-map-ctrls').style.display = 'flex'
+  ['pooledScatterStep','zoneMeansStep','concludeStep'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.style.display='';
+  })
 
-  // Zone map — rendered after 'show' so the container has layout
+  // Zone map — rendered after sections are visible so the container has layout
   setTimeout(function() { renderResultsMap_(data) }, 50)
 }
 
@@ -3196,13 +3258,23 @@ function downloadResult() {
   a.click()
 }
 
-// ── Time Series — collapse / expand panel ─────────────────────
-function toggleTsPanel_() {
-  const body    = document.getElementById('tsPanelBody')
-  const chevron = document.getElementById('tsPanelChevron')
-  const open    = body.style.display !== 'none'
-  body.style.display    = open ? 'none' : 'block'
-  chevron.textContent   = open ? '▶' : '▼'
+// ── Time Series — collapse / expand panel (no-op: panel is now always open as research step ③a)
+function toggleTsPanel_() {}
+
+function toggleResearchStep_(bodyId, hdrEl) {
+  var body = document.getElementById(bodyId)
+  if (!body) return
+  var open = body.style.display !== 'none'
+  body.style.display = open ? 'none' : ''
+  var chevron = hdrEl ? hdrEl.querySelector('.step-chevron') : null
+  if (chevron) chevron.textContent = open ? '▶' : '▼'
+}
+
+function setBadge_(id, text) {
+  var b = document.getElementById(id)
+  if (!b) return
+  b.textContent = text
+  b.classList.add('show')
 }
 
 // ── D1: Time Series — switch between Crop and Soil tabs ───────
@@ -4343,13 +4415,8 @@ function setProgress(show, pct, msg) {
 var monthlyLayer = null
 var MON_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-function toggleMonSection_() {
-  var body = document.getElementById('monBody')
-  var icon = document.getElementById('monToggleIcon')
-  var shown = body.style.display !== 'none'
-  body.style.display = shown ? 'none' : 'block'
-  icon.textContent = shown ? '▶' : '▼'
-}
+// toggleMonSection_ is a no-op: Browse Imagery is now always open as research step ①
+function toggleMonSection_() {}
 
 function applyGasTile_() {
   if (drawn.getLayers().length === 0) { alert('Draw an ROI first.'); return }
@@ -4788,6 +4855,7 @@ async function autoRunPipeline_() {
     autoLogLine_('[ERROR] ' + err.message, true)
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🚀 Auto-Run Pipeline' }
+    setBadge_('fetchBadge', '✓ done')
     // Reset custom windows so next plain Auto-Run uses season defaults
     customCropMonthStart = null; customCropMonthEnd = null
     customBareMonthStart = null; customBareMonthEnd = null
@@ -5104,6 +5172,9 @@ function renderStageIPanel_(result) {
   var tbl    = document.getElementById('stageIRhoTable')
   if (!panel || !result) return
   panel.style.display = 'block'
+  var stepEl = document.getElementById('perYearScatterStep')
+  if (stepEl) stepEl.style.display = ''
+  setBadge_('perYearBadge', '✓')
 
   // Banner
   var v = result.validation
