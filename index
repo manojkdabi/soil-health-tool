@@ -421,7 +421,7 @@ canvas{display:block}
         <!-- Sentinel Hub WMS controls -->
         <div id="shWmsCtrl" style="display:none">
           <label class="field">Instance ID (from CDS/SH dashboard)</label>
-          <input type="text" id="shInstanceId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="width:100%;background:#0f1a17;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:4px 6px;font-size:10px;box-sizing:border-box">
+          <input type="text" id="shInstanceId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" oninput="localStorage.setItem('shpInstanceId',this.value.trim())" style="width:100%;background:#0f1a17;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:4px 6px;font-size:10px;box-sizing:border-box">
           <label class="field" style="margin-top:6px">Browse cadence</label>
           <div class="mon-row">
             <select id="shCadence" onchange="onMonCadenceChange_()">
@@ -3104,6 +3104,15 @@ function syncChartFs_(id) {
 ;(function initLibrary_() {
   renderLibraryPanel_()
   maybeShowCompareSection_()
+})()
+
+// ── Restore persisted Instance ID ─────────────────────────────
+;(function restoreInstanceId_() {
+  var saved = localStorage.getItem('shpInstanceId')
+  if (saved) {
+    var el = document.getElementById('shInstanceId')
+    if (el) el.value = saved
+  }
 })()
 
 // ── Save to Sheet ─────────────────────────────────────────────
