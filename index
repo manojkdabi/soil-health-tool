@@ -5024,7 +5024,7 @@ async function autoRunPipeline_() {
     setBadge_('fetchBadge', '✓ done')
     // Update Both-seasons chart if the Both tab is visible
     if (tsPanelMode === 'both') renderBothSeasonsChart_()
-    else if (kharifTsCache && rabiTsCache) setBadge_('fieldTsBadge', '✓')
+    else if (kharifTsCache && kharifSoilTsCache && rabiTsCache && rabiSoilTsCache) setBadge_('fieldTsBadge', '✓')
     // Reset custom windows so next plain Auto-Run uses season defaults
     customCropMonthStart = null; customCropMonthEnd = null
     customBareMonthStart = null; customBareMonthEnd = null
