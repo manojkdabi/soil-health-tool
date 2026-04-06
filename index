@@ -203,6 +203,8 @@ canvas{display:block}
 .autoLogWarn{color:#F5A623}
 .ts-idx-btn:hover:not(.active){background:#2E6B4F}
 #tsChartWrap{height:140px;margin-top:4px}
+#soilChartWrap{height:140px;margin-top:4px}
+#d3PairedChartWrap{height:140px;margin-top:4px}
 </style>
 </head>
 <body>
