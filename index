@@ -5823,7 +5823,9 @@ async function runStageK_(season, years) {
   years.forEach(function(yr) {
     if (perYearAucPairs[yr]) pooledAucPairs = pooledAucPairs.concat(perYearAucPairs[yr])
   })
-  // Re-use stageIAdaptiveBins_ with auc mapped to cpi key
+  // Re-use stageIAdaptiveBins_ which expects {shpi, cpi} pairs.
+  // Here 'cpi' is the y-axis value — we pass AUC as the 'cpi' field to reuse
+  // the same equal-frequency binning + Spearman ρ + F2 confirmation logic unchanged.
   var pairsForBins = pooledAucPairs.map(function(p) { return { shpi: p.shpi, cpi: p.auc } })
   var validationAuc = stageIAdaptiveBins_(pairsForBins)
 

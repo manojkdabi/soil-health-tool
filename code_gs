@@ -797,6 +797,9 @@ function fetchWeeklyNdviRaster_(bbox, fromStr, toStr, W, H, evalscript, token) {
 // ── Stage K public: fetch biweekly NDVI rasters for each retained year ────────
 // params: { geojson, season ('kharif'|'rabi'), years: [2020, 2021, ...] }
 // Returns: { success, years: [{year, weeks: [{label, startDate, endDate, ndviB64}, ...]}] }
+// Named 'CpiRasters' for API symmetry with getPerYearRasters — the rasters contain
+// per-pixel NDVI (best cloud-free pass per 14-day window) used to compute NDVI-AUC,
+// which replaces mean CPI as the y-axis in the Stage K scatter.
 // 14-day windows → ~10–11 fetches per year; fits within 6-min GAS execution limit.
 function getWeeklyCpiRasters(params) {
   try {
