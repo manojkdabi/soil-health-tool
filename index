@@ -2332,7 +2332,7 @@ function setScatterViewMode_(mode) {
   if (owfsEl) owfsEl.style.display = mode === 'pixels' ? 'flex' : (mode === 'bins' ? 'inline-flex' : 'none')
   // Toggle visibility of standard canvas vs Stage I grid
   if (canvasWrap)  canvasWrap.style.display  = mode === 'stagei' ? 'none' : ''
-  if (stageIFsGrid) stageIFsGrid.style.display = mode === 'stagei' ? 'block' : 'none'
+  if (stageIFsGrid) stageIFsGrid.style.display = mode === 'stagei' ? 'flex' : 'none'
   if (mode === 'stagei') {
     renderStageIFsPanel_()
     return
@@ -5186,16 +5186,17 @@ function renderStageIFsPanel_() {
     var color = isRej ? '#888' : (YEAR_COLORS[yi % YEAR_COLORS.length])
 
     var wrap = document.createElement('div')
-    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#5a2020' : '#2E6B4F') + ';border-radius:6px;padding:8px;background:rgba(0,0,0,0.3);opacity:' + (isRej ? '0.55' : '1')
+    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#5a2020' : '#2E6B4F') + ';border-radius:6px;padding:8px;background:rgba(0,0,0,0.3);opacity:' + (isRej ? '0.55' : '1') + ';display:flex;flex-direction:column;height:260px'
     var title = document.createElement('div')
-    title.style.cssText = 'font-size:11px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:4px'
+    title.style.cssText = 'font-size:11px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:4px;flex-shrink:0'
     title.textContent = yr + (isRej ? ' — REJECTED' : '') + (rho !== null ? '   ρ = ' + rho.toFixed(3) : '   ρ = n/a')
     wrap.appendChild(title)
 
+    var canvasWrap = document.createElement('div')
+    canvasWrap.style.cssText = 'flex:1;position:relative;min-height:0'
     var canvas = document.createElement('canvas')
-    canvas.style.cssText = 'width:100%;height:160px'
-    canvas.width = 220; canvas.height = 160
-    wrap.appendChild(canvas)
+    canvasWrap.appendChild(canvas)
+    wrap.appendChild(canvasWrap)
     grid.appendChild(wrap)
 
     if (pairs.length < 3) return
@@ -5213,7 +5214,7 @@ function renderStageIFsPanel_() {
         ]
       },
       options: {
-        responsive: false, animation: false,
+        responsive: true, maintainAspectRatio: false, animation: false,
         plugins: { legend: { display: false }, tooltip: { enabled: false } },
         scales: {
           x: { title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 9 } },
@@ -5331,10 +5332,10 @@ function renderStageIFsPanel_() {
   <div id="seasonFetchStatus-fs" style="text-align:center;font-size:11px;color:#F5A623;padding:4px 0;display:none"></div>
   <div class="chart-fs-body"><canvas id="shpiCpiScatter-fs"></canvas></div>
   <!-- Stage I per-year scatter grid (shown only in stagei mode) -->
-  <div id="stageIFsGrid" style="display:none;padding:12px;overflow-y:auto;flex:1">
+  <div id="stageIFsGrid" style="display:none;padding:12px;overflow-y:auto;flex:1;flex-direction:column">
     <div id="stageIFsBanner" style="font-size:12px;color:#9FE1CB;text-align:center;margin-bottom:10px;padding:4px;border-radius:3px"></div>
-    <div id="stageIFsYearGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
-    <div id="stageIFsRhoTable" style="font-size:11px;color:#9FE1CB;margin-top:10px;padding:8px;background:rgba(0,0,0,0.3);border-radius:4px"></div>
+    <div id="stageIFsYearGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;align-content:start"></div>
+    <div id="stageIFsRhoTable" style="font-size:11px;color:#9FE1CB;margin-top:10px;padding:8px;background:rgba(0,0,0,0.3);border-radius:4px;flex-shrink:0"></div>
   </div>
   <div id="scatterEq-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-top:4px"></div>
   <div id="corrSummary-fs" style="margin:3px 0 2px;font-size:11px;color:#9FE1CB;text-align:center"></div>
