@@ -910,7 +910,7 @@ function runAnalysis() {
 
   showOverlay(true, 'Fetching satellite archive (all months, all years)...')
   setProgress(true, 10, 'Fetching satellite archive (all months, all years)...')
-  document.getElementById('runBtn').disabled = true
+  document.getElementById('runBtn').disabled = true;
   ['pooledScatterStep','zoneMeansStep','concludeStep','perYearScatterStep'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.style.display='none';
   })
@@ -1469,7 +1469,7 @@ function renderResults(data) {
   // ── SHPI vs CPI scatter plot — delegated to renderScatterPlot_() ──────────
   renderScatterPlot_(data)
 
-  document.getElementById('results-map-ctrls').style.display = 'flex'
+  document.getElementById('results-map-ctrls').style.display = 'flex';
   ['pooledScatterStep','zoneMeansStep','concludeStep'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.style.display='';
   })
