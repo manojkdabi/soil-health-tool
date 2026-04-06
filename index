@@ -4812,7 +4812,7 @@ function spearmanRhoArr_(xs, ys) {
     while (si < n) {
       var ei = si
       while (ei < n - 1 && indexed[ei + 1][0] === indexed[ei][0]) ei++
-      var avgRank = (si + ei + 2) / 2  // average of 1-based positions si+1 .. ei+1
+      var avgRank = (si + ei + 2) / 2  // midpoint of 1-based range [si+1 .. ei+1]
       for (var ki = si; ki <= ei; ki++) ranks[indexed[ki][1]] = avgRank
       si = ei + 1
     }
@@ -5045,7 +5045,7 @@ async function runStageI_(season, years) {
       for (var qj = qi + 1; qj < rawYearKeys.length; qj++) {
         var arrA = perYearPairsRaw[rawYearKeys[qi]].shpi
         var arrB = perYearPairsRaw[rawYearKeys[qj]].shpi
-        var same = (arrA && arrB && arrA.length === arrB.length)
+        var same = (arrA && arrB && arrA.length === arrB.length && nCheck > 0)
         if (same) {
           for (var qq = 0; qq < nCheck; qq++) {
             if (arrA[qq] !== arrB[qq]) { same = false; break }
