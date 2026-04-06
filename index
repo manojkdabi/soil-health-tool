@@ -2424,7 +2424,9 @@ function setScatterViewMode_(mode) {
   var pfsEl  = document.getElementById('scatterTabPx-fs')
   var sifsEl = document.getElementById('scatterTabStageI-fs')
   var owfsEl = document.getElementById('outlierToggleWrap-fs')
-  var canvasWrap = document.querySelector('.chart-fs-body')
+  var canvasWrap = null
+  var scatterOverlay = document.getElementById('chartFs-shpiCpiScatter')
+  if (scatterOverlay) canvasWrap = scatterOverlay.querySelector('.chart-fs-body')
   var stageIFsGrid = document.getElementById('stageIFsGrid')
   if (bfsEl)  bfsEl.classList.toggle('active',  mode === 'bins')
   if (pfsEl)  pfsEl.classList.toggle('active',  mode === 'pixels')
@@ -2437,7 +2439,9 @@ function setScatterViewMode_(mode) {
     renderStageIFsPanel_()
     return
   }
-  renderScatterFsActive_()
+  // Defer render by one animation frame so the canvas has valid layout dimensions
+  // after being un-hidden (display:none → '' transition).
+  requestAnimationFrame(function() { renderScatterFsActive_() })
 }
 
 // ── Season scatter helpers (Stage 2 / Stage 3) ────────────────────────────
@@ -5463,10 +5467,10 @@ function renderStageIFsPanel_() {
     var pairs = result.perYearPairs[yr]
     var rho   = result.perYearRho[yr]
     var isRej = result.tukey.rejected.some(function(r) { return String(r.year) === String(yr) })
-    var color = isRej ? '#888' : (YEAR_COLORS[yi % YEAR_COLORS.length])
+    var color = isRej ? '#c0c0c0' : (YEAR_COLORS[yi % YEAR_COLORS.length])
 
     var wrap = document.createElement('div')
-    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#5a2020' : '#2E6B4F') + ';border-radius:6px;padding:8px;background:rgba(0,0,0,0.3);opacity:' + (isRej ? '0.55' : '1') + ';display:flex;flex-direction:column;height:260px'
+    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#7a3030' : '#2E6B4F') + ';border-radius:6px;padding:8px;background:rgba(0,0,0,0.3);opacity:' + (isRej ? '0.75' : '1') + ';display:flex;flex-direction:column;height:260px'
     var title = document.createElement('div')
     title.style.cssText = 'font-size:11px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:4px;flex-shrink:0'
     title.textContent = yr + (isRej ? ' — REJECTED' : '') + (rho !== null ? '   ρ = ' + rho.toFixed(4) : '   ρ = n/a')
@@ -5488,7 +5492,7 @@ function renderStageIFsPanel_() {
       data: {
         datasets: [
           { type: 'scatter', label: yr, data: ptData,
-            backgroundColor: color + '88', pointRadius: 2, pointHoverRadius: 3 },
+            backgroundColor: (function() { var c = hexToRgb_(color); return c ? 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (isRej ? '0.7' : '0.73') + ')' : color + 'bb' })(), pointRadius: 2.5, pointHoverRadius: 4 },
           { type: 'line', label: 'fit', data: reg ? reg.lineData : [],
             borderColor: '#F5A623', borderWidth: 1.5, pointRadius: 0, fill: false }
         ]
@@ -5632,9 +5636,9 @@ function renderStageIPanelGrid_(result, mode) {
     var pts   = pairs[yr]
     var rho   = rhoMap[yr]
     var isRej = rejected.some(function(r) { return String(r.year) === String(yr) })
-    var color = isRej ? '#555' : (YEAR_COLORS[yi % YEAR_COLORS.length])
+    var color = isRej ? '#a0a0a0' : (YEAR_COLORS[yi % YEAR_COLORS.length])
     var wrap  = document.createElement('div')
-    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#5a2020' : '#2E6B4F') + ';border-radius:4px;padding:4px;background:rgba(0,0,0,0.25);opacity:' + (isRej ? '0.55' : '1')
+    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#7a3030' : '#2E6B4F') + ';border-radius:4px;padding:4px;background:rgba(0,0,0,0.25);opacity:' + (isRej ? '0.8' : '1')
     var label = document.createElement('div')
     label.style.cssText = 'font-size:8px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:2px'
     label.textContent = yr + (isRej ? ' ✗' : '') + (rho !== null ? '  ρ=' + (typeof rho === 'number' ? rho.toFixed(4) : rho) : '  ρ=n/a')
