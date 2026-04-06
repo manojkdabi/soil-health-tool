@@ -380,6 +380,18 @@ canvas{display:block}
       <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
       <div id="corrSummary" style="margin:3px 0 2px;font-size:9px;color:#9FE1CB;text-align:center"></div>
       <div id="scatterOutlierNote" style="text-align:center;font-size:8px;color:#6FA898;margin-bottom:4px"></div>
+
+      <!-- Stage I: Per-year spatial filter panel -->
+      <div id="stageIPanel" style="display:none;margin:6px 0;padding:6px 8px;background:rgba(0,0,0,0.3);border:1px solid #2E6B4F;border-radius:5px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:9px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em">Stage I — Per-Year Spatial Filter</span>
+          <button class="rm-ctrl-btn" style="font-size:8px;padding:1px 5px" onclick="document.getElementById('stageIPanel').style.display='none'">✕</button>
+        </div>
+        <div id="stageIBanner" style="font-size:9px;color:#9FE1CB;text-align:center;margin-bottom:4px;padding:3px;border-radius:3px"></div>
+        <div id="stageIYearGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:4px;margin-bottom:5px"></div>
+        <div id="stageIRhoTable" style="font-size:8px;color:#9FE1CB;margin-top:3px"></div>
+      </div>
+
       <div id="results-map-ctrls">
         <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
         <input type="range" id="rasterOpacity" min="10" max="100" value="80" oninput="updateRasterOpacity_(this.value, 'rasterOpacityVal', false)">
@@ -547,7 +559,7 @@ let currentFsLayer = 'zones'   // 'zones' | 'shpi' | 'cpi'
 let currentRoiId = null        // UUID of the library ROI currently loaded (null if drawn/ad-hoc)
 let cmpScatterChart = null
 let cmpScatterMode = 'zones'   // 'zones' | 'summary'
-let scatterViewMode = 'bins'   // 'bins'  | 'pixels'
+let scatterViewMode = 'bins'   // 'bins'  | 'pixels' | 'stagei'
 let scatterSeasonMode = 'all'  // 'all' | 'kharif' | 'rabi' — season filter for scatter FS
 let seasonCpiCache = {}        // {season: scatter pts array} — cached season CPI decode results
 let compareMapFs = null
@@ -1203,9 +1215,12 @@ function decodeRasterAndAnalyse_(rawData) {
       return
     }
     lastResult = result
-    // Clear season CPI cache so stale season data from a previous ROI is not shown
+    // Clear season CPI cache and Stage I result so stale data from a previous ROI is not shown
     seasonCpiCache = {}
     scatterSeasonMode = 'all'
+    stageIResult = null
+    var stageIPanelEl = document.getElementById('stageIPanel')
+    if (stageIPanelEl) stageIPanelEl.style.display = 'none'
     if (currentRoiId) {
       var cache = loadResultsCache_()
       cache[currentRoiId] = result
@@ -2238,12 +2253,23 @@ function renderCompareView_() {
 
 function setScatterViewMode_(mode) {
   scatterViewMode = mode
-  var bfsEl = document.getElementById('scatterTabBins-fs')
-  var pfsEl = document.getElementById('scatterTabPx-fs')
+  var bfsEl  = document.getElementById('scatterTabBins-fs')
+  var pfsEl  = document.getElementById('scatterTabPx-fs')
+  var sifsEl = document.getElementById('scatterTabStageI-fs')
   var owfsEl = document.getElementById('outlierToggleWrap-fs')
-  if (bfsEl) bfsEl.classList.toggle('active', mode === 'bins')
-  if (pfsEl) pfsEl.classList.toggle('active', mode === 'pixels')
-  if (owfsEl) owfsEl.style.display = mode === 'pixels' ? 'flex' : 'inline-flex'
+  var canvasWrap = document.querySelector('.chart-fs-body')
+  var stageIFsGrid = document.getElementById('stageIFsGrid')
+  if (bfsEl)  bfsEl.classList.toggle('active',  mode === 'bins')
+  if (pfsEl)  pfsEl.classList.toggle('active',  mode === 'pixels')
+  if (sifsEl) sifsEl.classList.toggle('active', mode === 'stagei')
+  if (owfsEl) owfsEl.style.display = mode === 'pixels' ? 'flex' : (mode === 'bins' ? 'inline-flex' : 'none')
+  // Toggle visibility of standard canvas vs Stage I grid
+  if (canvasWrap)  canvasWrap.style.display  = mode === 'stagei' ? 'none' : ''
+  if (stageIFsGrid) stageIFsGrid.style.display = mode === 'stagei' ? 'block' : 'none'
+  if (mode === 'stagei') {
+    renderStageIFsPanel_()
+    return
+  }
   renderScatterFsActive_()
 }
 
@@ -3981,6 +4007,10 @@ let fallowShpiCache    = {}     // { 'kharif': shpiArr, 'rabi': shpiArr } — ca
 let d3SeasonTab        = 'kharif'  // 'kharif' | 'rabi'
 let pairedScatterChart = null
 
+// ── Stage I globals ────────────────────────────────────────────────────────
+let perYearRastersCache = {}   // { 'kharif': { year: { shpi:Float32Array, cpi:Float32Array } } }
+let stageIResult        = null // latest Stage I output (set by runStageI_)
+
 // ── D1: Soil TS — switch view mode ────────────────────────────
 let soilTsViewMode = 'timeline'
 function setSoilTsViewMode_(mode) {
@@ -4639,7 +4669,30 @@ async function autoRunPipeline_() {
 
     // [7/7] Run Phase 1 Analysis
     autoLogLine_('[7/7] Running Phase 1 Analysis...')
+    // runAnalysis is synchronous from the UI perspective; Stage I runs after it completes
+    // by watching for lastResult to be populated. We wrap it in a short poll.
     runAnalysis()
+    // [8/7] Stage I — per-year spatial filter (runs after Phase 1 analysis decodes)
+    autoLogLine_('[8/7] Stage I: will start after Phase 1 raster decodes...')
+    await new Promise(function(resolve) {
+      var attempts = 0
+      var maxAttempts = 60  // wait up to 30 s (500 ms × 60)
+      var poll = setInterval(function() {
+        attempts++
+        if (lastResult || attempts >= maxAttempts) {
+          clearInterval(poll)
+          resolve()
+        }
+      }, 500)
+    })
+    if (lastResult) {
+      autoLogLine_('[8/7] Stage I: fetching per-year rasters (' + tsYearsForShpi.join(',') + ')...')
+      try {
+        await runStageI_(season, tsYearsForShpi)
+      } catch(siErr) {
+        autoLogLine_('[8/7] Stage I failed: ' + siErr.message, true)
+      }
+    }
 
   } catch (err) {
     autoLogLine_('[ERROR] ' + err.message, true)
@@ -4652,7 +4705,446 @@ async function autoRunPipeline_() {
 }
 </script>
 
-<!-- Fullscreen results map -->
+<!-- ── Stage I: Per-year spatial filter ──────────────────────────────────── -->
+<script>
+
+// ── I-helper: Spearman ρ between two equal-length numeric arrays ─────────────
+function spearmanRhoArr_(xs, ys) {
+  var n = xs.length
+  if (n < 3) return 0
+  function rankAvg(arr) {
+    var sorted = arr.slice().sort(function(a, b) { return a - b })
+    return arr.map(function(v) {
+      var idx = []
+      sorted.forEach(function(s, i) { if (s === v) idx.push(i + 1) })
+      return idx.reduce(function(a, b) { return a + b }, 0) / idx.length
+    })
+  }
+  var rx = rankAvg(xs), ry = rankAvg(ys)
+  var rmx = rx.reduce(function(a, b) { return a + b }, 0) / n
+  var rmy = ry.reduce(function(a, b) { return a + b }, 0) / n
+  var num = rx.reduce(function(a, v, i) { return a + (v - rmx) * (ry[i] - rmy) }, 0)
+  var dx  = Math.sqrt(rx.reduce(function(a, v) { return a + (v - rmx) * (v - rmx) }, 0))
+  var dy  = Math.sqrt(ry.reduce(function(a, v) { return a + (v - rmy) * (v - rmy) }, 0))
+  return (dx * dy > 0) ? num / (dx * dy) : 0
+}
+
+// ── I-helper: Decode a per-year PNG pair from Stage I API response ────────────
+// Returns a promise resolving to { shpi: Float32Array, cpi: Float32Array } or null.
+function decodePerYearPngs_(shpiB64, cpiB64) {
+  return new Promise(function(resolve) {
+    if (!shpiB64 || !cpiB64) { resolve(null); return }
+    var shpiImg = new Image(), cpiImg = new Image()
+    var shpiDone = false, cpiDone = false
+    var shpiArr = null, cpiArr = null, W = 0, H = 0
+
+    function tryResolve() {
+      if (!shpiDone || !cpiDone) return
+      if (!shpiArr || !cpiArr || shpiArr.length !== cpiArr.length) { resolve(null); return }
+      resolve({ shpi: shpiArr, cpi: cpiArr, W: W, H: H })
+    }
+
+    shpiImg.onload = function() {
+      W = shpiImg.naturalWidth; H = shpiImg.naturalHeight
+      var c = document.createElement('canvas'); c.width = W; c.height = H
+      var ctx = c.getContext('2d'); ctx.drawImage(shpiImg, 0, 0)
+      var px = ctx.getImageData(0, 0, W, H).data
+      var total = W * H
+      shpiArr = new Float32Array(total)
+      for (var i = 0; i < total; i++) {
+        shpiArr[i] = px[i * 4 + 3] > 0 ? px[i * 4] / 254 : -1  // R=SHPI×254, A=count
+      }
+      shpiDone = true; tryResolve()
+    }
+    shpiImg.onerror = function() { shpiDone = true; tryResolve() }
+
+    cpiImg.onload = function() {
+      var cW = cpiImg.naturalWidth, cH = cpiImg.naturalHeight
+      var c = document.createElement('canvas'); c.width = cW; c.height = cH
+      var ctx = c.getContext('2d'); ctx.drawImage(cpiImg, 0, 0)
+      var px = ctx.getImageData(0, 0, cW, cH).data
+      var total = cW * cH
+      cpiArr = new Float32Array(total)
+      for (var i = 0; i < total; i++) {
+        cpiArr[i] = px[i * 4 + 3] > 0 ? px[i * 4 + 1] / 254 : -1  // G=CPI×254, A=count
+      }
+      cpiDone = true; tryResolve()
+    }
+    cpiImg.onerror = function() { cpiDone = true; tryResolve() }
+
+    shpiImg.src = 'data:image/png;base64,' + shpiB64
+    cpiImg.src  = 'data:image/png;base64,' + cpiB64
+  })
+}
+
+// ── I1: Build per-year pixel pairs with ROI polygon mask ─────────────────────
+// yearData: { year, shpi: Float32Array, cpi: Float32Array, W, H }
+// geojson: ROI polygon; bbox: [minLng, minLat, maxLng, maxLat]
+// Returns [{shpi, cpi}, ...] — pixels with valid (non-negative) values inside ROI
+function buildPerYearPixelPairs_(yearData, geojson, bbox) {
+  var shpiArr = yearData.shpi, cpiArr = yearData.cpi
+  var W = yearData.W, H = yearData.H
+  var pairs = []
+  if (!shpiArr || !cpiArr || shpiArr.length !== cpiArr.length) return pairs
+  var polyMask = null
+  if (bbox && geojson) {
+    var lngRange = bbox[2] - bbox[0], latRange = bbox[3] - bbox[1]
+    if (lngRange > 0 && latRange > 0) {
+      polyMask = new Uint8Array(W * H)
+      for (var mi = 0; mi < W * H; mi++) {
+        var col = mi % W, row = Math.floor(mi / W)
+        var lng = bbox[0] + (col + 0.5) / W * lngRange
+        var lat = bbox[3] - (row + 0.5) / H * latRange
+        polyMask[mi] = pointInPolygon_(lng, lat, geojson) ? 1 : 0
+      }
+    }
+  }
+  for (var i = 0; i < shpiArr.length; i++) {
+    if (polyMask && !polyMask[i]) continue
+    if (shpiArr[i] < 0 || cpiArr[i] < 0) continue
+    pairs.push({ shpi: shpiArr[i], cpi: cpiArr[i] })
+  }
+  return pairs
+}
+
+// ── I2: Compute per-year Spearman ρ from pixel pairs ─────────────────────────
+// perYearPairs: { year: [{shpi, cpi}, ...] }
+// Returns { year: rho, ... }
+function computePerYearRho_(perYearPairs) {
+  var rhoMap = {}
+  Object.keys(perYearPairs).forEach(function(yr) {
+    var pairs = perYearPairs[yr]
+    if (pairs.length < 3) { rhoMap[yr] = null; return }
+    var xs = pairs.map(function(p) { return p.shpi })
+    var ys = pairs.map(function(p) { return p.cpi })
+    rhoMap[yr] = Math.round(spearmanRhoArr_(xs, ys) * 1000) / 1000
+  })
+  return rhoMap
+}
+
+// ── I3: Tukey fence on per-year Spearman ρ values ────────────────────────────
+// rhoMap: { year: rho (number|null) }
+// Returns { retained: [year, ...], rejected: [{year, rho, side, lo, hi}, ...] }
+function stageIRhoTukey_(rhoMap) {
+  var validYears = Object.keys(rhoMap).filter(function(yr) { return rhoMap[yr] !== null })
+  if (validYears.length < 4) return { retained: validYears, rejected: [] }
+  var vals = validYears.map(function(yr) { return rhoMap[yr] })
+  var sorted = vals.slice().sort(function(a, b) { return a - b })
+  function pct(arr, p) {
+    var idx = Math.ceil(p / 100 * arr.length) - 1
+    return arr[Math.max(0, Math.min(idx, arr.length - 1))]
+  }
+  var Q1 = pct(sorted, 25), Q3 = pct(sorted, 75), IQR = Q3 - Q1
+  var lo, hi
+  if (IQR === 0) {
+    var mean = vals.reduce(function(s, v) { return s + v }, 0) / vals.length
+    var std  = Math.sqrt(vals.reduce(function(s, v) { return s + (v - mean) * (v - mean) }, 0) / (vals.length - 1))
+    lo = mean - 1.5 * std; hi = mean + 1.5 * std
+  } else {
+    lo = Q1 - 1.5 * IQR; hi = Q3 + 1.5 * IQR
+  }
+  var retained = [], rejected = []
+  validYears.forEach(function(yr) {
+    var r = rhoMap[yr]
+    if (r >= lo && r <= hi) {
+      retained.push(yr)
+    } else {
+      rejected.push({ year: yr, rho: r, lo: lo, hi: hi, side: r < lo ? 'below' : 'above' })
+    }
+  })
+  return { retained: retained, rejected: rejected, lo: lo, hi: hi }
+}
+
+// ── I5: Run F1/F2 adaptive binning + hypothesis on pooled per-year pairs ──────
+// pooledPairs: [{shpi, cpi}, ...] from all retained years
+// Returns validation object (same shape as decodeRasterToResult_ validation block)
+function stageIAdaptiveBins_(pooledPairs) {
+  if (pooledPairs.length < 6) {
+    return { confirmed: null, n_zones: 0, spearman_r: 0, r_squared: 0, is_monotonic: false,
+             cpi_ratio: null, shpi_thresholds: [], data_source: 'stage_i' }
+  }
+  var nBins = Math.min(10, Math.max(2, Math.floor(pooledPairs.length / 3)))
+  var shpiSorted = pooledPairs.map(function(p) { return p.shpi }).sort(function(a, b) { return a - b })
+  var cuts = []
+  for (var ki = 1; ki < nBins; ki++) cuts.push(percentile_(shpiSorted, ki / nBins * 100))
+  function assignBin(v) {
+    for (var ci = 0; ci < cuts.length; ci++) { if (v < cuts[ci]) return ci }
+    return nBins - 1
+  }
+  var bins = []
+  for (var bi = 0; bi < nBins; bi++) bins.push([])
+  pooledPairs.forEach(function(p) { bins[assignBin(p.shpi)].push(p) })
+  function mean(arr, k) { return arr.length ? arr.reduce(function(s, p) { return s + p[k] }, 0) / arr.length : 0 }
+  var binMeansShpi = bins.map(function(b) { return mean(b, 'shpi') })
+  var binMeansCpi  = bins.map(function(b) { return mean(b, 'cpi') })
+  // Spearman ρ on bin means
+  var rho = spearmanRhoArr_(binMeansShpi, binMeansCpi)
+  rho = Math.round(rho * 1000) / 1000
+  var mono = binMeansCpi.every(function(v, i) { return i === 0 || v >= binMeansCpi[i - 1] })
+  var ratio = (nBins >= 2 && binMeansCpi[0] > 0.01)
+    ? Math.round(binMeansCpi[nBins - 1] / binMeansCpi[0] * 100) / 100 : null
+  var confirmed = nBins === 0 ? null
+    : nBins >= 8 ? (rho > 0.60 && mono)
+    : nBins >= 4 ? (rho > 0.55)
+    : (rho > 0.50)
+  return {
+    confirmed: confirmed, n_zones: nBins, spearman_r: rho, r_squared: Math.round(rho * rho * 1000) / 1000,
+    is_monotonic: mono, cpi_ratio: ratio, shpi_thresholds: cuts, data_source: 'stage_i',
+    bin_means_shpi: binMeansShpi, bin_means_cpi: binMeansCpi
+  }
+}
+
+// ── Main Stage I orchestrator ─────────────────────────────────────────────────
+// season: 'kharif'|'rabi'; years: string[] (locked SHPI years)
+// Fetches per-year rasters, builds pairs, computes ρ_y, Tukey rejects,
+// pools survivors, runs F1/F2 hypothesis, renders Stage I panel.
+async function runStageI_(season, years) {
+  if (!roi || !lastResult) return
+  var bbox = lastResult.bbox
+  if (!bbox) return
+  var yearInts = years.map(function(y) { return parseInt(y, 10) }).filter(Boolean)
+  if (yearInts.length === 0) return
+
+  // Fetch per-year rasters from GAS
+  var apiResult = await new Promise(function(resolve, reject) {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(reject)
+      .getPerYearRasters({ geojson: roi, season: season, years: yearInts })
+  })
+  if (!apiResult || !apiResult.success) throw new Error(apiResult ? apiResult.error : 'GAS call failed')
+
+  // Decode all per-year PNG pairs
+  var perYearPairs = {}
+  var perYearPairsRaw = {}
+  for (var i = 0; i < apiResult.years.length; i++) {
+    var yrData = apiResult.years[i]
+    var decoded = await decodePerYearPngs_(yrData.shpiB64, yrData.cpiB64)
+    if (!decoded) continue
+    var pairs = buildPerYearPixelPairs_(decoded, roi, bbox)
+    if (pairs.length < 3) continue
+    perYearPairs[yrData.year]   = pairs
+    perYearPairsRaw[yrData.year] = decoded  // keep full arrays for scatter
+  }
+
+  // Cache decoded rasters
+  if (!perYearRastersCache[season]) perYearRastersCache[season] = {}
+  Object.assign(perYearRastersCache[season], perYearPairsRaw)
+
+  // I2: per-year Spearman ρ
+  var perYearRho = computePerYearRho_(perYearPairs)
+
+  // I3: Tukey fence on ρ_y
+  var tukey = stageIRhoTukey_(perYearRho)
+
+  // I4: pool surviving years
+  var pooledPairs = []
+  tukey.retained.forEach(function(yr) {
+    if (perYearPairs[yr]) pooledPairs = pooledPairs.concat(perYearPairs[yr])
+  })
+
+  // I5: F1/F2 hypothesis on pooled pairs
+  var validation = stageIAdaptiveBins_(pooledPairs)
+
+  stageIResult = {
+    season:       season,
+    perYearPairs: perYearPairs,
+    perYearRho:   perYearRho,
+    tukey:        tukey,
+    pooledPairs:  pooledPairs,
+    validation:   validation
+  }
+
+  // Render Stage I panel in the sidebar
+  renderStageIPanel_(stageIResult)
+
+  // Log summary
+  autoLogLine_('[8/7] Stage I: retained ' + tukey.retained.join(', ') +
+    (tukey.rejected.length ? '; rejected ' + tukey.rejected.map(function(r) { return r.year + '(ρ=' + r.rho + ')' }).join(', ') : '') +
+    ' | ρ=' + validation.spearman_r + ' confirmed=' + (validation.confirmed === null ? 'n/a' : validation.confirmed),
+    tukey.rejected.length > 0)
+}
+
+// ── Render Stage I sidebar panel ──────────────────────────────────────────────
+var YEAR_COLORS = ['#4DC9F6','#F67019','#F53794','#537BC4','#ACC236','#166A8F','#00A950','#58595B']
+
+function renderStageIPanel_(result) {
+  var panel = document.getElementById('stageIPanel')
+  var banner = document.getElementById('stageIBanner')
+  var grid   = document.getElementById('stageIYearGrid')
+  var tbl    = document.getElementById('stageIRhoTable')
+  if (!panel || !result) return
+  panel.style.display = 'block'
+
+  // Banner
+  var v = result.validation
+  var bannerText, bannerColor
+  if (v.confirmed === null) {
+    bannerText = '⚠ Stage I: Insufficient pairs — see D3'
+    bannerColor = '#3e5f4a'
+  } else if (v.confirmed) {
+    bannerText = '✓ Stage I confirmed — ρ=' + v.spearman_r + ' (' + v.n_zones + ' bins, pooled ' + result.pooledPairs.length + ' pairs)'
+    bannerColor = 'rgba(27,120,55,0.35)'
+  } else {
+    bannerText = '⚠ Stage I not confirmed — ρ=' + v.spearman_r + ' (' + v.n_zones + ' bins)'
+    bannerColor = 'rgba(120,27,27,0.35)'
+  }
+  banner.textContent = bannerText
+  banner.style.background = bannerColor
+
+  // Mini scatter grid (one per year)
+  grid.innerHTML = ''
+  var allYears = Object.keys(result.perYearPairs).sort()
+  allYears.forEach(function(yr, yi) {
+    var pairs  = result.perYearPairs[yr]
+    var rho    = result.perYearRho[yr]
+    var isRej  = result.tukey.rejected.some(function(r) { return String(r.year) === String(yr) })
+    var color  = isRej ? '#555' : (YEAR_COLORS[yi % YEAR_COLORS.length])
+
+    var wrap = document.createElement('div')
+    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#5a2020' : '#2E6B4F') + ';border-radius:4px;padding:4px;background:rgba(0,0,0,0.25);opacity:' + (isRej ? '0.55' : '1')
+    var label = document.createElement('div')
+    label.style.cssText = 'font-size:8px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:2px'
+    label.textContent = yr + (isRej ? ' ✗ rejected' : '') + (rho !== null ? '  ρ=' + rho.toFixed(3) : '  ρ=n/a')
+    wrap.appendChild(label)
+
+    var canvas = document.createElement('canvas')
+    canvas.width = 120; canvas.height = 80
+    wrap.appendChild(canvas)
+    grid.appendChild(wrap)
+
+    // Draw mini scatter
+    var ctx = canvas.getContext('2d')
+    if (pairs.length < 2) { ctx.fillStyle = '#555'; ctx.font = '8px sans-serif'; ctx.fillText('< 3 pairs', 20, 40); return }
+    var xs = pairs.map(function(p) { return p.shpi }), ys = pairs.map(function(p) { return p.cpi })
+    var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs)
+    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys)
+    var xRange = xMax - xMin || 0.01, yRange = yMax - yMin || 0.01
+    var pad = 8, W = 120, H = 80
+    function px(x) { return pad + (x - xMin) / xRange * (W - 2 * pad) }
+    function py(y) { return H - pad - (y - yMin) / yRange * (H - 2 * pad) }
+    ctx.fillStyle = '#0b1f17'
+    ctx.fillRect(0, 0, W, H)
+    // Dots
+    var step = Math.max(1, Math.floor(pairs.length / 300))
+    ctx.fillStyle = color
+    for (var pi = 0; pi < pairs.length; pi += step) {
+      ctx.beginPath(); ctx.arc(px(pairs[pi].shpi), py(pairs[pi].cpi), 1.5, 0, 2 * Math.PI); ctx.fill()
+    }
+    // Trend line (OLS)
+    var reg = olsLine_(pairs.map(function(p) { return { x: p.shpi, y: p.cpi } }))
+    if (reg && reg.lineData && reg.lineData.length >= 2) {
+      var ld = reg.lineData
+      ctx.strokeStyle = '#F5A623'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(px(ld[0].x), py(ld[0].y)); ctx.lineTo(px(ld[1].x), py(ld[1].y)); ctx.stroke()
+    }
+  })
+
+  // ρ table
+  var rows = allYears.map(function(yr) {
+    var rho = result.perYearRho[yr]
+    var isRej = result.tukey.rejected.some(function(r) { return String(r.year) === String(yr) })
+    var rhoStr = rho !== null ? rho.toFixed(3) : 'n/a'
+    var color = isRej ? '#e07070' : '#9FE1CB'
+    return '<span style="color:' + color + '">' + yr + ': ρ=' + rhoStr + (isRej ? ' ✗' : ' ✓') + '</span>'
+  }).join('  ')
+  var fenceStr = result.tukey.lo !== undefined
+    ? '  fence=[' + result.tukey.lo.toFixed(3) + ', ' + result.tukey.hi.toFixed(3) + ']' : ''
+  tbl.innerHTML = rows + '<br><span style="color:#6FA898;font-size:7px">Tukey 1.5×IQR on ρ_y' + fenceStr + '</span>'
+}
+
+// ── Render Stage I fullscreen panel ──────────────────────────────────────────
+var stageIFsCharts = {}  // year → Chart instance for FS mini scatter
+
+function renderStageIFsPanel_() {
+  var grid   = document.getElementById('stageIFsYearGrid')
+  var banner = document.getElementById('stageIFsBanner')
+  var tbl    = document.getElementById('stageIFsRhoTable')
+  if (!grid) return
+  // Destroy old charts
+  Object.keys(stageIFsCharts).forEach(function(k) { if (stageIFsCharts[k]) stageIFsCharts[k].destroy() })
+  stageIFsCharts = {}
+  grid.innerHTML = ''
+
+  if (!stageIResult) {
+    banner.textContent = 'Run Auto-Run Pipeline first — Stage I data not available'
+    banner.style.background = '#2e3e30'
+    return
+  }
+
+  var result = stageIResult
+  var v = result.validation
+  if (v.confirmed === null) {
+    banner.textContent = '⚠ Stage I: Insufficient pairs — see D3 Paired Scatter'
+    banner.style.background = '#3e5f4a'
+  } else if (v.confirmed) {
+    banner.textContent = '✓ Stage I confirmed — ρ=' + v.spearman_r + ' (' + v.n_zones + ' bins, ' + result.pooledPairs.length + ' pooled pairs)'
+    banner.style.background = 'rgba(27,120,55,0.35)'
+  } else {
+    banner.textContent = '⚠ Stage I not confirmed — ρ=' + v.spearman_r + ' (' + v.n_zones + ' bins)'
+    banner.style.background = 'rgba(120,27,27,0.35)'
+  }
+
+  var allYears = Object.keys(result.perYearPairs).sort()
+  allYears.forEach(function(yr, yi) {
+    var pairs = result.perYearPairs[yr]
+    var rho   = result.perYearRho[yr]
+    var isRej = result.tukey.rejected.some(function(r) { return String(r.year) === String(yr) })
+    var color = isRej ? '#888' : (YEAR_COLORS[yi % YEAR_COLORS.length])
+
+    var wrap = document.createElement('div')
+    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#5a2020' : '#2E6B4F') + ';border-radius:6px;padding:8px;background:rgba(0,0,0,0.3);opacity:' + (isRej ? '0.55' : '1')
+    var title = document.createElement('div')
+    title.style.cssText = 'font-size:11px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:4px'
+    title.textContent = yr + (isRej ? ' — REJECTED' : '') + (rho !== null ? '   ρ = ' + rho.toFixed(3) : '   ρ = n/a')
+    wrap.appendChild(title)
+
+    var canvas = document.createElement('canvas')
+    canvas.style.cssText = 'width:100%;height:160px'
+    canvas.width = 220; canvas.height = 160
+    wrap.appendChild(canvas)
+    grid.appendChild(wrap)
+
+    if (pairs.length < 2) return
+    var step = Math.max(1, Math.floor(pairs.length / 500))
+    var ptData = []
+    for (var pi = 0; pi < pairs.length; pi += step) ptData.push({ x: pairs[pi].shpi, y: pairs[pi].cpi })
+    var reg = olsLine_(ptData)
+    stageIFsCharts[yr] = new Chart(canvas.getContext('2d'), {
+      data: {
+        datasets: [
+          { type: 'scatter', label: yr, data: ptData,
+            backgroundColor: color + '88', pointRadius: 2, pointHoverRadius: 3 },
+          { type: 'line', label: 'fit', data: reg ? reg.lineData : [],
+            borderColor: '#F5A623', borderWidth: 1.5, pointRadius: 0, fill: false }
+        ]
+      },
+      options: {
+        responsive: false, animation: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: { title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 9 } },
+               ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } },
+          y: { title: { display: true, text: 'CPI', color: '#9FE1CB', font: { size: 9 } },
+               ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } }
+        }
+      }
+    })
+  })
+
+  // ρ table
+  var rows = allYears.map(function(yr) {
+    var rho = result.perYearRho[yr], isRej = result.tukey.rejected.some(function(r) { return String(r.year) === String(yr) })
+    return '<span style="margin-right:16px;color:' + (isRej ? '#e07070' : '#9FE1CB') + '">' +
+      yr + ': ρ = ' + (rho !== null ? rho.toFixed(3) : 'n/a') + (isRej ? '  ✗ rejected' : '  ✓') + '</span>'
+  }).join('')
+  var fenceStr = result.tukey.lo !== undefined
+    ? '   Tukey fence: [' + result.tukey.lo.toFixed(3) + ', ' + result.tukey.hi.toFixed(3) + ']' : ''
+  tbl.innerHTML = '<strong style="color:#F5A623">Per-year ρ summary</strong>  ' + rows +
+    '<br><span style="color:#6FA898;font-size:10px">Tukey 1.5×IQR on {ρ_y}' + fenceStr + ' · pooled ' + result.pooledPairs.length + ' pairs from ' + result.tukey.retained.length + ' years</span>'
+}
+
+</script>
 <div id="results-fs-container">
   <div id="results-fs-map"></div>
   <div id="results-fs-topbar">
@@ -4732,6 +5224,7 @@ async function autoRunPipeline_() {
     <div style="display:flex;gap:6px;align-items:center;margin-left:12px;flex-wrap:wrap">
       <button id="scatterTabBins-fs" class="cmp-tab active" onclick="setScatterViewMode_('bins')" style="font-size:11px;padding:3px 10px">Zone means</button>
       <button id="scatterTabPx-fs"   class="cmp-tab"        onclick="setScatterViewMode_('pixels')" style="font-size:11px;padding:3px 10px">All pixels</button>
+      <button id="scatterTabStageI-fs" class="cmp-tab"      onclick="setScatterViewMode_('stagei')" style="font-size:11px;padding:3px 10px">Per-year (I)</button>
       <label id="outlierToggleWrap-fs" style="display:flex;align-items:center;gap:4px;font-size:11px;color:#9FE1CB;cursor:pointer;margin-left:6px">
         <input type="checkbox" id="outlierToggleFs" checked onchange="renderScatterFsActive_()" style="cursor:pointer">Filter outliers (IQR)</label>
       <span style="color:#3e7a6a;margin:0 4px">|</span>
@@ -4744,6 +5237,12 @@ async function autoRunPipeline_() {
   </div>
   <div id="seasonFetchStatus-fs" style="text-align:center;font-size:11px;color:#F5A623;padding:4px 0;display:none"></div>
   <div class="chart-fs-body"><canvas id="shpiCpiScatter-fs"></canvas></div>
+  <!-- Stage I per-year scatter grid (shown only in stagei mode) -->
+  <div id="stageIFsGrid" style="display:none;padding:12px;overflow-y:auto;flex:1">
+    <div id="stageIFsBanner" style="font-size:12px;color:#9FE1CB;text-align:center;margin-bottom:10px;padding:4px;border-radius:3px"></div>
+    <div id="stageIFsYearGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
+    <div id="stageIFsRhoTable" style="font-size:11px;color:#9FE1CB;margin-top:10px;padding:8px;background:rgba(0,0,0,0.3);border-radius:4px"></div>
+  </div>
   <div id="scatterEq-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-top:4px"></div>
   <div id="corrSummary-fs" style="margin:3px 0 2px;font-size:11px;color:#9FE1CB;text-align:center"></div>
   <div id="scatterOutlierNote-fs" style="text-align:center;font-size:10px;color:#6FA898;padding-bottom:16px"></div>

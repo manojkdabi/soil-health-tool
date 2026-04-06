@@ -578,6 +578,31 @@ function getFallowShpiRaster(params) {
   }
 }
 
+// ── I1: Per-year fallow SHPI + season CPI rasters ───────────────────────────
+// Fetches one fallow-SHPI raster and one season-CPI raster per requested year.
+// params: { geojson, season ('kharif'|'rabi'), years: [2020, 2021, ...] }
+// Returns { success, years: [{year, shpiB64, cpiB64}, ...] }
+// Each raster is fetched for the single calendar year (same evalscripts as existing paths).
+function getPerYearRasters(params) {
+  try {
+    var token  = getToken_();
+    var bbox   = getBbox_(params.geojson);
+    var season = params.season || 'kharif';
+    var years  = params.years  || [];
+    var results = [];
+    for (var i = 0; i < years.length; i++) {
+      var yr = parseInt(years[i], 10);
+      var shpiB64 = fetchFallowShpiRaster_(bbox, season, yr, yr, token);
+      var cpiB64  = fetchSeasonCpiRaster_(bbox, season, yr, yr, token);
+      results.push({ year: yr, shpiB64: shpiB64 || null, cpiB64: cpiB64 || null });
+    }
+    return { success: true, years: results };
+  } catch(e) {
+    Logger.log('getPerYearRasters error: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
 // season: 'all' = no month filter, 'kharif' = Jun–Oct, 'rabi' = Nov–Mar, 'zaid' = Mar–Jun.
 // Month filtering uses scenes[i].date (available in ORBIT mosaicking evaluatePixel).
 // Output: 4-band RGBA PNG where R=0, G=CPI×254, B=0, A=crop_obs_count.
