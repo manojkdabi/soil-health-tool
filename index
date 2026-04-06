@@ -142,6 +142,8 @@ input:focus,select:focus{border-color:#F5A623}
 .leaflet-control-layers{background:#13241e!important;border:1px solid #2E6B4F!important;color:#9FE1CB!important;font-size:11px}
 .leaflet-control-layers label{color:#9FE1CB!important}
 .leaflet-control-layers-separator{border-color:#2E6B4F!important}
+.lc-collapse-btn{display:block;width:100%;margin-top:8px;padding:2px 0;background:#1e3d30;border:1px solid #2E6B4F;border-radius:4px;color:#9FE1CB;font-size:10px;cursor:pointer;text-align:center}
+.lc-collapse-btn:hover{background:#2E6B4F;color:#F5A623}
 .leaflet-bar a,.leaflet-bar a:hover{background-color:#ffffff!important;color:#1A3C34!important;border-color:#ccc!important}
 
 /* Chart */
@@ -396,6 +398,7 @@ canvas{display:block}
       <div id="stageIPanel" style="display:none;margin:6px 0;padding:6px 8px;background:rgba(0,0,0,0.3);border:1px solid #2E6B4F;border-radius:5px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <span style="font-size:9px;font-weight:700;color:#F5A623;text-transform:uppercase;letter-spacing:.06em">Stage I — Per-Year Spatial Filter</span>
+          <button class="chart-expand-btn" style="font-size:11px;padding:1px 6px;margin-right:4px" onclick="openChartFs_('shpiCpiScatter');setTimeout(function(){setScatterViewMode_('stagei')},80)" title="Fullscreen">⛶</button>
           <button class="rm-ctrl-btn" style="font-size:8px;padding:1px 5px" onclick="document.getElementById('stageIPanel').style.display='none'">✕</button>
         </div>
         <div id="stageIBanner" style="font-size:9px;color:#9FE1CB;text-align:center;margin-bottom:4px;padding:3px;border-radius:3px"></div>
@@ -713,6 +716,47 @@ var layerCtrl = L.control.layers(
   },
   { position: 'topright', collapsed: true }
 ).addTo(map)
+
+// Make layer control click-only collapsible (remove hover auto-expand/collapse)
+;(function() {
+  var lc   = layerCtrl
+  var cont = lc._container
+  // Remove Leaflet's hover expand/collapse listeners
+  var evs = cont._leaflet_events
+  if (evs) {
+    ;['mouseenter', 'mouseleave'].forEach(function(t) {
+      var arr = evs[t]
+      if (arr) arr.slice().forEach(function(h) { L.DomEvent.off(cont, t, h.fn, h.ctx) })
+    })
+  }
+  // Toggle on the built-in toggle button click
+  var btn = cont.querySelector('.leaflet-control-layers-toggle')
+  if (btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation()
+      if (cont.classList.contains('leaflet-control-layers-expanded')) {
+        L.DomUtil.removeClass(cont, 'leaflet-control-layers-expanded')
+      } else {
+        L.DomUtil.addClass(cont, 'leaflet-control-layers-expanded')
+      }
+    })
+  }
+  // Inject a "▲ Collapse" button at the bottom of the list
+  var list = cont.querySelector('.leaflet-control-layers-list')
+  if (list) {
+    var collapseBtn = document.createElement('button')
+    collapseBtn.className = 'lc-collapse-btn'
+    collapseBtn.textContent = '▲ Collapse'
+    L.DomEvent.on(collapseBtn, 'click', function(e) {
+      L.DomEvent.stopPropagation(e)
+      L.DomEvent.preventDefault(e)
+      L.DomUtil.removeClass(cont, 'leaflet-control-layers-expanded')
+    })
+    list.appendChild(collapseBtn)
+  }
+  // Collapse on map click
+  map.on('click', function() { L.DomUtil.removeClass(cont, 'leaflet-control-layers-expanded') })
+})()
 
 // Load boundary GeoJSON when overlay is turned on
 map.on('overlayadd', function (e) {
