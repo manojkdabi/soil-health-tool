@@ -414,10 +414,11 @@ canvas{display:block}
       <div id="fieldTsBody" class="step-body">
         <!-- D1: Crop / Soil / Paired toggle tabs -->
         <div style="display:flex;gap:4px;margin-bottom:6px">
-          <button class="ts-idx-btn active" id="tsPanelCropTab" onclick="setTsPanelMode_('crop')" style="flex:1;font-size:9px">🌿 Crop (CPI)</button>
-          <button class="ts-idx-btn" id="tsPanelSoilTab" onclick="setTsPanelMode_('soil')" style="flex:1;font-size:9px">🟤 Soil (SHPI)</button>
+          <button class="ts-idx-btn active" id="tsPanelCropTab" onclick="setTsPanelMode_('crop')" style="flex:1;font-size:9px">🌿 Crop</button>
+          <button class="ts-idx-btn" id="tsPanelSoilTab" onclick="setTsPanelMode_('soil')" style="flex:1;font-size:9px">🟤 Soil</button>
           <button class="ts-idx-btn" id="tsPanelPairedTab" onclick="setTsPanelMode_('paired')" style="flex:1;font-size:9px">📊 Paired</button>
           <button class="ts-idx-btn" id="tsPanelBothTab" onclick="setTsPanelMode_('both')" style="flex:1;font-size:9px">🔀 Both</button>
+          <button class="ts-idx-btn" id="tsPanelAucTab" onclick="setTsPanelMode_('auc')" style="flex:1;font-size:9px">📈 AUC</button>
         </div>
         <!-- Crop panel -->
         <div id="tsCropPanel">
@@ -504,6 +505,15 @@ canvas{display:block}
           </div>
           <div id="bothSeasonsLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
         </div>
+        <!-- Stage K: AUC panel — weekly NDVI-AUC per year -->
+        <div id="tsAucPanel" style="display:none">
+          <div id="aucStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-bottom:4px">ⓘ Run Auto-Run Pipeline — AUC chart populates after Stage K completes.</div>
+          <div id="aucChartWrap" style="display:none">
+            <div class="chart-heading-row"><span style="font-size:9px;color:#9FE1CB;font-weight:600">📈 NDVI-AUC per year (biweekly integral)</span></div>
+            <div style="height:130px;margin-top:4px"><canvas id="aucTsChart"></canvas></div>
+          </div>
+          <div id="aucLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
+        </div>
       </div>
     </div>
 
@@ -517,6 +527,10 @@ canvas{display:block}
       </div>
       <div id="perYearBody" class="step-body">
         <div id="stageIPanel">
+          <div id="stageKToggle" style="display:none;gap:4px;margin-bottom:5px;justify-content:center">
+            <button class="ts-idx-btn active" id="stageKMeanCpiBtn" onclick="setStageKMode_('cpi')" style="font-size:9px">📈 Mean CPI</button>
+            <button class="ts-idx-btn" id="stageKAucBtn" onclick="setStageKMode_('auc')" style="font-size:9px">📊 NDVI-AUC</button>
+          </div>
           <div id="stageIBanner" style="font-size:9px;color:#9FE1CB;text-align:center;margin-bottom:4px;padding:3px;border-radius:3px"></div>
           <div id="stageIYearGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:4px;margin-bottom:5px"></div>
           <div id="stageIRhoTable" style="font-size:8px;color:#9FE1CB;margin-top:3px"></div>
@@ -3308,20 +3322,25 @@ function setTsPanelMode_(mode) {
   var soilTab   = document.getElementById('tsPanelSoilTab')
   var pairedTab = document.getElementById('tsPanelPairedTab')
   var bothTab   = document.getElementById('tsPanelBothTab')
+  var aucTab    = document.getElementById('tsPanelAucTab')
   var cropPanel   = document.getElementById('tsCropPanel')
   var soilPanel   = document.getElementById('tsSoilPanel')
   var pairedPanel = document.getElementById('tsPairedPanel')
   var bothPanel   = document.getElementById('tsBothPanel')
+  var aucPanel    = document.getElementById('tsAucPanel')
   if (cropTab)   cropTab.classList.toggle('active',   mode === 'crop')
   if (soilTab)   soilTab.classList.toggle('active',   mode === 'soil')
   if (pairedTab) pairedTab.classList.toggle('active', mode === 'paired')
   if (bothTab)   bothTab.classList.toggle('active',   mode === 'both')
+  if (aucTab)    aucTab.classList.toggle('active',    mode === 'auc')
   if (cropPanel)   cropPanel.style.display   = mode === 'crop'   ? 'block' : 'none'
   if (soilPanel)   soilPanel.style.display   = mode === 'soil'   ? 'block' : 'none'
   if (pairedPanel) pairedPanel.style.display = mode === 'paired' ? 'block' : 'none'
   if (bothPanel)   bothPanel.style.display   = mode === 'both'   ? 'block' : 'none'
+  if (aucPanel)    aucPanel.style.display    = mode === 'auc'    ? 'block' : 'none'
   if (mode === 'paired') renderPairedScatter_(d3SeasonTab)
   if (mode === 'both')   renderBothSeasonsChart_()
+  if (mode === 'auc')    renderAucChart_()
 }
 
 // ── Time Series — decode one window PNG (RGBA → index means) ────────
@@ -4338,6 +4357,12 @@ let pairedScatterChart = null
 let perYearRastersCache = {}   // { 'kharif': { year: { shpi:Float32Array, cpi:Float32Array } } }
 let stageIResult        = null // latest Stage I output (set by runStageI_)
 
+// ── Stage K globals ────────────────────────────────────────────────────────
+let stageKResult  = null  // { season, perYearAucPairs, perYearRhoAuc, pooledAucPairs, validationAuc }
+let stageKCache   = {}    // { 'kharif': { year: Float32Array(aucArr) }, ... }
+let stageKMode    = 'cpi' // 'cpi' | 'auc' — current display mode in ③b scatter
+let aucChartInst  = null  // Chart.js instance for ③a AUC trend chart
+
 // ── D1: Soil TS — switch view mode ────────────────────────────
 let soilTsViewMode = 'timeline'
 function setSoilTsViewMode_(mode) {
@@ -5018,8 +5043,8 @@ async function autoRunPipeline_() {
     // runAnalysis is synchronous from the UI perspective; Stage I runs after it completes
     // by watching for lastResult to be populated. We wrap it in a short poll.
     runAnalysis()
-    // [8/7] Stage I — per-year spatial filter (runs after Phase 1 analysis decodes)
-    autoLogLine_('[8/7] Stage I: will start after Phase 1 raster decodes...')
+    // [8/8] Stage I — per-year spatial filter (runs after Phase 1 analysis decodes)
+    autoLogLine_('[8/8] Stage I: will start after Phase 1 raster decodes...')
     await new Promise(function(resolve) {
       var attempts = 0
       var maxAttempts = 60  // wait up to 30 seconds (500 ms × 60)
@@ -5032,11 +5057,21 @@ async function autoRunPipeline_() {
       }, 500)
     })
     if (lastResult) {
-      autoLogLine_('[8/7] Stage I: fetching per-year rasters (' + tsYearsForShpi.join(',') + ')...')
+      autoLogLine_('[8/8] Stage I: fetching per-year rasters (' + tsYearsForShpi.join(',') + ')...')
       try {
         await runStageI_(season, tsYearsForShpi)
       } catch(siErr) {
-        autoLogLine_('[8/7] Stage I failed: ' + siErr.message, true)
+        autoLogLine_('[8/8] Stage I failed: ' + siErr.message, true)
+      }
+    }
+
+    // [9/8] Stage K — biweekly NDVI-AUC per pixel
+    if (lastResult && stageIResult && stageIResult.tukey.retained.length > 0) {
+      autoLogLine_('[9/8] Stage K: fetching biweekly NDVI for AUC (' + stageIResult.tukey.retained.join(',') + ')...')
+      try {
+        await runStageK_(season, stageIResult.tukey.retained)
+      } catch(kErr) {
+        autoLogLine_('[9/8] Stage K failed: ' + kErr.message, true)
       }
     }
 
@@ -5348,7 +5383,7 @@ async function runStageI_(season, years) {
   renderStageIPanel_(stageIResult)
 
   // Log summary
-  autoLogLine_('[8/7] Stage I: retained ' + tukey.retained.join(', ') +
+  autoLogLine_('[8/8] Stage I: retained ' + tukey.retained.join(', ') +
     (tukey.rejected.length ? '; rejected ' + tukey.rejected.map(function(r) { return r.year + '(ρ=' + r.rho + ')' }).join(', ') : '') +
     ' | ρ=' + validation.spearman_r + ' confirmed=' + (validation.confirmed === null ? 'n/a' : validation.confirmed),
     tukey.rejected.length > 0)
@@ -5360,15 +5395,13 @@ var YEAR_COLORS = ['#4DC9F6','#F67019','#F53794','#537BC4','#ACC236','#166A8F','
 function renderStageIPanel_(result) {
   var panel = document.getElementById('stageIPanel')
   var banner = document.getElementById('stageIBanner')
-  var grid   = document.getElementById('stageIYearGrid')
-  var tbl    = document.getElementById('stageIRhoTable')
   if (!panel || !result) return
   panel.style.display = 'block'
   var stepEl = document.getElementById('perYearScatterStep')
   if (stepEl) stepEl.style.display = ''
   setBadge_('perYearBadge', '✓')
 
-  // Banner
+  // Banner (always shows Mean CPI result)
   var v = result.validation
   var bannerText, bannerColor
   if (v.confirmed === null) {
@@ -5384,67 +5417,13 @@ function renderStageIPanel_(result) {
   banner.textContent = bannerText
   banner.style.background = bannerColor
 
-  // Mini scatter grid (one per year)
-  grid.innerHTML = ''
-  var allYears = Object.keys(result.perYearPairs).sort()
-  allYears.forEach(function(yr, yi) {
-    var pairs  = result.perYearPairs[yr]
-    var rho    = result.perYearRho[yr]
-    var isRej  = result.tukey.rejected.some(function(r) { return String(r.year) === String(yr) })
-    var color  = isRej ? '#555' : (YEAR_COLORS[yi % YEAR_COLORS.length])
-
-    var wrap = document.createElement('div')
-    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#5a2020' : '#2E6B4F') + ';border-radius:4px;padding:4px;background:rgba(0,0,0,0.25);opacity:' + (isRej ? '0.55' : '1')
-    var label = document.createElement('div')
-    label.style.cssText = 'font-size:8px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:2px'
-    label.textContent = yr + (isRej ? ' ✗ rejected' : '') + (rho !== null ? '  ρ=' + rho.toFixed(4) : '  ρ=n/a')
-    wrap.appendChild(label)
-
-    var canvas = document.createElement('canvas')
-    canvas.width = 120; canvas.height = 80
-    wrap.appendChild(canvas)
-    grid.appendChild(wrap)
-
-    // Draw mini scatter
-    var ctx = canvas.getContext('2d')
-    if (pairs.length < 3) { ctx.fillStyle = '#555'; ctx.font = '8px sans-serif'; ctx.fillText('< 3 pairs', 20, 40); return }
-    var xs = pairs.map(function(p) { return p.shpi }), ys = pairs.map(function(p) { return p.cpi })
-    var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs)
-    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys)
-    var xRange = xMax - xMin || 0.01, yRange = yMax - yMin || 0.01
-    var pad = 8, W = 120, H = 80
-    function px(x) { return pad + (x - xMin) / xRange * (W - 2 * pad) }
-    function py(y) { return H - pad - (y - yMin) / yRange * (H - 2 * pad) }
-    ctx.fillStyle = '#0b1f17'
-    ctx.fillRect(0, 0, W, H)
-    // Dots
-    var step = Math.max(1, Math.floor(pairs.length / 300))
-    ctx.fillStyle = color
-    for (var pi = 0; pi < pairs.length; pi += step) {
-      ctx.beginPath(); ctx.arc(px(pairs[pi].shpi), py(pairs[pi].cpi), 1.5, 0, 2 * Math.PI); ctx.fill()
-    }
-    // Trend line (OLS)
-    var reg = olsLine_(pairs.map(function(p) { return { x: p.shpi, y: p.cpi } }))
-    if (reg && reg.lineData && reg.lineData.length >= 2) {
-      var ld = reg.lineData
-      ctx.strokeStyle = '#F5A623'; ctx.lineWidth = 1
-      ctx.beginPath(); ctx.moveTo(px(ld[0].x), py(ld[0].y)); ctx.lineTo(px(ld[1].x), py(ld[1].y)); ctx.stroke()
-    }
-  })
-
-  // ρ table
-  var rows = allYears.map(function(yr) {
-    var rho = result.perYearRho[yr]
-    var isRej = result.tukey.rejected.some(function(r) { return String(r.year) === String(yr) })
-    var rhoStr = rho !== null ? rho.toFixed(4) : 'n/a'
-    var color = isRej ? '#e07070' : '#9FE1CB'
-    return '<span style="color:' + color + '">' + yr + ': ρ=' + rhoStr + (isRej ? ' ✗' : ' ✓') + '</span>'
-  }).join('  ')
-  var fenceStr = result.tukey.lo !== undefined
-    ? '  fence=[' + result.tukey.lo.toFixed(3) + ', ' + result.tukey.hi.toFixed(3) + ']' : ''
-  var warnHtml = result.shpiIdenticalWarn
-    ? '<br><span style="color:#F5A623;font-size:7px">' + result.shpiIdenticalWarn + '</span>' : ''
-  tbl.innerHTML = rows + '<br><span style="color:#6FA898;font-size:7px">Tukey 1.5×IQR on ρ_y' + fenceStr + '</span>' + warnHtml
+  // Render mini scatter grid (CPI mode by default; AUC toggle available after Stage K)
+  stageKMode = 'cpi'
+  var cpiBtn = document.getElementById('stageKMeanCpiBtn')
+  var aucBtn = document.getElementById('stageKAucBtn')
+  if (cpiBtn) cpiBtn.classList.add('active')
+  if (aucBtn) { aucBtn.classList.remove('active'); aucBtn.style.opacity = '0.5' }
+  renderStageIPanelGrid_(result, 'cpi')
 }
 
 // ── Render Stage I fullscreen panel ──────────────────────────────────────────
@@ -5539,6 +5518,343 @@ function renderStageIFsPanel_() {
     ? '<br><span style="color:#F5A623;font-size:10px">' + result.shpiIdenticalWarn + '</span>' : ''
   tbl.innerHTML = '<strong style="color:#F5A623">Per-year ρ summary</strong>  ' + rows +
     '<br><span style="color:#6FA898;font-size:10px">Tukey 1.5×IQR on {ρ_y}' + fenceStr + ' · pooled ' + result.pooledPairs.length + ' pairs from ' + result.tukey.retained.length + ' years</span>' + warnHtml
+}
+
+</script>
+
+<!-- ── Stage K: NDVI-AUC per pixel ──────────────────────────────────────── -->
+<script>
+
+// ── K-helper: Decode a single biweekly NDVI PNG ───────────────────────────────
+// PNG encoding: R = best NDVI×254 in the window; A = 1 valid, 0 = all cloudy.
+// Returns Promise<{arr: Float32Array, W, H}|null>; arr[i] = NDVI in [0,1] or -1 for no-data.
+function decodeWeeklyNdvi_(b64) {
+  return new Promise(function(resolve) {
+    if (!b64) { resolve(null); return }
+    var img = new Image()
+    img.onload = function() {
+      var W = img.naturalWidth, H = img.naturalHeight
+      var c = document.createElement('canvas'); c.width = W; c.height = H
+      var ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0)
+      var px = ctx.getImageData(0, 0, W, H).data
+      var n = W * H
+      var arr = new Float32Array(n)
+      for (var i = 0; i < n; i++) {
+        arr[i] = px[i * 4 + 3] > 0 ? px[i * 4] / 254 : -1  // R = NDVI×254, A = valid
+      }
+      resolve({ arr: arr, W: W, H: H })
+    }
+    img.onerror = function() { resolve(null) }
+    img.src = 'data:image/png;base64,' + b64
+  })
+}
+
+// ── K-helper: Compute per-pixel mean NDVI (= normalized AUC) ─────────────────
+// weeklyDecoded: [{arr: Float32Array, W, H}, ...] — one per biweekly window.
+// Returns Float32Array length W×H; value = mean of valid NDVI observations, -1 if none.
+function computePixelAuc_(weeklyDecoded) {
+  if (!weeklyDecoded || weeklyDecoded.length === 0) return null
+  var first = weeklyDecoded.find(function(d) { return d !== null })
+  if (!first) return null
+  var W = first.W, H = first.H, n = W * H
+  var sumArr = new Float32Array(n)
+  var cntArr = new Uint8Array(n)
+  weeklyDecoded.forEach(function(wk) {
+    if (!wk || !wk.arr) return
+    for (var i = 0; i < n; i++) {
+      if (wk.arr[i] >= 0) { sumArr[i] += wk.arr[i]; cntArr[i]++ }
+    }
+  })
+  var aucArr = new Float32Array(n)
+  for (var i = 0; i < n; i++) {
+    aucArr[i] = cntArr[i] > 0 ? sumArr[i] / cntArr[i] : -1
+  }
+  return { arr: aucArr, W: W, H: H }
+}
+
+// ── K-helper: Build (SHPI, AUC) pixel pairs for one year ─────────────────────
+function buildAucPixelPairs_(aucData, shpiArr, bbox, geojson) {
+  var pairs = []
+  if (!aucData || !aucData.arr || !shpiArr) return pairs
+  var W = aucData.W, H = aucData.H, n = W * H
+  if (shpiArr.length !== n) return pairs
+  var polyMask = null
+  if (bbox && geojson) {
+    var lngRange = bbox[2] - bbox[0], latRange = bbox[3] - bbox[1]
+    if (lngRange > 0 && latRange > 0) {
+      polyMask = new Uint8Array(n)
+      for (var mi = 0; mi < n; mi++) {
+        var col = mi % W, row = Math.floor(mi / W)
+        var lng = bbox[0] + (col + 0.5) / W * lngRange
+        var lat = bbox[3] - (row + 0.5) / H * latRange
+        polyMask[mi] = pointInPolygon_(lng, lat, geojson) ? 1 : 0
+      }
+    }
+  }
+  for (var i = 0; i < n; i++) {
+    if (polyMask && !polyMask[i]) continue
+    if (aucData.arr[i] < 0 || shpiArr[i] < 0) continue
+    pairs.push({ shpi: shpiArr[i], auc: aucData.arr[i] })
+  }
+  return pairs
+}
+
+// ── K: Toggle CPI / AUC mode in ③b scatter ────────────────────────────────────
+function setStageKMode_(mode) {
+  stageKMode = mode
+  var cpiBtn = document.getElementById('stageKMeanCpiBtn')
+  var aucBtn = document.getElementById('stageKAucBtn')
+  if (cpiBtn) cpiBtn.classList.toggle('active', mode === 'cpi')
+  if (aucBtn) aucBtn.classList.toggle('active', mode === 'auc')
+  // Re-render the sidebar mini scatter grid
+  if (mode === 'cpi' && stageIResult) {
+    renderStageIPanelGrid_(stageIResult, 'cpi')
+  } else if (mode === 'auc' && stageKResult) {
+    renderStageIPanelGrid_(stageIResult, 'auc')
+  }
+}
+
+// ── K: Re-render only the mini scatter grid in ③b ─────────────────────────────
+// mode: 'cpi' uses stageIResult.perYearPairs (SHPI×CPI)
+//       'auc' uses stageKResult.perYearAucPairs (SHPI×AUC)
+function renderStageIPanelGrid_(result, mode) {
+  var grid = document.getElementById('stageIYearGrid')
+  var tbl  = document.getElementById('stageIRhoTable')
+  if (!grid || !result) return
+  var pairs   = mode === 'auc' && stageKResult ? stageKResult.perYearAucPairs   : result.perYearPairs
+  var rhoMap  = mode === 'auc' && stageKResult ? stageKResult.perYearRhoAuc     : result.perYearRho
+  var rejected = result.tukey.rejected  // year rejection always based on Stage I
+  var yKey = mode === 'auc' ? 'auc' : 'cpi'
+  var yLabel = mode === 'auc' ? 'NDVI-AUC' : 'Mean CPI'
+  grid.innerHTML = ''
+  var allYears = Object.keys(pairs).sort()
+  allYears.forEach(function(yr, yi) {
+    var pts   = pairs[yr]
+    var rho   = rhoMap[yr]
+    var isRej = rejected.some(function(r) { return String(r.year) === String(yr) })
+    var color = isRej ? '#555' : (YEAR_COLORS[yi % YEAR_COLORS.length])
+    var wrap  = document.createElement('div')
+    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#5a2020' : '#2E6B4F') + ';border-radius:4px;padding:4px;background:rgba(0,0,0,0.25);opacity:' + (isRej ? '0.55' : '1')
+    var label = document.createElement('div')
+    label.style.cssText = 'font-size:8px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:2px'
+    label.textContent = yr + (isRej ? ' ✗' : '') + (rho !== null ? '  ρ=' + (typeof rho === 'number' ? rho.toFixed(4) : rho) : '  ρ=n/a')
+    wrap.appendChild(label)
+    var canvas = document.createElement('canvas')
+    canvas.width = 120; canvas.height = 80
+    wrap.appendChild(canvas)
+    grid.appendChild(wrap)
+    var ctx = canvas.getContext('2d')
+    if (!pts || pts.length < 3) { ctx.fillStyle = '#555'; ctx.font = '8px sans-serif'; ctx.fillText('< 3 pairs', 20, 40); return }
+    var xs = pts.map(function(p) { return p.shpi })
+    var ys = pts.map(function(p) { return p[yKey] })
+    var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs)
+    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys)
+    var xRange = xMax - xMin || 0.01, yRange = yMax - yMin || 0.01
+    var pad = 8, cW = 120, cH = 80
+    function px(x) { return pad + (x - xMin) / xRange * (cW - 2 * pad) }
+    function py(y) { return cH - pad - (y - yMin) / yRange * (cH - 2 * pad) }
+    ctx.fillStyle = '#0b1f17'; ctx.fillRect(0, 0, cW, cH)
+    var step = Math.max(1, Math.floor(pts.length / 300))
+    ctx.fillStyle = color
+    for (var pi = 0; pi < pts.length; pi += step) {
+      ctx.beginPath(); ctx.arc(px(pts[pi].shpi), py(pts[pi][yKey]), 1.5, 0, 2 * Math.PI); ctx.fill()
+    }
+    var reg = olsLine_(pts.map(function(p) { return { x: p.shpi, y: p[yKey] } }))
+    if (reg && reg.lineData && reg.lineData.length >= 2) {
+      var ld = reg.lineData
+      ctx.strokeStyle = '#F5A623'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(px(ld[0].x), py(ld[0].y)); ctx.lineTo(px(ld[1].x), py(ld[1].y)); ctx.stroke()
+    }
+  })
+  // ρ table
+  var rows = allYears.map(function(yr) {
+    var rho   = rhoMap[yr]
+    var isRej = rejected.some(function(r) { return String(r.year) === String(yr) })
+    var rhoStr = rho !== null && rho !== undefined ? (typeof rho === 'number' ? rho.toFixed(4) : rho) : 'n/a'
+    var col = isRej ? '#e07070' : '#9FE1CB'
+    return '<span style="color:' + col + '">' + yr + ': ρ=' + rhoStr + (isRej ? ' ✗' : ' ✓') + '</span>'
+  }).join('  ')
+  var fenceStr = (mode === 'cpi' && stageIResult && stageIResult.tukey.lo !== undefined)
+    ? '  fence=[' + stageIResult.tukey.lo.toFixed(3) + ', ' + stageIResult.tukey.hi.toFixed(3) + ']' : ''
+  var warnHtml = (mode === 'cpi' && stageIResult && stageIResult.shpiIdenticalWarn)
+    ? '<br><span style="color:#F5A623;font-size:7px">' + stageIResult.shpiIdenticalWarn + '</span>' : ''
+  var extra = mode === 'auc' && stageKResult && stageKResult.validationAuc
+    ? '<br><span style="color:#F5A623;font-size:7px">AUC hypothesis: ρ=' + stageKResult.validationAuc.spearman_r + ' ' + (stageKResult.validationAuc.confirmed ? '✓ confirmed' : '✗ not confirmed') + ' (' + stageKResult.validationAuc.n_zones + ' bins)</span>'
+    : ''
+  var baseLabel = mode === 'auc' ? 'Tukey 1.5×IQR on ρ_y (CPI-based rejection)' : 'Tukey 1.5×IQR on ρ_y'
+  tbl.innerHTML = rows + '<br><span style="color:#6FA898;font-size:7px">' + baseLabel + fenceStr + '</span>' + warnHtml + extra
+}
+
+// ── K: Render ③a AUC trend chart ─────────────────────────────────────────────
+function renderAucChart_() {
+  var statusEl  = document.getElementById('aucStatus')
+  var wrapEl    = document.getElementById('aucChartWrap')
+  var labelEl   = document.getElementById('aucLabel')
+  if (!stageKCache || Object.keys(stageKCache).length === 0) {
+    if (statusEl) statusEl.style.display = 'block'
+    if (wrapEl)   wrapEl.style.display   = 'none'
+    return
+  }
+  if (statusEl) statusEl.style.display = 'none'
+  if (wrapEl)   wrapEl.style.display   = 'block'
+
+  // Build per-year mean AUC from stageKCache
+  function seasonMeanAuc(season) {
+    var cache = stageKCache[season]
+    if (!cache) return []
+    return Object.keys(cache).sort().map(function(yr) {
+      var aucData = cache[yr]
+      if (!aucData || !aucData.arr) return { year: parseInt(yr), auc: null }
+      var sum = 0, cnt = 0
+      for (var i = 0; i < aucData.arr.length; i++) {
+        if (aucData.arr[i] >= 0) { sum += aucData.arr[i]; cnt++ }
+      }
+      return { year: parseInt(yr), auc: cnt > 0 ? Math.round(sum / cnt * 1000) / 1000 : null }
+    }).filter(function(d) { return d.auc !== null })
+  }
+
+  var kMeans = seasonMeanAuc('kharif')
+  var rMeans = seasonMeanAuc('rabi')
+  var allYears = Array.from(new Set(
+    kMeans.map(function(d) { return d.year }).concat(rMeans.map(function(d) { return d.year }))
+  )).sort()
+  var kMap = {}; kMeans.forEach(function(d) { kMap[d.year] = d.auc })
+  var rMap = {}; rMeans.forEach(function(d) { rMap[d.year] = d.auc })
+
+  var datasets = []
+  if (kMeans.length > 0) datasets.push({
+    label: 'Kharif NDVI-AUC (Jun–Oct)',
+    data: allYears.map(function(y) { return kMap[y] != null ? kMap[y] : null }),
+    borderColor: '#4CAF50', backgroundColor: 'rgba(76,175,80,0.15)',
+    tension: 0.3, spanGaps: true, pointRadius: 4
+  })
+  if (rMeans.length > 0) datasets.push({
+    label: 'Rabi NDVI-AUC (Nov–Mar)',
+    data: allYears.map(function(y) { return rMap[y] != null ? rMap[y] : null }),
+    borderColor: '#26C6DA', backgroundColor: 'rgba(38,198,218,0.15)',
+    tension: 0.3, spanGaps: true, pointRadius: 4
+  })
+
+  if (aucChartInst) { aucChartInst.destroy(); aucChartInst = null }
+  var ctx = document.getElementById('aucTsChart').getContext('2d')
+  aucChartInst = new Chart(ctx, {
+    type: 'line',
+    data: { labels: allYears, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#9FE1CB', font: { size: 9 }, boxWidth: 12 } },
+        tooltip: { callbacks: { label: function(c) {
+          return c.dataset.label + ': ' + (c.parsed.y != null ? c.parsed.y.toFixed(3) : 'N/A')
+        }}}
+      },
+      scales: {
+        x: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: 'rgba(30,61,48,0.8)' } },
+        y: { ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: 'rgba(30,61,48,0.8)' },
+             min: 0, max: 1,
+             title: { display: true, text: 'Mean NDVI-AUC', color: '#6FA898', font: { size: 8 } } }
+      }
+    }
+  })
+  var parts = []
+  if (kMeans.length > 0) parts.push('Kharif ✓')
+  if (rMeans.length > 0) parts.push('Rabi ✓')
+  if (kMeans.length === 0) parts.push('Kharif – run pipeline')
+  if (rMeans.length === 0) parts.push('Rabi – run pipeline')
+  if (labelEl) labelEl.textContent = parts.join('  ·  ')
+}
+
+// ── Stage K orchestrator ──────────────────────────────────────────────────────
+// season: 'kharif'|'rabi'; years: string[] (retained from Stage I Tukey fence)
+async function runStageK_(season, years) {
+  if (!roi || !lastResult || !stageIResult) return
+  var bbox = lastResult.bbox
+  if (!bbox) return
+  var yearInts = years.map(function(y) { return parseInt(y, 10) }).filter(Boolean)
+  if (yearInts.length === 0) return
+
+  // Fetch biweekly NDVI rasters from GAS
+  var apiResult = await new Promise(function(resolve, reject) {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(reject)
+      .getWeeklyCpiRasters({ geojson: roi, season: season, years: yearInts })
+  })
+  if (!apiResult || !apiResult.success) throw new Error(apiResult ? apiResult.error : 'GAS call failed')
+
+  // Decode all biweekly PNGs per year and compute per-pixel AUC
+  if (!stageKCache[season]) stageKCache[season] = {}
+  var perYearAucPairs = {}
+  var perYearRhoAuc   = {}
+
+  for (var i = 0; i < apiResult.years.length; i++) {
+    var yrEntry = apiResult.years[i]
+    var yr = yrEntry.year
+
+    // Decode all weekly PNGs for this year
+    var weeklyDecoded = []
+    for (var wi = 0; wi < yrEntry.weeks.length; wi++) {
+      var decoded = await decodeWeeklyNdvi_(yrEntry.weeks[wi].ndviB64)
+      if (decoded) weeklyDecoded.push(decoded)
+    }
+    if (weeklyDecoded.length === 0) continue
+
+    // Compute per-pixel AUC (mean NDVI across valid windows)
+    var aucData = computePixelAuc_(weeklyDecoded)
+    if (!aucData) continue
+    stageKCache[season][yr] = aucData
+
+    // Build (SHPI, AUC) pixel pairs using Stage I SHPI rasters
+    var shpiData = perYearRastersCache[season] && perYearRastersCache[season][yr]
+    if (!shpiData || !shpiData.shpi) continue
+    var pairs = buildAucPixelPairs_(aucData, shpiData.shpi, bbox, roi)
+    if (pairs.length < 3) continue
+    perYearAucPairs[yr] = pairs
+
+    // Per-year Spearman ρ (SHPI × AUC)
+    var xs = pairs.map(function(p) { return p.shpi })
+    var ys = pairs.map(function(p) { return p.auc })
+    perYearRhoAuc[yr] = pairs.length >= 3 ? Math.round(spearmanRhoArr_(xs, ys) * 10000) / 10000 : null
+  }
+
+  // Pool retained pairs and run F1/F2 adaptive binning on AUC
+  var pooledAucPairs = []
+  years.forEach(function(yr) {
+    if (perYearAucPairs[yr]) pooledAucPairs = pooledAucPairs.concat(perYearAucPairs[yr])
+  })
+  // Re-use stageIAdaptiveBins_ with auc mapped to cpi key
+  var pairsForBins = pooledAucPairs.map(function(p) { return { shpi: p.shpi, cpi: p.auc } })
+  var validationAuc = stageIAdaptiveBins_(pairsForBins)
+
+  stageKResult = {
+    season:          season,
+    perYearAucPairs: perYearAucPairs,
+    perYearRhoAuc:   perYearRhoAuc,
+    pooledAucPairs:  pooledAucPairs,
+    validationAuc:   validationAuc
+  }
+
+  // Show the AUC toggle in ③b
+  var toggle = document.getElementById('stageKToggle')
+  if (toggle) toggle.style.display = 'flex'
+  var aucBtn = document.getElementById('stageKAucBtn')
+  if (aucBtn) aucBtn.style.opacity = '1'
+
+  // Update ③a AUC tab badge and render if active
+  setBadge_('fieldTsBadge', '✓')
+  if (tsPanelMode === 'auc') renderAucChart_()
+
+  // Log comparison
+  var rhoComparison = Object.keys(perYearRhoAuc).map(function(yr) {
+    var aucRho = perYearRhoAuc[yr]
+    var cpiRho = stageIResult.perYearRho[yr]
+    return yr + ': ρ_CPI=' + (cpiRho !== null ? cpiRho.toFixed(3) : 'n/a') +
+                '  ρ_AUC=' + (aucRho !== null ? aucRho.toFixed(3) : 'n/a')
+  }).join(', ')
+  autoLogLine_('[9/8] Stage K: pooled ' + pooledAucPairs.length + ' AUC pairs | AUC ρ=' + validationAuc.spearman_r +
+    ' confirmed=' + (validationAuc.confirmed === null ? 'n/a' : validationAuc.confirmed))
+  if (rhoComparison) autoLogLine_('[9/8] ρ comparison: ' + rhoComparison)
 }
 
 </script>
