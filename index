@@ -4802,21 +4802,32 @@ async function autoRunPipeline_() {
 function spearmanRhoArr_(xs, ys) {
   var n = xs.length
   if (n < 3) return 0
+  // O(n log n) rank averaging — sort (value, originalIndex) pairs, assign average rank to ties
   function rankAvg(arr) {
-    var sorted = arr.slice().sort(function(a, b) { return a - b })
-    return arr.map(function(v) {
-      var idx = []
-      sorted.forEach(function(s, i) { if (s === v) idx.push(i + 1) })
-      return idx.reduce(function(a, b) { return a + b }, 0) / idx.length
-    })
+    var indexed = new Array(n)
+    for (var ki = 0; ki < n; ki++) indexed[ki] = [arr[ki], ki]
+    indexed.sort(function(a, b) { return a[0] - b[0] })
+    var ranks = new Array(n)
+    var si = 0
+    while (si < n) {
+      var ei = si
+      while (ei < n - 1 && indexed[ei + 1][0] === indexed[ei][0]) ei++
+      var avgRank = (si + ei + 2) / 2  // average of 1-based positions si+1 .. ei+1
+      for (var ki = si; ki <= ei; ki++) ranks[indexed[ki][1]] = avgRank
+      si = ei + 1
+    }
+    return ranks
   }
   var rx = rankAvg(xs), ry = rankAvg(ys)
-  var rmx = rx.reduce(function(a, b) { return a + b }, 0) / n
-  var rmy = ry.reduce(function(a, b) { return a + b }, 0) / n
-  var num = rx.reduce(function(a, v, i) { return a + (v - rmx) * (ry[i] - rmy) }, 0)
-  var dx  = Math.sqrt(rx.reduce(function(a, v) { return a + (v - rmx) * (v - rmx) }, 0))
-  var dy  = Math.sqrt(ry.reduce(function(a, v) { return a + (v - rmy) * (v - rmy) }, 0))
-  return (dx * dy > 0) ? num / (dx * dy) : 0
+  var rmx = 0, rmy = 0
+  for (var mi = 0; mi < n; mi++) { rmx += rx[mi]; rmy += ry[mi] }
+  rmx /= n; rmy /= n
+  var num = 0, dx2 = 0, dy2 = 0
+  for (var mi = 0; mi < n; mi++) {
+    var drx = rx[mi] - rmx, dry = ry[mi] - rmy
+    num += drx * dry; dx2 += drx * drx; dy2 += dry * dry
+  }
+  return (dx2 * dy2 > 0) ? num / Math.sqrt(dx2 * dy2) : 0
 }
 
 // ── I-helper: Decode a per-year PNG pair from Stage I API response ────────────
@@ -4907,7 +4918,7 @@ function computePerYearRho_(perYearPairs) {
     if (pairs.length < 3) { rhoMap[yr] = null; return }
     var xs = pairs.map(function(p) { return p.shpi })
     var ys = pairs.map(function(p) { return p.cpi })
-    rhoMap[yr] = Math.round(spearmanRhoArr_(xs, ys) * 1000) / 1000
+    rhoMap[yr] = Math.round(spearmanRhoArr_(xs, ys) * 10000) / 10000
   })
   return rhoMap
 }
@@ -5024,6 +5035,30 @@ async function runStageI_(season, years) {
   if (!perYearRastersCache[season]) perYearRastersCache[season] = {}
   Object.assign(perYearRastersCache[season], perYearPairsRaw)
 
+  // Diagnostic: detect if any two years share identical SHPI values (stable soil / fetch overlap)
+  var shpiIdenticalWarning = ''
+  var rawYearKeys = Object.keys(perYearPairsRaw)
+  if (rawYearKeys.length >= 2) {
+    var nCheck = Math.min(200, (perYearPairsRaw[rawYearKeys[0]].shpi || []).length)
+    var identicalPairs = []
+    for (var qi = 0; qi < rawYearKeys.length; qi++) {
+      for (var qj = qi + 1; qj < rawYearKeys.length; qj++) {
+        var arrA = perYearPairsRaw[rawYearKeys[qi]].shpi
+        var arrB = perYearPairsRaw[rawYearKeys[qj]].shpi
+        var same = (arrA && arrB && arrA.length === arrB.length)
+        if (same) {
+          for (var qq = 0; qq < nCheck; qq++) {
+            if (arrA[qq] !== arrB[qq]) { same = false; break }
+          }
+        }
+        if (same) identicalPairs.push(rawYearKeys[qi] + '/' + rawYearKeys[qj])
+      }
+    }
+    if (identicalPairs.length > 0) {
+      shpiIdenticalWarning = ' ⚠ SHPI identical for years ' + identicalPairs.join(', ') + ' — stable soil or fetch overlap'
+    }
+  }
+
   // I2: per-year Spearman ρ
   var perYearRho = computePerYearRho_(perYearPairs)
 
@@ -5040,12 +5075,13 @@ async function runStageI_(season, years) {
   var validation = stageIAdaptiveBins_(pooledPairs)
 
   stageIResult = {
-    season:       season,
-    perYearPairs: perYearPairs,
-    perYearRho:   perYearRho,
-    tukey:        tukey,
-    pooledPairs:  pooledPairs,
-    validation:   validation
+    season:             season,
+    perYearPairs:       perYearPairs,
+    perYearRho:         perYearRho,
+    tukey:              tukey,
+    pooledPairs:        pooledPairs,
+    validation:         validation,
+    shpiIdenticalWarn:  shpiIdenticalWarning
   }
 
   // Render Stage I panel in the sidebar
@@ -5098,7 +5134,7 @@ function renderStageIPanel_(result) {
     wrap.style.cssText = 'border:1px solid ' + (isRej ? '#5a2020' : '#2E6B4F') + ';border-radius:4px;padding:4px;background:rgba(0,0,0,0.25);opacity:' + (isRej ? '0.55' : '1')
     var label = document.createElement('div')
     label.style.cssText = 'font-size:8px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:2px'
-    label.textContent = yr + (isRej ? ' ✗ rejected' : '') + (rho !== null ? '  ρ=' + rho.toFixed(3) : '  ρ=n/a')
+    label.textContent = yr + (isRej ? ' ✗ rejected' : '') + (rho !== null ? '  ρ=' + rho.toFixed(4) : '  ρ=n/a')
     wrap.appendChild(label)
 
     var canvas = document.createElement('canvas')
@@ -5137,13 +5173,15 @@ function renderStageIPanel_(result) {
   var rows = allYears.map(function(yr) {
     var rho = result.perYearRho[yr]
     var isRej = result.tukey.rejected.some(function(r) { return String(r.year) === String(yr) })
-    var rhoStr = rho !== null ? rho.toFixed(3) : 'n/a'
+    var rhoStr = rho !== null ? rho.toFixed(4) : 'n/a'
     var color = isRej ? '#e07070' : '#9FE1CB'
     return '<span style="color:' + color + '">' + yr + ': ρ=' + rhoStr + (isRej ? ' ✗' : ' ✓') + '</span>'
   }).join('  ')
   var fenceStr = result.tukey.lo !== undefined
     ? '  fence=[' + result.tukey.lo.toFixed(3) + ', ' + result.tukey.hi.toFixed(3) + ']' : ''
-  tbl.innerHTML = rows + '<br><span style="color:#6FA898;font-size:7px">Tukey 1.5×IQR on ρ_y' + fenceStr + '</span>'
+  var warnHtml = result.shpiIdenticalWarn
+    ? '<br><span style="color:#F5A623;font-size:7px">' + result.shpiIdenticalWarn + '</span>' : ''
+  tbl.innerHTML = rows + '<br><span style="color:#6FA898;font-size:7px">Tukey 1.5×IQR on ρ_y' + fenceStr + '</span>' + warnHtml
 }
 
 // ── Render Stage I fullscreen panel ──────────────────────────────────────────
@@ -5189,7 +5227,7 @@ function renderStageIFsPanel_() {
     wrap.style.cssText = 'border:1px solid ' + (isRej ? '#5a2020' : '#2E6B4F') + ';border-radius:6px;padding:8px;background:rgba(0,0,0,0.3);opacity:' + (isRej ? '0.55' : '1') + ';display:flex;flex-direction:column;height:260px'
     var title = document.createElement('div')
     title.style.cssText = 'font-size:11px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:4px;flex-shrink:0'
-    title.textContent = yr + (isRej ? ' — REJECTED' : '') + (rho !== null ? '   ρ = ' + rho.toFixed(3) : '   ρ = n/a')
+    title.textContent = yr + (isRej ? ' — REJECTED' : '') + (rho !== null ? '   ρ = ' + rho.toFixed(4) : '   ρ = n/a')
     wrap.appendChild(title)
 
     var canvasWrap = document.createElement('div')
@@ -5230,12 +5268,14 @@ function renderStageIFsPanel_() {
   var rows = allYears.map(function(yr) {
     var rho = result.perYearRho[yr], isRej = result.tukey.rejected.some(function(r) { return String(r.year) === String(yr) })
     return '<span style="margin-right:16px;color:' + (isRej ? '#e07070' : '#9FE1CB') + '">' +
-      yr + ': ρ = ' + (rho !== null ? rho.toFixed(3) : 'n/a') + (isRej ? '  ✗ rejected' : '  ✓') + '</span>'
+      yr + ': ρ = ' + (rho !== null ? rho.toFixed(4) : 'n/a') + (isRej ? '  ✗ rejected' : '  ✓') + '</span>'
   }).join('')
   var fenceStr = result.tukey.lo !== undefined
     ? '   Tukey fence: [' + result.tukey.lo.toFixed(3) + ', ' + result.tukey.hi.toFixed(3) + ']' : ''
+  var warnHtml = result.shpiIdenticalWarn
+    ? '<br><span style="color:#F5A623;font-size:10px">' + result.shpiIdenticalWarn + '</span>' : ''
   tbl.innerHTML = '<strong style="color:#F5A623">Per-year ρ summary</strong>  ' + rows +
-    '<br><span style="color:#6FA898;font-size:10px">Tukey 1.5×IQR on {ρ_y}' + fenceStr + ' · pooled ' + result.pooledPairs.length + ' pairs from ' + result.tukey.retained.length + ' years</span>'
+    '<br><span style="color:#6FA898;font-size:10px">Tukey 1.5×IQR on {ρ_y}' + fenceStr + ' · pooled ' + result.pooledPairs.length + ' pairs from ' + result.tukey.retained.length + ' years</span>' + warnHtml
 }
 
 </script>
