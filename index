@@ -6318,9 +6318,9 @@ function renderStageMRhoCurve_(season, year, rhoArr, bestIdx) {
   if (!canvas) return
 
   // Collect all accepted years that have rho data for this season
-  var allYears = stageIResult && stageIResult.tukey
+  var allYears = (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0)
     ? stageIResult.tukey.retained.map(Number).sort()
-    : [year]
+    : [year]  // fallback: only the currently selected year
   var yearRhoMap = stageMRhoMap[season] || {}
 
   // Build a union date-label axis (sorted by date)
@@ -6528,11 +6528,12 @@ function updatePooledScatterForPass_(season, clickedYear, passIdx, passLabel) {
 
   var datasets = perYearDatasets.concat(perYearOlsLines)
   if (ciUpperData.length > 0) {
-    datasets.push({ label: 'CI+', data: ciUpperData, type: 'line', borderColor: 'rgba(245,166,35,0.25)', backgroundColor: 'rgba(245,166,35,0.07)', pointRadius: 0, borderWidth: 1, fill: '+1', order: 1 })
-    datasets.push({ label: 'CI-', data: ciLowerData, type: 'line', borderColor: 'rgba(245,166,35,0.25)', backgroundColor: 'rgba(245,166,35,0.07)', pointRadius: 0, borderWidth: 1, fill: false, order: 1 })
+    var ciStyle = { type: 'line', borderColor: 'rgba(245,166,35,0.25)', backgroundColor: 'rgba(245,166,35,0.07)', pointRadius: 0, borderWidth: 1, order: 1, isCI: true }
+    datasets.push(Object.assign({ label: 'CI+', data: ciUpperData, fill: '+1' }, ciStyle))
+    datasets.push(Object.assign({ label: 'CI-', data: ciLowerData, fill: false }, ciStyle))
   }
   if (pooledOlsData.length > 0) {
-    datasets.push({ label: 'Pooled OLS', data: pooledOlsData, type: 'line', borderColor: '#F5A623', backgroundColor: 'transparent', pointRadius: 0, borderWidth: 2.5, order: 0 })
+    datasets.push({ label: 'Pooled OLS', data: pooledOlsData, type: 'line', borderColor: '#F5A623', backgroundColor: 'transparent', pointRadius: 0, borderWidth: 2.5, order: 0, isPooledOls: true })
   }
 
   var corrEl = document.getElementById('corrSummary')
@@ -6546,7 +6547,7 @@ function updatePooledScatterForPass_(season, clickedYear, passIdx, passLabel) {
 // OLS helper with standard error for CI band: returns {slope, intercept, r2, se, n, xm, ssx}
 function computeOlsFull_(xs, ys) {
   var n = xs.length
-  if (n < 3) return null
+  if (n < 2) return null          // need at least 2 points for OLS
   var xm = xs.reduce(function(a, b) { return a + b }, 0) / n
   var ym = ys.reduce(function(a, b) { return a + b }, 0) / n
   var ssx = 0, sxy = 0
@@ -6560,7 +6561,8 @@ function computeOlsFull_(xs, ys) {
     var t = ys[j] - ym; ssTot += t * t
   }
   var r2  = ssTot > 0 ? 1 - ssRes / ssTot : 0
-  var mse = n > 2 ? ssRes / (n - 2) : 0
+  // SE requires n >= 3 (df = n-2 > 0); return 0 for n=2 so CI band collapses gracefully
+  var mse = n >= 3 ? ssRes / (n - 2) : 0
   var se  = Math.sqrt(mse)
   return { slope: slope, intercept: intercept, r2: r2, se: se, n: n, xm: xm, ssx: ssx, ym: ym }
 }
@@ -6584,9 +6586,9 @@ function renderPooledPassScatter_(datasets, rho, passLabel) {
       responsive: true, maintainAspectRatio: false, animation: false,
       plugins: {
         legend: { display: false },
-        tooltip: { filter: function(i) { return i.dataset.type !== 'line' || i.dataset.label === 'Pooled OLS' },
+        tooltip: { filter: function(i) { return !i.dataset.isCI && (i.dataset.type !== 'line' || i.dataset.isPooledOls) },
           callbacks: { label: function(ctx) {
-            if (ctx.dataset.label === 'Pooled OLS') return 'OLS: ' + ctx.parsed.y.toFixed(3)
+            if (ctx.dataset.isPooledOls) return 'OLS: ' + ctx.parsed.y.toFixed(3)
             return (ctx.dataset.label || '') + '  SHPI=' + ctx.parsed.x.toFixed(3) + '  CPI=' + ctx.parsed.y.toFixed(3)
           }}
         }
