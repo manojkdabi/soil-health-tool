@@ -6487,7 +6487,7 @@ function renderCpiPassesChart_(year) {
     fieldMeans.push(cnt > 0 ? sum / cnt : null)
   })
 
-  // Build per-pixel datasets (max 118 pixels — use every pixel once from pass[0])
+  // Build per-pixel datasets (up to 100 pixels sampled for chart readability)
   // For the trajectory, x = pass index, y = CPI value for that pixel
   var refPass = passes.find(function(p) { return p.pixels })
   var pixelCount = refPass ? refPass.pixels.length : 0
