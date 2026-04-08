@@ -4299,12 +4299,12 @@ function renderRatioChart_(season) {
   // Destroy previous instance
   if (ratioChart) { ratioChart.destroy(); ratioChart = null }
 
-  // Helper: field mean of a pixels array (values in [0,1])
+  // Helper: field mean of a pixels array (values in [0,1]; -1 = invalid/nodata — skip)
   function fieldMean(pixels) {
     if (!pixels || !pixels.length) return null
-    var s = 0
-    for (var i = 0; i < pixels.length; i++) s += pixels[i]
-    return s / pixels.length
+    var s = 0, cnt = 0
+    for (var i = 0; i < pixels.length; i++) { if (pixels[i] >= 0) { s += pixels[i]; cnt++ } }
+    return cnt > 0 ? s / cnt : null
   }
 
   var seasonData = cropPassPixels[season] || {}
@@ -4317,7 +4317,7 @@ function renderRatioChart_(season) {
     // ── PASS-DATE TRENDLINE MODE ──────────────────────────────────────────
     var acceptedYrs
     if (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0) {
-      acceptedYrs = stageIResult.tukey.retained.filter(function(y) { return seasonData[y] && seasonData[y].length > 0 })
+      acceptedYrs = stageIResult.tukey.retained.map(Number).filter(function(y) { return seasonData[y] && seasonData[y].length > 0 })
     } else {
       acceptedYrs = seasonYears
     }
@@ -5848,6 +5848,8 @@ function loadPassDateExplorer_() {
           var soilPassTab = document.getElementById('tsPanelSoilPassesTab')
           if (cpiPassTab)  cpiPassTab.style.display = 'inline-block'
           if (soilPassTab) soilPassTab.style.display = 'inline-block'
+          // Re-render ratio chart in pass-trendline mode if already on that tab
+          if (tsPanelMode === 'ratio') renderRatioChart_(season)
 
           renderPassDateGrid_()
           updateConcludeFromBestPass_(season)   // N3: update ④ CONCLUDE with per-pass OLS verdict
