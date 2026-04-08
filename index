@@ -70,6 +70,7 @@ input:focus,select:focus{border-color:#F5A623}
 .banner{border-radius:6px;padding:9px 12px;font-size:12px;font-weight:600;text-align:center}
 .banner-yes{background:#1a3d1a;color:#7FE07F;border:1px solid #3a6d3a}
 .banner-no{background:#3d2a1a;color:#f0a070;border:1px solid #6d4a2a}
+.banner-pending{background:#1a2d3a;color:#9FE1CB;border:1px solid #2E6B4F}
 .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .stat-card{background:#1a3d30;border:1px solid #2E6B4F;border-radius:6px;padding:8px 10px;text-align:center}
 .stat-val{font-size:16px;font-weight:700;color:#F5A623}
@@ -1431,16 +1432,9 @@ function renderResults(data) {
 
   // Banner
   const banner = document.getElementById('banner')
-  if (v.confirmed === null) {
-    banner.textContent = '⚠ Insufficient spatial data — zone correlation skipped; see ③c Pooled Scatter'
-    banner.className   = 'banner banner-no'
-  } else if (v.confirmed) {
-    banner.textContent = '✓ Hypothesis confirmed — CPI increases across ' + (v.n_zones || 10) + ' SHPI zones'
-    banner.className   = 'banner banner-yes'
-  } else {
-    banner.textContent = '⚠ Hypothesis not confirmed — check data coverage (' + (v.n_zones || 10) + ' zones)'
-    banner.className   = 'banner banner-no'
-  }
+  // N3: Hypothesis verdict deferred to Stage M (per-pass OLS) — show pending until ③e loads
+  banner.textContent = '⏳ Load ③e Pass-Date Explorer to confirm hypothesis'
+  banner.className   = 'banner banner-pending'
 
   // Data source badge
   var badge = document.getElementById('dataSourceBadge')
@@ -1486,7 +1480,7 @@ function renderResults(data) {
     { val: rhoVal,  lbl: rhoLbl },
     { val: v.r_squared,  lbl: r2Lbl },
     { val: v.cpi_ratio ? v.cpi_ratio + 'x' : '—', lbl: 'CPI Hi/Lo zone ratio' },
-    { val: v.confirmed === null ? '—' : v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
+    { val: '⏳', lbl: 'Hypothesis', id: 'hypothesisStatVal' },
   ]
   stats.forEach(s => {
     const card = document.createElement('div')
@@ -1494,6 +1488,7 @@ function renderResults(data) {
     const val = document.createElement('div')
     val.className = 'stat-val'
     val.textContent = s.val
+    if (s.id) val.id = s.id
     const lbl = document.createElement('div')
     lbl.className = 'stat-lbl'
     lbl.textContent = s.lbl
@@ -1547,7 +1542,7 @@ function renderResults(data) {
   })
   setBadge_('pooledBadge', '✓')
   setBadge_('zonesBadge', '✓')
-  setBadge_('concludeBadge', '✓')
+  setBadge_('concludeBadge', '⏳')
 
   // Zone map — rendered after sections are visible so the container has layout
   setTimeout(function() { renderResultsMap_(data) }, 50)
@@ -5724,6 +5719,7 @@ function loadPassDateExplorer_() {
           if (soilPassTab) soilPassTab.style.display = 'inline-block'
 
           renderPassDateGrid_()
+          updateConcludeFromBestPass_(season)   // N3: update ④ CONCLUDE with per-pass OLS verdict
           if (statusEl) statusEl.textContent = 'Done — ' + years.length + ' years loaded.'
         })
         .withFailureHandler(function(err) {
@@ -6386,6 +6382,102 @@ function onStageMSeasonChange_() {
 function revealPassExplorerStep_() {
   var el = document.getElementById('passExplorerStep')
   if (el) el.style.display = 'block'
+}
+
+// ── N3: Per-pass OLS hypothesis verdict ──────────────────────
+// Pools (refSHPI, CPI) pairs from all accepted years for each pass index,
+// finds the pass with the highest pooled Spearman ρ, and returns the verdict.
+function computeBestPassHypothesis_(season) {
+  var yearMap = stageMRhoMap[season]
+  if (!yearMap) return null
+  var acceptedYears = (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0)
+    ? stageIResult.tukey.retained.map(Number).sort()
+    : Object.keys(yearMap).map(Number).sort()
+  if (acceptedYears.length === 0) return null
+
+  // Determine max pass slots (use the year with most passes)
+  var maxPasses = 0
+  acceptedYears.forEach(function(yr) {
+    var passes = (cropPassPixels[season] || {})[yr] || []
+    if (passes.length > maxPasses) maxPasses = passes.length
+  })
+  if (maxPasses === 0) return null
+
+  // For each pass index, pool pixel pairs across all accepted years
+  var bestRho = -Infinity, bestPassIdx = 0, bestPassLabel = '', bestPassDate = '', bestAllPts = []
+  for (var pi = 0; pi < maxPasses; pi++) {
+    var allPts = []
+    acceptedYears.forEach(function(yr) {
+      var refData    = (refShpiPassMap[season] || {})[yr]
+      var cropPasses = (cropPassPixels[season] || {})[yr] || []
+      if (!refData || !cropPasses[pi] || !cropPasses[pi].pixels) return
+      var refPix = refData.pixels, cpiPix = cropPasses[pi].pixels
+      var len = Math.min(refPix.length, cpiPix.length)
+      for (var i = 0; i < len; i++) {
+        if (refPix[i] >= 0 && cpiPix[i] >= 0) allPts.push({ x: refPix[i], y: cpiPix[i] })
+      }
+    })
+    if (allPts.length < 3) continue
+    var rho = spearmanRhoArr_(allPts.map(function(p) { return p.x }), allPts.map(function(p) { return p.y }))
+    if (rho > bestRho) {
+      bestRho = rho
+      bestPassIdx = pi
+      // Get label/date from first available year
+      for (var yi = 0; yi < acceptedYears.length; yi++) {
+        var cp = (cropPassPixels[season] || {})[acceptedYears[yi]] || []
+        if (cp[pi]) { bestPassLabel = cp[pi].label || cp[pi].date || ''; bestPassDate = cp[pi].date || ''; break }
+      }
+      bestAllPts = allPts
+    }
+  }
+
+  if (bestAllPts.length === 0) return null
+  var ols = computeOlsFull_(bestAllPts.map(function(p) { return p.x }), bestAllPts.map(function(p) { return p.y }))
+  return {
+    confirmed: bestRho > 0.55,
+    marginal:  bestRho > 0.45 && bestRho <= 0.55,
+    rho: bestRho,
+    passIdx: bestPassIdx, passLabel: bestPassLabel, passDate: bestPassDate,
+    n: bestAllPts.length, ols: ols
+  }
+}
+
+// Update ④ CONCLUDE banner and hypothesis stat card using Stage M best-ρ pass verdict
+function updateConcludeFromBestPass_(season) {
+  var result = computeBestPassHypothesis_(season)
+  var banner = document.getElementById('banner')
+  if (!banner) return
+
+  if (!result || result.n < 3) {
+    banner.textContent = '⚠ Insufficient pass data — try a different season or year set'
+    banner.className   = 'banner banner-no'
+    setBadge_('concludeBadge', '⚠')
+    var sv = document.getElementById('hypothesisStatVal')
+    if (sv) sv.textContent = 'NO'
+    return
+  }
+
+  var rhoStr = result.rho.toFixed(3)
+  var r2Str  = result.ols ? result.ols.r2.toFixed(3) : '—'
+  if (result.confirmed) {
+    banner.textContent = '✓ Hypothesis confirmed — best pass ' + result.passLabel + ', pooled ρ=' + rhoStr + ', R²=' + r2Str + ' (n=' + result.n + ')'
+    banner.className   = 'banner banner-yes'
+    setBadge_('concludeBadge', 'ρ=' + rhoStr + ' ✓')
+    var sv = document.getElementById('hypothesisStatVal')
+    if (sv) sv.textContent = 'YES'
+  } else if (result.marginal) {
+    banner.textContent = '⚠ Hypothesis marginal — best pass ' + result.passLabel + ', pooled ρ=' + rhoStr + ', R²=' + r2Str + ' (n=' + result.n + ')'
+    banner.className   = 'banner banner-no'
+    setBadge_('concludeBadge', 'ρ=' + rhoStr + ' ~')
+    var sv = document.getElementById('hypothesisStatVal')
+    if (sv) sv.textContent = 'MARG'
+  } else {
+    banner.textContent = '⚠ Hypothesis not confirmed — best pass ' + result.passLabel + ', pooled ρ=' + rhoStr + ' (n=' + result.n + ')'
+    banner.className   = 'banner banner-no'
+    setBadge_('concludeBadge', 'ρ=' + rhoStr + ' ✗')
+    var sv = document.getElementById('hypothesisStatVal')
+    if (sv) sv.textContent = 'NO'
+  }
 }
 </script>
 
