@@ -5196,9 +5196,9 @@ function stageIAdaptiveBins_(pooledPairs) {
   var ratio = (bins.length >= 2 && binMeansCpi[0] > 0.01)
     ? Math.round(binMeansCpi[bins.length - 1] / binMeansCpi[0] * 100) / 100 : null
   // Confirmation: positive slope AND R² ≥ 0.10 on bin means (exploratory only; hypothesis driven by Stage M OLS)
-  var confirmed = nBins === 0 ? null : (binSlope > 0 && binR2 >= 0.10)
+  var confirmed = bins.length === 0 ? null : (binSlope > 0 && binR2 >= 0.10)
   return {
-    confirmed: confirmed, n_zones: nBins, r_squared: binR2,
+    confirmed: confirmed, n_zones: bins.length, r_squared: binR2,
     cpi_ratio: ratio, shpi_thresholds: cuts, data_source: 'stage_i',
     bin_means_shpi: binMeansShpi, bin_means_cpi: binMeansCpi
   }
