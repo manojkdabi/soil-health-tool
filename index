@@ -1240,8 +1240,6 @@ function decodeRasterToResult_(rawData, callback) {
     var zoneR2    = Math.round((zoneOls ? zoneOls.r2 : 0) * 1000) / 1000
     var zoneSlope = zoneOls ? zoneOls.slope : 0
 
-    // mono / ratio describe the ordinal zone pattern
-    var mono  = zoneMeanCpi.every(function(v, i) { return i === 0 || v >= zoneMeanCpi[i - 1] })
     var ratio = (nBins >= 2 && zoneMeanCpi[0] > 0.01)
       ? Math.round(zoneMeanCpi[nBins - 1] / zoneMeanCpi[0] * 100) / 100
       : null
@@ -1358,7 +1356,6 @@ function decodeRasterToResult_(rawData, callback) {
       },
       validation: {
         r_squared:       zoneR2,
-        is_monotonic:    mono,
         cpi_ratio:       ratio,
         confirmed:       nBins === 0 ? null : (zoneSlope > 0 && zoneR2 >= 0.10),
         n_zones:         nBins,
@@ -2234,7 +2231,7 @@ function renderLibraryPanel_() {
     return '<tr' + active + '><td>' + nameCell + '</td><td>' + item.areaHa + ' ha</td><td>' + date + '</td><td>' + shpiCell + '</td><td>' + r2Cell + '</td><td>' + ratioCell + '</td><td>' + actions + '</td></tr>'
   }).join('')
 
-  var emptyMsg = lib.length === 0 ? '<tr><td colspan="8" style="text-align:center;color:#5a8a6a">No saved ROIs yet</td></tr>' : ''
+  var emptyMsg = lib.length === 0 ? '<tr><td colspan="7" style="text-align:center;color:#5a8a6a">No saved ROIs yet</td></tr>' : ''
   var bodyHtml = rows || emptyMsg
 
   var body = document.getElementById('roiMergedBody')
@@ -4917,7 +4914,7 @@ function stageIRetainAll_(r2Map) {
 // Returns validation object (same shape as decodeRasterToResult_ validation block)
 function stageIAdaptiveBins_(pooledPairs) {
   if (pooledPairs.length < 6) {
-    return { confirmed: null, n_zones: 0, r_squared: 0, is_monotonic: false,
+    return { confirmed: null, n_zones: 0, r_squared: 0,
              cpi_ratio: null, shpi_thresholds: [], data_source: 'stage_i' }
   }
   // F1: nBins = floor(n/3) — 3 pairs per bin is the minimum for a meaningful bin mean; capped [2,10]
@@ -4939,7 +4936,6 @@ function stageIAdaptiveBins_(pooledPairs) {
   var binOls = olsArr_(binMeansShpi, binMeansCpi)
   var binR2    = binOls ? binOls.r2 : 0
   var binSlope = binOls ? binOls.slope : 0
-  var mono = binMeansCpi.every(function(v, i) { return i === 0 || v >= binMeansCpi[i - 1] })
   // CPI ratio: lowest to highest bin; guard against near-zero denominator (< 0.01 = bare soil / no crop)
   var ratio = (nBins >= 2 && binMeansCpi[0] > 0.01)
     ? Math.round(binMeansCpi[nBins - 1] / binMeansCpi[0] * 100) / 100 : null
@@ -4947,15 +4943,15 @@ function stageIAdaptiveBins_(pooledPairs) {
   var confirmed = nBins === 0 ? null : (binSlope > 0 && binR2 >= 0.10)
   return {
     confirmed: confirmed, n_zones: nBins, r_squared: binR2,
-    is_monotonic: mono, cpi_ratio: ratio, shpi_thresholds: cuts, data_source: 'stage_i',
+    cpi_ratio: ratio, shpi_thresholds: cuts, data_source: 'stage_i',
     bin_means_shpi: binMeansShpi, bin_means_cpi: binMeansCpi
   }
 }
 
 // ── Main Stage I orchestrator ─────────────────────────────────────────────────
 // season: 'kharif'|'rabi'; years: string[] (locked SHPI years)
-// Fetches per-year rasters, builds pairs, computes ρ_y, Tukey rejects,
-// pools survivors, runs F1/F2 hypothesis, renders Stage I panel.
+// Fetches per-year rasters, builds pairs, computes OLS R²_y per year,
+// pools all retained years (researcher controls via chips), runs adaptive binning.
 async function runStageI_(season, years) {
   if (!roi || !lastResult) return
   var bbox = lastResult.bbox
