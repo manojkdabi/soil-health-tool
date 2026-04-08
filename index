@@ -438,6 +438,7 @@ canvas{display:block}
           <button class="ts-idx-btn" id="tsPanelSoilTab" onclick="setTsPanelMode_('soil')" style="flex:1;font-size:9px">🟤 Soil</button>
           <button class="ts-idx-btn" id="tsPanelCpiPassesTab" onclick="setTsPanelMode_('cpipasses')" style="flex:1;font-size:9px">📅 CPI</button>
           <button class="ts-idx-btn" id="tsPanelSoilPassesTab" onclick="setTsPanelMode_('shpipasses')" style="flex:1;font-size:9px">📅 SHPI</button>
+          <button class="ts-idx-btn" id="tsPanelRatioTab" onclick="setTsPanelMode_('ratio')" style="flex:1;font-size:9px">📊 Ratio</button>
         </div>
         <!-- Crop panel -->
         <div id="tsCropPanel">
@@ -522,6 +523,20 @@ canvas{display:block}
           </div>
           <div style="height:130px;margin-top:4px"><canvas id="shpiPassesChart"></canvas></div>
           <div id="shpiPassesStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px">ⓘ Load pass rasters in ③e to populate.</div>
+        </div>
+        <!-- N4 Btn6: CPI/SHPI Ratio tab — per-year crop performance vs soil health -->
+        <div id="tsRatioPanel" style="display:none">
+          <div style="display:flex;gap:4px;margin-bottom:5px;align-items:center">
+            <span style="font-size:9px;color:#9FE1CB;flex-shrink:0">Season:</span>
+            <button class="ts-idx-btn active" id="ratioSeasonKharif" onclick="renderRatioChart_('kharif')" style="font-size:9px">🌾 Kharif</button>
+            <button class="ts-idx-btn" id="ratioSeasonRabi" onclick="renderRatioChart_('rabi')" style="font-size:9px">🌱 Rabi</button>
+          </div>
+          <div class="chart-heading-row">
+            <span style="font-size:9px;color:#9FE1CB;font-weight:600">📊 CPI vs SHPI per year (ratio = CPI÷SHPI)</span>
+            <button class="chart-expand-btn" onclick="openChartFs_('ratioChart')" title="Fullscreen">⛶</button>
+          </div>
+          <div style="height:160px;margin-top:4px"><canvas id="ratioChart"></canvas></div>
+          <div id="ratioChartStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px">ⓘ Fetch both Crop and Soil series first.</div>
         </div>
       </div>
     </div>
@@ -718,7 +733,8 @@ let tsYearsForCpi  = []           // confirmed year list stored for Stage 2 CPI 
 let soilTsData        = null      // fetched soil time-series array (bare-soil SHPI sub-indices)
 let soilTsChart       = null      // soil TS Chart instance
 let soilCurIndex      = 'sab'     // active soil index key (sab|claysi|ri2|smi)
-let tsPanelMode       = 'crop'    // 'crop' | 'soil' | 'cpipasses' | 'shpipasses' — which TS tab is active
+let tsPanelMode       = 'crop'    // 'crop' | 'soil' | 'cpipasses' | 'shpipasses' | 'ratio' — which TS tab is active
+let ratioChart        = null      // N4 CPI/SHPI ratio Chart instance
 const ZONE_COLORS         = ['#a50026','#d73027','#f46d43','#fdae61','#fee090','#d9ef8b','#a6d96a','#66bd63','#1a9850','#006837']
 const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','#ff9f43','#54a0ff','#5f27cd','#ee5a24','#0abde3']
 const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
@@ -3285,20 +3301,25 @@ function setTsPanelMode_(mode) {
   var soilTab   = document.getElementById('tsPanelSoilTab')
   var cpiPassTab  = document.getElementById('tsPanelCpiPassesTab')
   var soilPassTab = document.getElementById('tsPanelSoilPassesTab')
+  var ratioTab    = document.getElementById('tsPanelRatioTab')
   var cropPanel   = document.getElementById('tsCropPanel')
   var soilPanel   = document.getElementById('tsSoilPanel')
   var cpiPassPanel  = document.getElementById('tsCpiPassesPanel')
   var soilPassPanel = document.getElementById('tsSoilPassesPanel')
+  var ratioPanel    = document.getElementById('tsRatioPanel')
   if (cropTab)     cropTab.classList.toggle('active',     mode === 'crop')
   if (soilTab)     soilTab.classList.toggle('active',     mode === 'soil')
   if (cpiPassTab)  cpiPassTab.classList.toggle('active',  mode === 'cpipasses')
   if (soilPassTab) soilPassTab.classList.toggle('active', mode === 'shpipasses')
+  if (ratioTab)    ratioTab.classList.toggle('active',    mode === 'ratio')
   if (cropPanel)   cropPanel.style.display   = mode === 'crop'      ? 'block' : 'none'
   if (soilPanel)   soilPanel.style.display   = mode === 'soil'      ? 'block' : 'none'
   if (cpiPassPanel)  cpiPassPanel.style.display  = mode === 'cpipasses'  ? 'block' : 'none'
   if (soilPassPanel) soilPassPanel.style.display = mode === 'shpipasses' ? 'block' : 'none'
+  if (ratioPanel)    ratioPanel.style.display    = mode === 'ratio'       ? 'block' : 'none'
   if (mode === 'cpipasses')  refreshCpiPassesPanel_()
   if (mode === 'shpipasses') refreshShpiPassesPanel_()
+  if (mode === 'ratio')      renderRatioChart_(activePipelineSeason)
 }
 
 // ── Time Series — decode one window PNG (RGBA → index means) ────────
@@ -3866,7 +3887,7 @@ function renderTsChartSeason_(indexKey) {
     }
   })
 
-  // Mean-year line: average val at each biweekly DOY bucket (round to nearest 14)
+  // Median-year line: median val at each biweekly DOY bucket (round to nearest 14)
   const buckets = {}
   selYears.forEach(function(yr) {
     ;(byYear[yr] || []).forEach(function(p) {
@@ -3876,17 +3897,19 @@ function renderTsChartSeason_(indexKey) {
       buckets[bkt].push(p.val)
     })
   })
-  const meanPts = Object.keys(buckets)
+  const medianPts = Object.keys(buckets)
     .map(Number)
     .sort(function(a, b) { return a - b })
     .map(function(doy) {
-      const vals = buckets[doy]
-      return { x: doy, y: Math.round(vals.reduce(function(a, b) { return a + b }, 0) / vals.length * 1000) / 1000 }
+      const vals = buckets[doy].slice().sort(function(a, b) { return a - b })
+      const mid  = Math.floor(vals.length / 2)
+      const med  = vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid]
+      return { x: doy, y: Math.round(med * 1000) / 1000 }
     })
   datasets.push({
     type: 'line',
-    label: 'Mean',
-    data: meanPts,
+    label: 'Median',
+    data: medianPts,
     borderColor: '#F5A623',
     backgroundColor: 'transparent',
     borderWidth: 2.5,
@@ -3953,7 +3976,7 @@ function renderTsChartSeason_(indexKey) {
 
   document.getElementById('tsChartLabel').textContent =
     'Seasons overlaid — ' + selYears.length + ' year' + (selYears.length > 1 ? 's' : '') +
-    ' (' + selYears.join(', ') + ')  |  orange line = mean'
+    ' (' + selYears.join(', ') + ')  |  orange line = median'
 }
 
 // ── D1: Soil TS — decode one window PNG (RGBA → soil index means) ─
@@ -4189,7 +4212,7 @@ function renderSoilTsChartSeason_(indexKey) {
     }
   })
 
-  // Mean line
+  // Median line
   const buckets = {}
   years.forEach(function(yr) {
     ;(byYear[yr] || []).forEach(function(p) {
@@ -4199,13 +4222,15 @@ function renderSoilTsChartSeason_(indexKey) {
       buckets[bkt].push(p.val)
     })
   })
-  const meanPts = Object.keys(buckets).map(Number).sort((a, b) => a - b)
+  const medianPts = Object.keys(buckets).map(Number).sort((a, b) => a - b)
     .map(doy => {
-      const vals = buckets[doy]
-      return { x: doy, y: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 1000) / 1000 }
+      const vals = buckets[doy].slice().sort((a, b) => a - b)
+      const mid  = Math.floor(vals.length / 2)
+      const med  = vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid]
+      return { x: doy, y: Math.round(med * 1000) / 1000 }
     })
   datasets.push({
-    type: 'line', label: 'Mean', data: meanPts,
+    type: 'line', label: 'Median', data: medianPts,
     borderColor: '#cd853f', backgroundColor: 'transparent',
     borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.4, spanGaps: true
   })
@@ -4248,7 +4273,138 @@ function renderSoilTsChartSeason_(indexKey) {
   })
   document.getElementById('soilChartLabel').textContent =
     'Bare-soil seasons overlaid — ' + years.length + ' year' + (years.length > 1 ? 's' : '') +
-    ' (' + years.join(', ') + ')  |  brown line = mean'
+    ' (' + years.join(', ') + ')  |  brown line = median'
+}
+
+// ── N4 Btn6: CPI/SHPI Ratio chart ────────────────────────────────────────────
+// Shows per-year mean CPI (green bars) and mean SHPI (brown bars) side-by-side,
+// with a CPI÷SHPI ratio line (secondary y-axis, gold).
+// Relies on computeYearSeasonPairs_() which uses tsData + soilTsData.
+let ratioChartSeason_ = 'kharif'  // last-rendered season for ratio tab
+function renderRatioChart_(season) {
+  if (!season) season = ratioChartSeason_
+  ratioChartSeason_ = season
+
+  // Update season button active state
+  var kBtn = document.getElementById('ratioSeasonKharif')
+  var rBtn = document.getElementById('ratioSeasonRabi')
+  if (kBtn) kBtn.classList.toggle('active', season === 'kharif')
+  if (rBtn) rBtn.classList.toggle('active', season === 'rabi')
+
+  var statusEl = document.getElementById('ratioChartStatus')
+  var canvasEl = document.getElementById('ratioChart')
+
+  if (!tsData || !soilTsData) {
+    if (statusEl) statusEl.textContent = 'ⓘ Fetch both Crop and Soil series first.'
+    if (canvasEl) canvasEl.style.display = 'none'
+    return
+  }
+
+  var pairs = computeYearSeasonPairs_(season)
+  if (!pairs.length) {
+    if (statusEl) statusEl.textContent = 'ⓘ No overlapping years between CPI and SHPI data.'
+    if (canvasEl) canvasEl.style.display = 'none'
+    return
+  }
+
+  if (canvasEl) canvasEl.style.display = 'block'
+  if (statusEl) statusEl.textContent = ''
+
+  // Destroy previous instance
+  if (ratioChart) { ratioChart.destroy(); ratioChart = null }
+
+  var labels = pairs.map(function(p) { return p.year })
+  var cpiVals  = pairs.map(function(p) { return Math.round(p.cpi  * 1000) / 1000 })
+  var shpiVals = pairs.map(function(p) { return Math.round(p.shpi * 1000) / 1000 })
+  var ratioVals = pairs.map(function(p) {
+    return p.shpi > 0 ? Math.round((p.cpi / p.shpi) * 1000) / 1000 : null
+  })
+
+  var ctx = document.getElementById('ratioChart').getContext('2d')
+  ratioChart = new Chart(ctx, {
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'CPI (crop)',
+          data: cpiVals,
+          backgroundColor: 'rgba(80,200,140,0.65)',
+          borderColor: '#4ecdc4',
+          borderWidth: 1,
+          yAxisID: 'yLeft'
+        },
+        {
+          type: 'bar',
+          label: 'SHPI (soil)',
+          data: shpiVals,
+          backgroundColor: 'rgba(180,120,60,0.65)',
+          borderColor: '#cd853f',
+          borderWidth: 1,
+          yAxisID: 'yLeft'
+        },
+        {
+          type: 'line',
+          label: 'CPI÷SHPI ratio',
+          data: ratioVals,
+          borderColor: '#F5A623',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 7,
+          fill: false,
+          tension: 0.3,
+          spanGaps: true,
+          yAxisID: 'yRight'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 8, padding: 4 }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(item) {
+              if (item.datasetIndex === 2) return 'CPI÷SHPI: ' + item.raw
+              return item.dataset.label + ': ' + item.raw
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#9FE1CB', font: { size: 8 } },
+          grid: { color: 'rgba(255,255,255,0.07)' }
+        },
+        yLeft: {
+          type: 'linear',
+          position: 'left',
+          min: 0, max: 1,
+          title: { display: true, text: 'Index [0–1]', color: '#9FE1CB', font: { size: 7 } },
+          ticks: { color: '#9FE1CB', font: { size: 7 } },
+          grid: { color: 'rgba(255,255,255,0.07)' }
+        },
+        yRight: {
+          type: 'linear',
+          position: 'right',
+          title: { display: true, text: 'Ratio', color: '#F5A623', font: { size: 7 } },
+          ticks: { color: '#F5A623', font: { size: 7 } },
+          grid: { drawOnChartArea: false }
+        }
+      }
+    }
+  })
+  if (statusEl) {
+    var seasonLabel = season === 'kharif' ? 'Kharif' : 'Rabi'
+    statusEl.textContent = seasonLabel + ' — ' + pairs.length + ' year' + (pairs.length > 1 ? 's' : '') +
+      ' | bars = index values  |  gold line = CPI÷SHPI ratio'
+  }
 }
 
 // ── UI helpers ────────────────────────────────────────────────
