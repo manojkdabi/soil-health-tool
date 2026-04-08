@@ -524,10 +524,11 @@ canvas{display:block}
           <div style="height:130px;margin-top:4px"><canvas id="shpiPassesChart"></canvas></div>
           <div id="shpiPassesStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px">ⓘ Load pass rasters in ③e to populate.</div>
         </div>
-        <!-- N4 Btn6: CPI/SHPI Ratio tab — per-year crop performance vs soil health -->
+        <!-- N4 Btn6: CPI/SHPI Ratio tab — pass-date trendline with Timeline/By Season toggle -->
         <div id="tsRatioPanel" style="display:none">
-          <div style="display:flex;gap:4px;margin-bottom:5px;align-items:center">
-            <span style="font-size:9px;color:#9FE1CB;flex-shrink:0">Season:</span>
+          <div style="display:flex;gap:4px;margin-bottom:5px;align-items:center;flex-wrap:wrap">
+            <button class="ts-idx-btn active" id="ratioViewTimeline" onclick="setRatioViewMode_('timeline')" style="font-size:8px">📈 Timeline</button>
+            <button class="ts-idx-btn" id="ratioViewSeason" onclick="setRatioViewMode_('season')" style="font-size:8px">📅 By Season</button>
             <button class="ts-idx-btn active" id="ratioSeasonKharif" onclick="renderRatioChart_('kharif')" style="font-size:9px">🌾 Kharif</button>
             <button class="ts-idx-btn" id="ratioSeasonRabi" onclick="renderRatioChart_('rabi')" style="font-size:9px">🌱 Rabi</button>
           </div>
@@ -536,7 +537,7 @@ canvas{display:block}
             <button class="chart-expand-btn" onclick="openChartFs_('ratioChart')" title="Fullscreen">⛶</button>
           </div>
           <div style="height:160px;margin-top:4px"><canvas id="ratioChart"></canvas></div>
-          <div id="ratioChartStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px">ⓘ Fetch both Crop and Soil series first.</div>
+          <div id="ratioChartStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px">ⓘ Load ③e Pass-Date Explorer to view ratio trendline.</div>
         </div>
       </div>
     </div>
@@ -4283,6 +4284,22 @@ function renderSoilTsChartSeason_(indexKey) {
 // ── N4 Btn6: CPI/SHPI Ratio chart ────────────────────────────────────────────
 // Shows CPI/(CPI+SHPI) ratio — pass-date trendline (Stage M) or annual fallback.
 let ratioChartSeason = 'kharif'  // last-rendered season for ratio tab
+let ratioViewMode_   = 'timeline' // 'timeline' | 'season'
+
+// Toggle Timeline / By Season view mode for the Ratio tab
+function setRatioViewMode_(mode) {
+  ratioViewMode_ = mode
+  var tlBtn = document.getElementById('ratioViewTimeline')
+  var snBtn = document.getElementById('ratioViewSeason')
+  if (tlBtn) tlBtn.classList.toggle('active', mode === 'timeline')
+  if (snBtn) snBtn.classList.toggle('active', mode === 'season')
+  renderRatioChart_(ratioChartSeason)
+}
+
+// Render CPI/(CPI+SHPI) ratio trendline tab
+// Timeline mode: x = actual calendar pass dates, one line per accepted year
+// By Season mode: x = DOY, all accepted years overlaid + median line
+// No annual fallback — requires Stage M pass rasters (cropPassPixels)
 function renderRatioChart_(season) {
   if (!season) season = ratioChartSeason
   ratioChartSeason = season
@@ -4299,7 +4316,18 @@ function renderRatioChart_(season) {
   // Destroy previous instance
   if (ratioChart) { ratioChart.destroy(); ratioChart = null }
 
-  // Helper: field mean of a pixels array (values in [0,1]; -1 = invalid/nodata — skip)
+  // Helper: field median of a pixels array (values in [0,1]; -1 = invalid/nodata — skip)
+  function fieldMedian(pixels) {
+    if (!pixels || !pixels.length) return null
+    var valid = []
+    for (var i = 0; i < pixels.length; i++) { if (pixels[i] >= 0) valid.push(pixels[i]) }
+    if (!valid.length) return null
+    valid.sort(function(a, b) { return a - b })
+    var mid = Math.floor(valid.length / 2)
+    return valid.length % 2 === 0 ? (valid[mid - 1] + valid[mid]) / 2 : valid[mid]
+  }
+
+  // Helper: field mean of a pixels array (for refSHPI — single pass)
   function fieldMean(pixels) {
     if (!pixels || !pixels.length) return null
     var s = 0, cnt = 0
@@ -4313,22 +4341,34 @@ function renderRatioChart_(season) {
     return passes && passes.length > 0
   })
 
-  if (seasonYears.length > 0) {
-    // ── PASS-DATE TRENDLINE MODE ──────────────────────────────────────────
-    var acceptedYrs
-    if (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0) {
-      acceptedYrs = stageIResult.tukey.retained.map(Number).filter(function(y) { return seasonData[y] && seasonData[y].length > 0 })
-    } else {
-      acceptedYrs = seasonYears
-    }
-    acceptedYrs = acceptedYrs.sort(function(a, b) { return a - b })
+  // Stage M required — show prompt if not loaded
+  if (!seasonYears.length) {
+    if (statusEl) statusEl.textContent = 'ⓘ Load ③e Pass-Date Explorer to view ratio trendline.'
+    if (canvasEl) canvasEl.style.display = 'none'
+    return
+  }
 
-    if (!acceptedYrs.length) {
-      if (statusEl) statusEl.textContent = 'ⓘ No pass data. Load ③e Pass-Date Explorer first.'
-      if (canvasEl) canvasEl.style.display = 'none'
-      return
-    }
+  // Determine accepted years (researcher-controlled via chip row → stageIResult.tukey.retained)
+  var acceptedYrs
+  if (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0) {
+    acceptedYrs = stageIResult.tukey.retained.map(Number).filter(function(y) { return seasonData[y] && seasonData[y].length > 0 })
+  } else {
+    acceptedYrs = seasonYears
+  }
+  acceptedYrs = acceptedYrs.sort(function(a, b) { return a - b })
 
+  if (!acceptedYrs.length) {
+    if (statusEl) statusEl.textContent = 'ⓘ No accepted-year pass data available.'
+    if (canvasEl) canvasEl.style.display = 'none'
+    return
+  }
+
+  var yearPalette = ['#4ecdc4','#ff6b6b','#ffd166','#c3a6e0','#ff9f43','#54a0ff','#a8e6cf','#ee5a24']
+  var seasonLabel = season === 'kharif' ? 'Kharif' : 'Rabi'
+  var ctx = canvasEl.getContext('2d')
+
+  if (ratioViewMode_ === 'timeline') {
+    // ── TIMELINE MODE: x = actual calendar dates ────────────────────────────
     // Build union of all pass dates across accepted years
     var dateSet = {}
     acceptedYrs.forEach(function(yr) {
@@ -4337,7 +4377,6 @@ function renderRatioChart_(season) {
     })
     var allDates = Object.keys(dateSet).sort()
 
-    var yearColors = ['#4ecdc4','#96ceb4','#88d8b0','#f7dc6f','#e8a0bf','#a8e6cf']
     var datasets = acceptedYrs.map(function(yr, yi) {
       var passes = seasonData[yr] || []
       var refPixels = (refShpiPassMap[season] || {})[yr] ? (refShpiPassMap[season] || {})[yr].pixels : null
@@ -4346,13 +4385,13 @@ function renderRatioChart_(season) {
         var pass = null
         for (var pi = 0; pi < passes.length; pi++) { if (passes[pi].date === date) { pass = passes[pi]; break } }
         if (!pass) return null
-        var meanCpi = fieldMean(pass.pixels)
-        if (meanCpi === null || refMeanShpi === null) return null
-        var denom = meanCpi + refMeanShpi
+        var medCpi = fieldMedian(pass.pixels)
+        if (medCpi === null || refMeanShpi === null) return null
+        var denom = medCpi + refMeanShpi
         if (denom < 0.01) return null
-        return Math.round(meanCpi / denom * 1000) / 1000
+        return Math.round(medCpi / denom * 1000) / 1000
       })
-      var col = yearColors[yi % yearColors.length]
+      var col = yearPalette[yi % yearPalette.length]
       return {
         type: 'line',
         label: String(yr),
@@ -4369,41 +4408,21 @@ function renderRatioChart_(season) {
     })
 
     if (canvasEl) canvasEl.style.display = 'block'
-    if (statusEl) statusEl.textContent = ''
+    if (statusEl) statusEl.textContent = seasonLabel + ' — ' + acceptedYrs.length + ' yr | CPI/(CPI+SHPI) per pass date'
 
-    var ctx = canvasEl.getContext('2d')
     ratioChart = new Chart(ctx, {
       data: { labels: allDates, datasets: datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            display: true,
-            position: 'bottom',
-            labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 8, padding: 4 }
-          },
-          tooltip: {
-            callbacks: {
-              label: function(item) {
-                return item.dataset.label + ' CPI/(CPI+SHPI): ' + item.raw
-              }
-            }
-          },
-          title: {
-            display: true,
-            text: 'CPI/(CPI+SHPI) ratio per pass — ' + season.charAt(0).toUpperCase() + season.slice(1),
-            color: '#9FE1CB',
-            font: { size: 9 }
-          }
+          legend: { display: true, position: 'bottom', labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 8, padding: 4 } },
+          tooltip: { callbacks: { label: function(item) { return item.dataset.label + ': ' + item.raw } } },
+          title: { display: true, text: 'CPI/(CPI+SHPI) — ' + seasonLabel + ' (Timeline)', color: '#9FE1CB', font: { size: 9 } }
         },
         scales: {
-          x: {
-            ticks: { color: '#9FE1CB', font: { size: 7 }, maxRotation: 45 },
-            grid: { color: 'rgba(255,255,255,0.07)' }
-          },
-          y: {
-            min: 0, max: 1,
+          x: { ticks: { color: '#9FE1CB', font: { size: 7 }, maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.07)' } },
+          y: { min: 0, max: 1,
             title: { display: true, text: 'CPI/(CPI+SHPI)', color: '#9FE1CB', font: { size: 7 } },
             ticks: { color: '#9FE1CB', font: { size: 7 } },
             grid: { color: 'rgba(255,255,255,0.07)' }
@@ -4411,77 +4430,116 @@ function renderRatioChart_(season) {
         }
       }
     })
-    if (statusEl) {
-      var seasonLabel = season === 'kharif' ? 'Kharif' : 'Rabi'
-      statusEl.textContent = seasonLabel + ' — ' + acceptedYrs.length + ' year' + (acceptedYrs.length > 1 ? 's' : '') +
-        ' | CPI/(CPI+SHPI) per pass date'
-    }
+
   } else {
-    // ── ANNUAL FALLBACK MODE ──────────────────────────────────────────────
-    if (!tsData || !soilTsData) {
-      if (statusEl) statusEl.textContent = 'ⓘ Fetch both Crop and Soil series first.'
-      if (canvasEl) canvasEl.style.display = 'none'
-      return
-    }
-
-    var pairs = computeYearSeasonPairs_(season)
-    if (!pairs.length) {
-      if (statusEl) statusEl.textContent = 'ⓘ No overlapping years between CPI and SHPI data.'
-      if (canvasEl) canvasEl.style.display = 'none'
-      return
-    }
-
-    if (canvasEl) canvasEl.style.display = 'block'
-    if (statusEl) statusEl.textContent = ''
-
-    var labels = pairs.map(function(p) { return p.year })
-    var ratioVals = pairs.map(function(p) {
-      if (p.cpi + p.shpi < 0.01) return null
-      return Math.round(p.cpi / (p.cpi + p.shpi) * 1000) / 1000
+    // ── BY SEASON MODE: x = DOY, all years overlaid ─────────────────────────
+    var datasets2 = acceptedYrs.map(function(yr, yi) {
+      var passes = seasonData[yr] || []
+      var refPixels = (refShpiPassMap[season] || {})[yr] ? (refShpiPassMap[season] || {})[yr].pixels : null
+      var refMeanShpi = fieldMean(refPixels)
+      var pts = []
+      passes.forEach(function(p) {
+        if (!p.date || !p.pixels) return
+        var medCpi = fieldMedian(p.pixels)
+        if (medCpi === null || refMeanShpi === null) return
+        var denom = medCpi + refMeanShpi
+        if (denom < 0.01) return
+        var ratio = Math.round(medCpi / denom * 1000) / 1000
+        pts.push({ x: dateToDoy_(p.date), y: ratio })
+      })
+      pts.sort(function(a, b) { return a.x - b.x })
+      var col = yearPalette[yi % yearPalette.length]
+      return {
+        type: 'scatter',
+        label: String(yr),
+        data: pts,
+        borderColor: col,
+        backgroundColor: col,
+        pointRadius: 3,
+        pointHoverRadius: 6,
+        showLine: true,
+        borderWidth: 1.8,
+        fill: false,
+        tension: 0.3,
+        spanGaps: false
+      }
     })
 
-    var ctx2 = canvasEl.getContext('2d')
-    ratioChart = new Chart(ctx2, {
-      data: {
-        labels: labels,
-        datasets: [{
-          type: 'line',
-          label: 'CPI/(CPI+SHPI)',
-          data: ratioVals,
-          borderColor: '#4ecdc4',
-          backgroundColor: 'transparent',
-          borderWidth: 2,
-          pointRadius: 4,
-          pointHoverRadius: 7,
-          fill: false,
-          tension: 0.3,
-          spanGaps: true
-        }]
-      },
+    // Median line across all accepted years at biweekly DOY buckets
+    var buckets = {}
+    acceptedYrs.forEach(function(yr) {
+      var passes = seasonData[yr] || []
+      var refPixels = (refShpiPassMap[season] || {})[yr] ? (refShpiPassMap[season] || {})[yr].pixels : null
+      var refMeanShpi = fieldMean(refPixels)
+      passes.forEach(function(p) {
+        if (!p.date || !p.pixels) return
+        var medCpi = fieldMedian(p.pixels)
+        if (medCpi === null || refMeanShpi === null) return
+        var denom = medCpi + refMeanShpi
+        if (denom < 0.01) return
+        var ratio = medCpi / denom
+        var bkt = Math.round(dateToDoy_(p.date) / 14) * 14
+        if (!buckets[bkt]) buckets[bkt] = []
+        buckets[bkt].push(ratio)
+      })
+    })
+    var medPts = Object.keys(buckets).map(Number).sort(function(a, b) { return a - b }).map(function(doy) {
+      var vals = buckets[doy].slice().sort(function(a, b) { return a - b })
+      var mid = Math.floor(vals.length / 2)
+      var med = vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid]
+      return { x: doy, y: Math.round(med * 1000) / 1000 }
+    })
+    datasets2.push({
+      type: 'line',
+      label: 'Median',
+      data: medPts,
+      borderColor: '#F5A623',
+      backgroundColor: 'transparent',
+      borderWidth: 2.5,
+      pointRadius: 0,
+      fill: false,
+      tension: 0.4,
+      spanGaps: true
+    })
+
+    var MONTH_DOYS   = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+    var MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+    if (canvasEl) canvasEl.style.display = 'block'
+    if (statusEl) statusEl.textContent = seasonLabel + ' — ' + acceptedYrs.length + ' yr | CPI/(CPI+SHPI) by DOY'
+
+    ratioChart = new Chart(ctx, {
+      data: { datasets: datasets2 },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            display: true,
-            position: 'bottom',
-            labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 8, padding: 4 }
-          },
+          legend: { display: true, position: 'bottom', labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 8, padding: 4 } },
           tooltip: {
             callbacks: {
-              label: function(item) { return 'CPI/(CPI+SHPI): ' + item.raw }
+              title: function(items) {
+                var doy = items[0].raw.x
+                var ref = new Date(new Date(2001, 0, 1).getTime() + (doy - 1) * 86400000)
+                return 'DOY ' + doy + ' (~' + ref.toLocaleDateString('en', { month: 'short', day: 'numeric' }) + ')'
+              },
+              label: function(item) { return item.dataset.label + ': ' + item.raw.y }
             }
           },
-          title: {
-            display: true,
-            text: 'Annual CPI/(CPI+SHPI) — ' + season.charAt(0).toUpperCase() + season.slice(1),
-            color: '#9FE1CB',
-            font: { size: 9 }
-          }
+          title: { display: true, text: 'CPI/(CPI+SHPI) — ' + seasonLabel + ' (By Season)', color: '#9FE1CB', font: { size: 9 } }
         },
         scales: {
           x: {
-            ticks: { color: '#9FE1CB', font: { size: 8 } },
+            type: 'linear', min: 1, max: 365,
+            title: { display: true, text: 'Day of year', color: '#9FE1CB', font: { size: 8 } },
+            ticks: {
+              color: '#9FE1CB', font: { size: 7 },
+              callback: function(v) {
+                var idx = MONTH_DOYS.indexOf(v)
+                return idx >= 0 ? MONTH_LABELS[idx] : ''
+              },
+              includeBounds: false
+            },
+            afterBuildTicks: function(axis) { axis.ticks = MONTH_DOYS.map(function(v) { return { value: v } }) },
             grid: { color: 'rgba(255,255,255,0.07)' }
           },
           y: {
@@ -4493,11 +4551,6 @@ function renderRatioChart_(season) {
         }
       }
     })
-    if (statusEl) {
-      var seasonLabel = season === 'kharif' ? 'Kharif' : 'Rabi'
-      statusEl.textContent = seasonLabel + ' — ' + pairs.length + ' year' + (pairs.length > 1 ? 's' : '') +
-        ' | annual mean CPI/(CPI+SHPI)'
-    }
   }
 }
 
