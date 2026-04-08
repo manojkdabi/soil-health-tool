@@ -3887,7 +3887,7 @@ function renderTsChartSeason_(indexKey) {
     }
   })
 
-  // Median-year line: median val at each biweekly DOY bucket (round to nearest 14)
+  // Median year line: median val at each biweekly DOY bucket (round to nearest 14)
   const buckets = {}
   selYears.forEach(function(yr) {
     ;(byYear[yr] || []).forEach(function(p) {
@@ -4280,10 +4280,10 @@ function renderSoilTsChartSeason_(indexKey) {
 // Shows per-year mean CPI (green bars) and mean SHPI (brown bars) side-by-side,
 // with a CPI÷SHPI ratio line (secondary y-axis, gold).
 // Relies on computeYearSeasonPairs_() which uses tsData + soilTsData.
-let ratioChartSeason_ = 'kharif'  // last-rendered season for ratio tab
+let ratioChartSeason = 'kharif'  // last-rendered season for ratio tab
 function renderRatioChart_(season) {
-  if (!season) season = ratioChartSeason_
-  ratioChartSeason_ = season
+  if (!season) season = ratioChartSeason
+  ratioChartSeason = season
 
   // Update season button active state
   var kBtn = document.getElementById('ratioSeasonKharif')
@@ -4317,7 +4317,9 @@ function renderRatioChart_(season) {
   var cpiVals  = pairs.map(function(p) { return Math.round(p.cpi  * 1000) / 1000 })
   var shpiVals = pairs.map(function(p) { return Math.round(p.shpi * 1000) / 1000 })
   var ratioVals = pairs.map(function(p) {
-    return p.shpi > 0 ? Math.round((p.cpi / p.shpi) * 1000) / 1000 : null
+    if (p.shpi < 0.01) return null  // insufficient soil signal — skip to avoid chart distortion
+    var r = p.cpi / p.shpi
+    return Math.round(Math.min(r, 10) * 1000) / 1000  // cap at 10 to prevent axis blow-out
   })
 
   var ctx = document.getElementById('ratioChart').getContext('2d')
