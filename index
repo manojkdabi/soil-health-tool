@@ -2279,8 +2279,9 @@ function renderLibraryPanel_() {
     if (hasResult) {
       var v  = d.validation
       var z  = d.zone_stats
-      var sMin = Math.min.apply(null, z.map(function(zs) { return zs.mean_shpi }))
-      var sMax = Math.max.apply(null, z.map(function(zs) { return zs.mean_shpi }))
+      var sArr = z.map(function(zs) { return zs.mean_shpi })
+      var sMin = sArr.reduce(function(m, v) { return v < m ? v : m }, Infinity)
+      var sMax = sArr.reduce(function(m, v) { return v > m ? v : m }, -Infinity)
       shpiCell  = sMin.toFixed(2) + '–' + sMax.toFixed(2)
       rCell     = (v.spearman_r !== undefined ? v.spearman_r : v.pearson_r !== undefined ? v.pearson_r : '—')
       r2Cell    = v.r_squared  !== undefined ? v.r_squared  : '—'
@@ -2661,7 +2662,8 @@ function olsLine_(pts) {
   pts.forEach(function(p) { ssTot += (p.y - yMean) ** 2; ssRes += (p.y - (slope * p.x + intercept)) ** 2 })
   var r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0
   var xVals = pts.map(function(p) { return p.x })
-  var xMin = Math.min.apply(null, xVals), xMax = Math.max.apply(null, xVals)
+  var xMin = xVals.reduce(function(m, v) { return v < m ? v : m }, Infinity)
+  var xMax = xVals.reduce(function(m, v) { return v > m ? v : m }, -Infinity)
   return { slope: slope, intercept: intercept, r2: r2,
            lineData: [{ x: xMin, y: slope * xMin + intercept }, { x: xMax, y: slope * xMax + intercept }] }
 }
@@ -3079,7 +3081,8 @@ function renderCmpScatterZones_(rois, cache) {
     var denom = n*sxx-sx*sx
     var slope = Math.abs(denom)>EPSILON_DENOM ? (n*sxy-sx*sy)/denom : 0
     var icpt  = (sy-slope*sx)/n
-    var xMin  = Math.min.apply(null,xs), xMax = Math.max.apply(null,xs)
+    var xMin  = xs.reduce(function(m,v){return v<m?v:m}, Infinity)
+    var xMax  = xs.reduce(function(m,v){return v>m?v:m}, -Infinity)
     datasets.push({
       type: 'line', label: item.name+' fit',
       data: [{x:xMin,y:slope*xMin+icpt},{x:xMax,y:slope*xMax+icpt}],
@@ -3119,7 +3122,8 @@ function renderCmpScatterSummary_(rois, cache) {
   var denom = n*sxx-sx*sx
   var slope = Math.abs(denom)>EPSILON_DENOM?(n*sxy-sx*sy)/denom:0
   var icpt  = (sy-slope*sx)/n
-  var xMin  = Math.min.apply(null,xs), xMax = Math.max.apply(null,xs)
+  var xMin  = xs.reduce(function(m,v){return v<m?v:m}, Infinity)
+  var xMax  = xs.reduce(function(m,v){return v>m?v:m}, -Infinity)
   var yMean = sy/n
   var ssTot = ys.reduce(function(a,y){return a+(y-yMean)*(y-yMean)},0)
   var ssRes = xs.reduce(function(a,x,i){return a+(ys[i]-(slope*x+icpt))*(ys[i]-(slope*x+icpt))},0)
@@ -5405,7 +5409,8 @@ async function runStageI_(season, years) {
   var yearInts = years.map(function(y) { return parseInt(y, 10) }).filter(Boolean)
   if (yearInts.length === 0) return
 
-  // Fetch per-year rasters from GAS
+  // Clear stale result so Stage K does not run with outdated Stage I results if this run fails
+  stageIResult = null
   var apiResult = await new Promise(function(resolve, reject) {
     google.script.run
       .withSuccessHandler(resolve)
@@ -5748,8 +5753,10 @@ function renderStageIPanelGrid_(result, mode) {
     if (!pts || pts.length < 3) { ctx.fillStyle = '#555'; ctx.font = '8px sans-serif'; ctx.fillText('< 3 pairs', 20, 40); return }
     var xs = pts.map(function(p) { return p.shpi })
     var ys = pts.map(function(p) { return p[yKey] })
-    var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs)
-    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys)
+    var xMin = xs.reduce(function(m, v) { return v < m ? v : m }, Infinity)
+    var xMax = xs.reduce(function(m, v) { return v > m ? v : m }, -Infinity)
+    var yMin = ys.reduce(function(m, v) { return v < m ? v : m }, Infinity)
+    var yMax = ys.reduce(function(m, v) { return v > m ? v : m }, -Infinity)
     var xRange = xMax - xMin || 0.01, yRange = yMax - yMin || 0.01
     var pad = 8, cW = 120, cH = 80
     function px(x) { return pad + (x - xMin) / xRange * (cW - 2 * pad) }
@@ -6458,8 +6465,8 @@ function updatePooledScatterForPass_(season, clickedYear, passIdx, passLabel) {
     // Per-year faint OLS line
     var yrOls = computeOlsFull_(pts.map(function(p) { return p.x }), pts.map(function(p) { return p.y }))
     if (yrOls) {
-      var xMin = Math.min.apply(null, pts.map(function(p) { return p.x }))
-      var xMax = Math.max.apply(null, pts.map(function(p) { return p.x }))
+      var xMin = pts.reduce(function(m, p) { return p.x < m ? p.x : m }, Infinity)
+      var xMax = pts.reduce(function(m, p) { return p.x > m ? p.x : m }, -Infinity)
       perYearOlsLines.push({
         label: 'OLS_' + yr,
         data: [{ x: xMin, y: yrOls.slope * xMin + yrOls.intercept },

@@ -522,17 +522,18 @@ function buildFallowShpiEvalscript_(season) {
     '}';
 }
 
-function fetchFallowShpiRaster_(bbox, season, yearStart, yearEnd, token) {
+function fetchFallowShpiRaster_(bbox, season, yearStart, yearEnd, token, resOpt) {
   try {
     var from = yearStart + '-01-01T00:00:00Z';
     var to   = yearEnd   + '-12-31T23:59:59Z';
     var lngSpan = bbox[2] - bbox[0];
     var latSpan = bbox[3] - bbox[1];
+    var res = resOpt || 512;
     var W, H;
     if (lngSpan >= latSpan) {
-      W = 512; H = Math.max(1, Math.round(512 * latSpan / lngSpan));
+      W = res; H = Math.max(1, Math.round(res * latSpan / lngSpan));
     } else {
-      H = 512; W = Math.max(1, Math.round(512 * lngSpan / latSpan));
+      H = res; W = Math.max(1, Math.round(res * lngSpan / latSpan));
     }
     var payload = {
       input: {
@@ -592,8 +593,8 @@ function getPerYearRasters(params) {
     var results = [];
     for (var i = 0; i < years.length; i++) {
       var yr = parseInt(years[i], 10);
-      var shpiB64 = fetchFallowShpiRaster_(bbox, season, yr, yr, token);
-      var cpiB64  = fetchSeasonCpiRaster_(bbox, season, yr, yr, token);
+      var shpiB64 = fetchFallowShpiRaster_(bbox, season, yr, yr, token, 64);
+      var cpiB64  = fetchSeasonCpiRaster_(bbox, season, yr, yr, token, 64);
       results.push({ year: yr, shpiB64: shpiB64 || null, cpiB64: cpiB64 || null });
     }
     return { success: true, years: results };
@@ -657,17 +658,18 @@ function buildSeasonCpiEvalscript_(season) {
     '}';
 }
 
-function fetchSeasonCpiRaster_(bbox, season, yearStart, yearEnd, token) {
+function fetchSeasonCpiRaster_(bbox, season, yearStart, yearEnd, token, resOpt) {
   try {
     var from = yearStart + '-01-01T00:00:00Z';
     var to   = yearEnd   + '-12-31T23:59:59Z';
     var lngSpan = bbox[2] - bbox[0];
     var latSpan = bbox[3] - bbox[1];
+    var res = resOpt || 512;
     var W, H;
     if (lngSpan >= latSpan) {
-      W = 512; H = Math.max(1, Math.round(512 * latSpan / lngSpan));
+      W = res; H = Math.max(1, Math.round(res * latSpan / lngSpan));
     } else {
-      H = 512; W = Math.max(1, Math.round(512 * lngSpan / latSpan));
+      H = res; W = Math.max(1, Math.round(res * lngSpan / latSpan));
     }
     var payload = {
       input: {
@@ -811,9 +813,9 @@ function getWeeklyCpiRasters(params) {
     var latSpan = bbox[3] - bbox[1];
     var W, H;
     if (lngSpan >= latSpan) {
-      W = 256; H = Math.max(1, Math.round(256 * latSpan / lngSpan));
+      W = 64; H = Math.max(1, Math.round(64 * latSpan / lngSpan));
     } else {
-      H = 256; W = Math.max(1, Math.round(256 * lngSpan / latSpan));
+      H = 64; W = Math.max(1, Math.round(64 * lngSpan / latSpan));
     }
     var evalscript = buildWeeklyNdviEvalscript_();
     var results = [];
