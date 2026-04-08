@@ -202,6 +202,9 @@ canvas{display:block}
 .ts-idx-btn.active{background:#F5A623;color:#111;border-color:#F5A623;font-weight:700}
 .autoLogWarn{color:#F5A623}
 .ts-idx-btn:hover:not(.active){background:#2E6B4F}
+.year-chip{font-size:9px;padding:3px 8px;border:1px solid #2E6B4F;border-radius:12px;background:#1a2535;color:#7FE07F;cursor:pointer;transition:all .15s;line-height:1.6}
+.year-chip.rejected{border-color:#555;color:#888;text-decoration:line-through;background:#1a1a1a}
+.year-chip:hover:not(.rejected){background:#2E6B4F}
 #tsChartWrap{height:140px;margin-top:4px}
 #soilChartWrap{height:140px;margin-top:4px}
 
@@ -389,9 +392,21 @@ canvas{display:block}
         <span class="step-chevron">▼</span>
       </div>
       <div id="fetchBody" class="step-body">
-        <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Process API). Auto-Run fetches CPI + SHPI rasters for all years, applies Tukey fence filters, and runs the full hypothesis pipeline.</p>
+        <p class="hint" style="margin-bottom:6px">Auto-Run fetches CPI + SHPI rasters for all years. Use the year chips below to include/exclude specific years, then the pipeline uses your selection.</p>
         <button class="btn btn-prim" id="autoRunBtn" onclick="autoRunPipeline_()" style="width:100%;font-size:10px">🚀 Auto-Run Pipeline</button>
         <div id="autoRunLog" style="display:none;margin-top:5px;background:rgba(0,0,0,0.4);border:1px solid #1e3d30;border-radius:4px;padding:5px 7px;max-height:120px;overflow-y:auto;font-size:8px;color:#9FE1CB;font-family:monospace"></div>
+        <!-- N2: Year chip rows — researcher controls which years to include -->
+        <div id="fetchChipArea" style="display:none;margin-top:8px;border-top:1px solid #1e3d30;padding-top:7px">
+          <div id="cpiChipRow" style="display:none;align-items:flex-start;gap:4px;margin-bottom:5px;flex-wrap:wrap">
+            <span style="font-size:8px;color:#7FE07F;line-height:22px;flex-shrink:0">🌾 CPI:</span>
+            <span id="cpiYearChips" style="display:inline-flex;flex-wrap:wrap;gap:3px"></span>
+          </div>
+          <div id="shpiChipRow" style="display:none;align-items:flex-start;gap:4px;flex-wrap:wrap">
+            <span style="font-size:8px;color:#cd853f;line-height:22px;flex-shrink:0">🟤 SHPI:</span>
+            <span id="shpiYearChips" style="display:inline-flex;flex-wrap:wrap;gap:3px"></span>
+          </div>
+          <div class="mon-hint" style="margin-top:4px">Click a chip to include ✓ / exclude ✗ that year from analysis.</div>
+        </div>
         <div class="mon-sep" style="margin:8px 0 4px"></div>
         <div style="font-size:9px;color:#5a8a6a;margin-bottom:4px;text-align:center">— or run manually —</div>
         <button class="btn btn-run" id="runBtn" onclick="runAnalysis()" disabled>▶ Run Phase 1 Analysis</button>
@@ -4499,7 +4514,7 @@ function runWithWindows_() {
     alert('Bare-soil and crop windows overlap. Please separate them before running.')
     return
   }
-  // Store custom windows — picked up by congruentCpiYears_ / congruentShpiYears_
+  // Store custom windows — passed to the API fetch calls and reset after pipeline completes
   customCropMonthStart = cLo
   customCropMonthEnd   = cHi
   customBareMonthStart = bLo
@@ -4655,9 +4670,62 @@ function autoLogClear_() {
   if (log) { log.innerHTML = ''; log.style.display = 'block' }
 }
 
+// ── N2: Build researcher year chip rows in ② FETCH ────────────────────────────
+// Creates clickable ✓/✗ chips; clicking updates tsSelectedYears and re-syncs
+// the existing checkboxes in ③a so both panels stay in sync.
+function buildFetchCpiChips_(years) {
+  var container = document.getElementById('cpiYearChips')
+  var row = document.getElementById('cpiChipRow')
+  var area = document.getElementById('fetchChipArea')
+  if (!container) return
+  container.innerHTML = ''
+  years.forEach(function(y) {
+    var btn = document.createElement('button')
+    btn.className = 'year-chip'
+    btn.dataset.year = y
+    btn.textContent = '✓ ' + y
+    btn.title = 'Click to include / exclude this year from CPI analysis'
+    btn.onclick = function() {
+      var nowRej = btn.classList.toggle('rejected')
+      btn.textContent = (nowRej ? '✗ ' : '✓ ') + y
+      toggleTsYear_(y, !nowRej)
+      // sync the ③a crop checkbox if present
+      var cb = document.querySelector('#tsYearChecks input[value="' + y + '"]')
+      if (cb) { cb.checked = !nowRej }
+    }
+    container.appendChild(btn)
+  })
+  if (row) row.style.display = 'flex'
+  if (area) area.style.display = 'block'
+}
+
+function buildFetchShpiChips_(years) {
+  var container = document.getElementById('shpiYearChips')
+  var row = document.getElementById('shpiChipRow')
+  if (!container) return
+  container.innerHTML = ''
+  years.forEach(function(y) {
+    var btn = document.createElement('button')
+    btn.className = 'year-chip'
+    btn.dataset.year = y
+    btn.textContent = '✓ ' + y
+    btn.title = 'Click to include / exclude this year from SHPI analysis'
+    btn.onclick = function() {
+      var nowRej = btn.classList.toggle('rejected')
+      btn.textContent = (nowRej ? '✗ ' : '✓ ') + y
+      toggleSoilYear_(y, !nowRej)
+      // sync the ③a soil checkbox if present
+      var cb = document.querySelector('#soilYearChecks input[value="' + y + '"]')
+      if (cb) { cb.checked = !nowRej }
+    }
+    container.appendChild(btn)
+  })
+  if (row) row.style.display = 'flex'
+}
+
 // ── E3: Auto-Run Pipeline (async chain) ──────────────────────────────────────
-// Steps: Fetch Crop TS → E1 CPI filter → lock CPI → Fetch Soil TS →
-//        E2 SHPI filter → lock SHPI → Run Analysis
+// Steps: Fetch Crop TS → lock CPI → Fetch Soil TS → lock SHPI → Run Analysis
+// Year selection is researcher-controlled via chip rows — no Tukey auto-filter.
 async function autoRunPipeline_() {
   if (!roi) { alert('Draw or upload an ROI first.'); return }
   var btn = document.getElementById('autoRunBtn')
@@ -4703,20 +4771,11 @@ async function autoRunPipeline_() {
     var allCropYrs = Array.from(new Set(tsData.map(function(d) { return d.date.substring(0, 4) }))).sort()
     autoLogLine_('[1/7] Crop TS fetched (' + allCropYrs[0] + '-' + allCropYrs[allCropYrs.length - 1] + ')')
 
-    // [2/7] CPI year filter
-    autoLogLine_('[2/7] CPI filter (' + season + ')...')
-    var cpiResult = congruentCpiYears_(season)
-    var cpiMsg = '[2/7] CPI filter: retained ' + cpiResult.retained.sort().join(', ')
-    if (cpiResult.rejected.length > 0) {
-      cpiMsg += '; rejected ' + cpiResult.rejected.map(function(r) {
-        return r.year + ' (' + r.side + ' fence, val=' + r.value.toFixed(3) + ')'
-      }).join(', ')
-      autoLogLine_(cpiMsg, true)
-    } else {
-      autoLogLine_(cpiMsg)
-    }
+    // [2/7] CPI years — researcher chip row (no auto-filter, B1/P2)
+    buildFetchCpiChips_(allCropYrs)
+    autoLogLine_('[2/7] CPI years: ' + allCropYrs.join(', ') + ' — toggle chips to include/exclude')
 
-    // [3/7] Lock CPI years
+    // [3/7] Lock CPI years (uses current tsSelectedYears from chips)
     useYearsForCpi_()
     autoLogLine_('[3/7] CPI locked: ' + tsYearsForCpi.join(', '))
 
@@ -4746,20 +4805,11 @@ async function autoRunPipeline_() {
     var allSoilYrs = Array.from(new Set(soilTsData.map(function(d) { return d.date.substring(0, 4) }))).sort()
     autoLogLine_('[4/7] Soil TS fetched (' + allSoilYrs[0] + '-' + allSoilYrs[allSoilYrs.length - 1] + ')')
 
-    // [5/7] SHPI year filter
-    autoLogLine_('[5/7] SHPI filter (' + season + ' fallow)...')
-    var shpiResult = congruentShpiYears_(season)
-    var shpiMsg = '[5/7] SHPI filter: retained ' + shpiResult.retained.sort().join(', ')
-    if (shpiResult.rejected.length > 0) {
-      shpiMsg += '; rejected ' + shpiResult.rejected.map(function(r) {
-        return r.year + ' (' + r.side + ' fence, val=' + r.value.toFixed(3) + ')'
-      }).join(', ')
-      autoLogLine_(shpiMsg, true)
-    } else {
-      autoLogLine_(shpiMsg)
-    }
+    // [5/7] SHPI years — researcher chip row (no auto-filter, B1/P2)
+    buildFetchShpiChips_(allSoilYrs)
+    autoLogLine_('[5/7] SHPI years: ' + allSoilYrs.join(', ') + ' — toggle chips to include/exclude')
 
-    // [6/7] Lock SHPI years
+    // [6/7] Lock SHPI years (uses current soilSelectedYears from chips)
     useYearsForShpi_()
     autoLogLine_('[6/7] SHPI locked: ' + tsYearsForShpi.join(', '))
 
