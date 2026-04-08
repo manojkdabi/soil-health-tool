@@ -21,8 +21,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;ba
 
 /* Layout */
 .main{display:flex;flex:1;overflow:hidden}
-.sidebar{width:320px;background:#13241e;border-right:1px solid #1e3d30;display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0}
-#map{flex:1;background:#e8e0d8;position:relative}
+.sidebar{width:320px;min-width:220px;max-width:600px;background:#13241e;border-right:1px solid #1e3d30;display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0}
+.sidebar-resizer{width:5px;cursor:col-resize;background:transparent;flex-shrink:0;transition:background .15s;z-index:10}
+.sidebar-resizer:hover,.sidebar-resizer.dragging{background:#2E6B4F}
+#map{flex:1;background:#e8e0d8;position:relative;min-width:0}
 
 /* Sidebar sections */
 .sb{padding:14px 16px;border-bottom:1px solid #1e3d30}
@@ -68,6 +70,7 @@ input:focus,select:focus{border-color:#F5A623}
 .banner{border-radius:6px;padding:9px 12px;font-size:12px;font-weight:600;text-align:center}
 .banner-yes{background:#1a3d1a;color:#7FE07F;border:1px solid #3a6d3a}
 .banner-no{background:#3d2a1a;color:#f0a070;border:1px solid #6d4a2a}
+.banner-pending{background:#1a2d3a;color:#9FE1CB;border:1px solid #2E6B4F}
 .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .stat-card{background:#1a3d30;border:1px solid #2E6B4F;border-radius:6px;padding:8px 10px;text-align:center}
 .stat-val{font-size:16px;font-weight:700;color:#F5A623}
@@ -123,6 +126,13 @@ input:focus,select:focus{border-color:#F5A623}
 .mon-row button:hover{background:#2E6B4F;color:#F5A623}
 .mon-hint{font-size:9px;color:#5a8a6a;margin-top:3px;line-height:1.4}
 .mon-loading{font-size:9px;color:#F5A623;margin-top:3px;display:none}
+/* Period stepper (weekly/biweekly browse) */
+.mon-stepper{display:flex;align-items:center;gap:4px;margin-top:4px}
+.mon-stepper button{background:#1e3d30;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;flex-shrink:0}
+.mon-stepper button:hover{background:#2E6B4F;color:#F5A623}
+.mon-stepper span{flex:1;text-align:center;font-size:10px;color:#9FE1CB;background:#0f1a17;border:1px solid #2E6B4F;border-radius:4px;padding:3px 5px}
+.mon-sep{border-top:1px solid #1e3d30;margin:8px 0 4px}
+.mon-win-label{font-size:10px;color:#9FE1CB;margin-top:4px;margin-bottom:2px;font-weight:600}
 /* Boundary layer status */
 .bound-badge{font-size:9px;color:#9FE1CB;background:#1a3d30;border:1px solid #2E6B4F;border-radius:3px;padding:1px 5px;margin-left:4px;display:none}
 
@@ -133,6 +143,8 @@ input:focus,select:focus{border-color:#F5A623}
 .leaflet-control-layers{background:#13241e!important;border:1px solid #2E6B4F!important;color:#9FE1CB!important;font-size:11px}
 .leaflet-control-layers label{color:#9FE1CB!important}
 .leaflet-control-layers-separator{border-color:#2E6B4F!important}
+.lc-collapse-btn{display:block;width:100%;margin-top:8px;padding:2px 0;background:#1e3d30;border:1px solid #2E6B4F;border-radius:4px;color:#9FE1CB;font-size:10px;cursor:pointer;text-align:center}
+.lc-collapse-btn:hover{background:#2E6B4F;color:#F5A623}
 .leaflet-bar a,.leaflet-bar a:hover{background-color:#ffffff!important;color:#1A3C34!important;border-color:#ccc!important}
 
 /* Chart */
@@ -191,7 +203,32 @@ canvas{display:block}
 .ts-idx-btn.active{background:#F5A623;color:#111;border-color:#F5A623;font-weight:700}
 .autoLogWarn{color:#F5A623}
 .ts-idx-btn:hover:not(.active){background:#2E6B4F}
+.year-chip{font-size:9px;padding:3px 8px;border:1px solid #2E6B4F;border-radius:12px;background:#1a2535;color:#7FE07F;cursor:pointer;transition:all .15s;line-height:1.6}
+.year-chip.rejected{border-color:#555;color:#888;text-decoration:line-through;background:#1a1a1a}
+.year-chip:hover:not(.rejected){background:#2E6B4F}
 #tsChartWrap{height:140px;margin-top:4px}
+#soilChartWrap{height:140px;margin-top:4px}
+
+/* Research workflow steps */
+.research-step{border-bottom:1px solid #1e3d30}
+.step-hdr{display:flex;align-items:center;gap:6px;padding:10px 16px;cursor:pointer;user-select:none;background:#13241e;transition:background .15s}
+.step-hdr:hover{background:#172c22}
+.step-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#1e3d30;border:1px solid #2E6B4F;color:#F5A623;font-size:10px;font-weight:700;flex-shrink:0}
+.step-num.step-sub{border-radius:4px;width:auto;padding:0 4px}
+.step-title{flex:1;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#F5A623;display:flex;flex-direction:column;gap:1px}
+.step-title small{font-size:9px;color:#9FE1CB;text-transform:none;letter-spacing:0;font-weight:400}
+.step-badge{font-size:9px;color:#7FE07F;background:#1a3d1a;border:1px solid #3a6d3a;border-radius:3px;padding:1px 5px;display:none;flex-shrink:0}
+.step-badge.show{display:inline-block}
+.step-chevron{font-size:10px;color:#5a8a6a;flex-shrink:0}
+.step-body{padding:10px 16px}
+.btn-prim{background:#2E6B4F;border:1px solid #3a8a60;color:#e8f4ee}
+.btn-prim:hover{background:#3a8a60}
+/* Stage M — Pass-Date Explorer cells */
+.pass-cell{background:#1a3d30;border:1px solid #2E6B4F;border-radius:4px;padding:3px;cursor:pointer;transition:border-color .15s,background .15s;flex-shrink:0}
+.pass-cell:hover{border-color:#F5A623;background:#1e3d30}
+.pass-cell.pass-best{border:2px solid #F5A623;background:#1e3d1a}
+.pass-cell-label{font-size:8px;color:#9FE1CB;text-align:center;margin-top:2px;white-space:nowrap}
+.pass-cell-r2{font-size:8px;font-weight:700;text-align:center;margin-top:1px}
 </style>
 </head>
 <body>
@@ -200,8 +237,8 @@ canvas{display:block}
   <div class="hdr-logo">SH</div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
-    <span class="ver-pill ver-pill-be">BE1.8.0</span>
-    <span class="ver-pill ver-pill-fe">FE2.2.0</span>
+    <span class="ver-pill ver-pill-be">BE2.0.0</span>
+    <span class="ver-pill ver-pill-fe">FE2.6.0</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -232,7 +269,7 @@ canvas{display:block}
         <span id="libToggleIcon" style="font-size:10px">▼</span>
       </h3>
       <div id="libList">
-        <div style="overflow-x:auto"><table class="cmp-table" id="roiMergedTable"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>ρ</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBody"></tbody></table></div>
+        <div style="overflow-x:auto"><table class="cmp-table" id="roiMergedTable"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBody"></tbody></table></div>
       </div>
     </div>
 
@@ -251,24 +288,157 @@ canvas{display:block}
       </select>
     </div>
 
-    <!-- Time Series Panel (Step 3 · Crop Time Series — set before running) -->
-    <div class="sb">
-      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleTsPanel_()">
-        <h3 style="margin:0">Step 3 · 📈 Time Series</h3>
-        <span id="tsPanelChevron" style="color:#F5A623;font-size:11px">▶</span>
+    <!-- ① IDENTIFY — Browse Imagery (moved to top of research workflow) -->
+    <div class="research-step">
+      <div class="step-hdr" onclick="toggleResearchStep_('identifyBody',this)">
+        <span class="step-num">①</span>
+        <span class="step-title">IDENTIFY<small>Browse Imagery</small></span>
+        <span class="step-badge" id="identifyBadge"></span>
+        <span class="step-chevron">▼</span>
       </div>
-      <div id="tsPanelBody" style="display:none;margin-top:8px">
-        <p class="hint" style="margin-bottom:6px">Bi-weekly ROI mean (Process API). Load an ROI and set year range, then fetch. Select good-crop years and lock them for CPI before running analysis.</p>
-        <!-- E3/E4: Auto-Run Pipeline -->
-        <div style="margin-bottom:7px">
-          <button class="btn btn-prim" id="autoRunBtn" onclick="autoRunPipeline_()" style="width:100%;font-size:10px">🚀 Auto-Run Pipeline</button>
-          <div id="autoRunLog" style="display:none;margin-top:5px;background:rgba(0,0,0,0.4);border:1px solid #1e3d30;border-radius:4px;padding:5px 7px;max-height:120px;overflow-y:auto;font-size:8px;color:#9FE1CB;font-family:monospace"></div>
+      <div id="identifyBody" class="step-body">
+        <p class="hint" style="margin:0 0 6px">Browse Sentinel-2 true-colour imagery to identify bare-soil and crop periods. Set windows below, then run analysis.</p>
+        <label class="field">Browse cadence</label>
+        <div class="mon-row">
+          <select id="shCadence" onchange="onMonCadenceChange_()">
+            <option value="monthly">Monthly</option>
+            <option value="biweekly">Biweekly (14-day)</option>
+            <option value="weekly">Weekly (7-day)</option>
+          </select>
         </div>
-        <!-- D1: Crop / Soil toggle tabs -->
+        <!-- Monthly picker -->
+        <div id="shMonthlyCtrl">
+          <label class="field" style="margin-top:6px">Month / Year</label>
+          <div class="mon-row">
+            <select id="shMonth">
+              <option value="01">January</option><option value="02">February</option>
+              <option value="03">March</option><option value="04">April</option>
+              <option value="05">May</option><option value="06">June</option>
+              <option value="07">July</option><option value="08">August</option>
+              <option value="09">September</option><option value="10">October</option>
+              <option value="11">November</option><option value="12">December</option>
+            </select>
+            <input type="number" id="shYear" value="2023" min="2017" max="2025" style="max-width:64px">
+            <button onclick="applyGasTile_()">▶ Load</button>
+          </div>
+        </div>
+        <!-- Weekly / Biweekly period stepper -->
+        <div id="shPeriodCtrl" style="display:none">
+          <label class="field" style="margin-top:6px">Year</label>
+          <div class="mon-row">
+            <input type="number" id="shPeriodYear" value="2023" min="2017" max="2025" style="max-width:64px" onchange="updateShPeriodLabel_()">
+          </div>
+          <label class="field" style="margin-top:4px">Period</label>
+          <div class="mon-stepper">
+            <button onclick="stepPeriod_(-1)">◀</button>
+            <span id="shPeriodLabel">W01 — Jan 1–7</span>
+            <button onclick="stepPeriod_(1)">▶</button>
+          </div>
+          <button class="btn btn-sec" style="width:100%;margin-top:4px" onclick="applyGasTile_()">▶ Load tile</button>
+        </div>
+        <div id="monMsg" class="mon-hint" style="color:#9FE1CB;margin-top:4px"></div>
+        <button class="btn btn-sec" style="margin-top:6px;width:100%" onclick="clearMonthlyLayer_()">✕ Clear imagery</button>
+        <!-- ── Set analysis windows ── -->
+        <div class="mon-sep"></div>
+        <div class="mon-win-label">📐 Set analysis windows</div>
+        <p class="hint" style="margin:0 0 4px;font-size:9px">Browse above, then set the month ranges where your field is bare (SHPI) and cropped (CPI).</p>
+        <label class="field" style="margin-top:2px">🟤 Bare soil (SHPI) window</label>
+        <div class="mon-row">
+          <select id="wBareStart" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2" selected>Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+          <span style="color:#5a8a6a;flex-shrink:0">→</span>
+          <select id="wBareEnd" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5" selected>May</option><option value="6">Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+        </div>
+        <label class="field" style="margin-top:4px">🌾 Cropped (CPI) window</label>
+        <div class="mon-row">
+          <select id="wCropStart" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5">May</option><option value="6" selected>Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+          <span style="color:#5a8a6a;flex-shrink:0">→</span>
+          <select id="wCropEnd" onchange="onWindowChange_()">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10" selected>Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+        </div>
+        <div class="mon-row" style="margin-top:6px;gap:12px">
+          <label style="font-size:10px;color:#9FE1CB;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="wSeason" value="kharif" checked> Kharif</label>
+          <label style="font-size:10px;color:#9FE1CB;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="wSeason" value="rabi"> Rabi</label>
+        </div>
+        <div id="wOverlapWarn" class="mon-hint" style="color:#F5A623;display:none">⚠ Windows overlap — separate bare-soil and crop periods.</div>
+        <button class="btn btn-prim" style="width:100%;margin-top:6px;font-size:10px" onclick="runWithWindows_()">▶ Run CPI + SHPI with these windows</button>
+        <div class="mon-hint" style="margin-top:2px">Runs full Auto-Run pipeline using the month ranges above instead of hard-coded season defaults.</div>
+      </div>
+    </div>
+
+    <!-- ② FETCH — Auto-Run Pipeline -->
+    <div class="research-step">
+      <div class="step-hdr" onclick="toggleResearchStep_('fetchBody',this)">
+        <span class="step-num">②</span>
+        <span class="step-title">FETCH<small>Auto-Run Pipeline</small></span>
+        <span class="step-badge" id="fetchBadge"></span>
+        <span class="step-chevron">▼</span>
+      </div>
+      <div id="fetchBody" class="step-body">
+        <p class="hint" style="margin-bottom:6px">Auto-Run fetches CPI + SHPI rasters for all years. Use the year chips below to include/exclude specific years, then the pipeline uses your selection.</p>
+        <button class="btn btn-prim" id="autoRunBtn" onclick="autoRunPipeline_()" style="width:100%;font-size:10px">🚀 Auto-Run Pipeline</button>
+        <div id="autoRunLog" style="display:none;margin-top:5px;background:rgba(0,0,0,0.4);border:1px solid #1e3d30;border-radius:4px;padding:5px 7px;max-height:120px;overflow-y:auto;font-size:8px;color:#9FE1CB;font-family:monospace"></div>
+        <!-- N2: Year chip rows — researcher controls which years to include -->
+        <div id="fetchChipArea" style="display:none;margin-top:8px;border-top:1px solid #1e3d30;padding-top:7px">
+          <div id="cpiChipRow" style="display:none;align-items:flex-start;gap:4px;margin-bottom:5px;flex-wrap:wrap">
+            <span style="font-size:8px;color:#7FE07F;line-height:22px;flex-shrink:0">🌾 CPI:</span>
+            <span id="cpiYearChips" style="display:inline-flex;flex-wrap:wrap;gap:3px"></span>
+          </div>
+          <div id="shpiChipRow" style="display:none;align-items:flex-start;gap:4px;flex-wrap:wrap">
+            <span style="font-size:8px;color:#cd853f;line-height:22px;flex-shrink:0">🟤 SHPI:</span>
+            <span id="shpiYearChips" style="display:inline-flex;flex-wrap:wrap;gap:3px"></span>
+          </div>
+          <div class="mon-hint" style="margin-top:4px">Click a chip to include ✓ / exclude ✗ that year from analysis.</div>
+        </div>
+        <div class="mon-sep" style="margin:8px 0 4px"></div>
+        <div style="font-size:9px;color:#5a8a6a;margin-bottom:4px;text-align:center">— or run manually —</div>
+        <button class="btn btn-run" id="runBtn" onclick="runAnalysis()" disabled>▶ Run Phase 1 Analysis</button>
+        <button class="btn btn-sec" id="runAllBtn" style="margin-top:6px" onclick="runAllROIs_()">▶▶ Run All Saved ROIs</button>
+        <div class="progress" id="progress">
+          <div class="prog-msg" id="progMsg">Initialising...</div>
+          <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+        </div>
+        <div class="batch-progress" id="batchProgress">
+          <div style="font-size:10px;font-weight:700;color:#F5A623;margin-bottom:6px">Batch Progress</div>
+          <div id="batchItems"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③a FIELD TIME SERIES -->
+    <div class="research-step">
+      <div class="step-hdr" onclick="toggleResearchStep_('fieldTsBody',this)">
+        <span class="step-num step-sub">③a</span>
+        <span class="step-title">FIELD TIME SERIES<small>CPI + SHPI</small></span>
+        <span class="step-badge" id="fieldTsBadge"></span>
+        <span class="step-chevron">▼</span>
+      </div>
+      <div id="fieldTsBody" class="step-body">
+        <!-- D1: Crop / Soil / Paired toggle tabs -->
         <div style="display:flex;gap:4px;margin-bottom:6px">
-          <button class="ts-idx-btn active" id="tsPanelCropTab" onclick="setTsPanelMode_('crop')" style="flex:1;font-size:9px">🌿 Crop (CPI)</button>
-          <button class="ts-idx-btn" id="tsPanelSoilTab" onclick="setTsPanelMode_('soil')" style="flex:1;font-size:9px">🟤 Soil (SHPI)</button>
-          <button class="ts-idx-btn" id="tsPanelPairedTab" onclick="setTsPanelMode_('paired')" style="flex:1;font-size:9px">📊 Paired</button>
+          <button class="ts-idx-btn active" id="tsPanelCropTab" onclick="setTsPanelMode_('crop')" style="flex:1;font-size:9px">🌿 Crop</button>
+          <button class="ts-idx-btn" id="tsPanelSoilTab" onclick="setTsPanelMode_('soil')" style="flex:1;font-size:9px">🟤 Soil</button>
+          <button class="ts-idx-btn" id="tsPanelCpiPassesTab" onclick="setTsPanelMode_('cpipasses')" style="flex:1;font-size:9px;display:none">📅 CPI</button>
+          <button class="ts-idx-btn" id="tsPanelSoilPassesTab" onclick="setTsPanelMode_('shpipasses')" style="flex:1;font-size:9px;display:none">📅 SHPI</button>
+          <button class="ts-idx-btn" id="tsPanelRatioTab" onclick="setTsPanelMode_('ratio')" style="flex:1;font-size:9px">📊 Ratio</button>
         </div>
         <!-- Crop panel -->
         <div id="tsCropPanel">
@@ -284,7 +454,10 @@ canvas{display:block}
             <button class="ts-idx-btn active" id="tsViewTimeline" onclick="setTsViewMode_('timeline')" style="font-size:8px">📈 Timeline</button>
             <button class="ts-idx-btn" id="tsViewSeason" onclick="setTsViewMode_('season')" style="font-size:8px">📅 By season</button>
           </div>
-          <div id="tsChartWrap" style="display:none"><canvas id="tsChart"></canvas></div>
+          <div id="tsChartWrap" style="display:none">
+            <div class="chart-heading-row"><span style="font-size:9px;color:#9FE1CB;font-weight:600">Crop index timeline</span><button class="chart-expand-btn" onclick="openChartFs_('tsChart')" title="Fullscreen">⛶</button></div>
+            <canvas id="tsChart"></canvas>
+          </div>
           <div id="tsChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
           <div id="tsYearWrap" style="display:none;margin-top:6px;border-top:1px solid #1e3d30;padding-top:5px">
             <div style="font-size:8px;color:#9FE1CB;margin-bottom:3px">
@@ -310,7 +483,10 @@ canvas{display:block}
             <button class="ts-idx-btn active" id="soilViewTimeline" onclick="setSoilTsViewMode_('timeline')" style="font-size:8px">📈 Timeline</button>
             <button class="ts-idx-btn" id="soilViewSeason" onclick="setSoilTsViewMode_('season')" style="font-size:8px">📅 By season</button>
           </div>
-          <div id="soilChartWrap" style="display:none"><canvas id="soilTsChart"></canvas></div>
+          <div id="soilChartWrap" style="display:none">
+            <div class="chart-heading-row"><span style="font-size:9px;color:#9FE1CB;font-weight:600">Soil index timeline</span><button class="chart-expand-btn" onclick="openChartFs_('soilTsChart')" title="Fullscreen">⛶</button></div>
+            <canvas id="soilTsChart"></canvas>
+          </div>
           <div id="soilChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
           <div id="soilYearWrap" style="display:none;margin-top:6px;border-top:1px solid #1e3d30;padding-top:5px">
             <div style="font-size:8px;color:#9FE1CB;margin-bottom:3px">
@@ -322,117 +498,163 @@ canvas{display:block}
             <button class="btn btn-prim" onclick="useYearsForShpi_()" style="width:100%;font-size:9px" id="tsUseShpiBtn">🟤 Use selected years for SHPI</button>
           </div>
         </div>
-        <!-- D3: Paired Scatter (SHPI fallow × CPI season per year) -->
-        <div id="tsPairedPanel" style="display:none">
-          <div style="font-size:8px;color:#9FE1CB;margin-bottom:5px">Year-by-year fallow SHPI vs crop CPI scatter. Requires both Crop and Soil series to be fetched.</div>
-          <div style="display:flex;gap:4px;margin-bottom:6px;text-align:center">
-            <button class="ts-idx-btn active" id="d3KharifTab" onclick="setD3Season_('kharif')" style="flex:1;font-size:9px">🌾 Kharif</button>
-            <button class="ts-idx-btn" id="d3RabiTab" onclick="setD3Season_('rabi')" style="flex:1;font-size:9px">🌿 Rabi</button>
+        <!-- Stage M: CPI Passes panel — per-pixel CPI trajectory all 7-day passes -->
+        <div id="tsCpiPassesPanel" style="display:none">
+          <div style="display:flex;gap:4px;margin-bottom:5px;align-items:center">
+            <span style="font-size:9px;color:#9FE1CB;flex-shrink:0">Year:</span>
+            <select id="cpiPassYearSel" style="flex:1;font-size:9px" onchange="renderCpiPassesChart_(+this.value)"></select>
           </div>
-          <div id="d3PairedChartWrap" style="display:none"><canvas id="pairedScatterCanvas"></canvas></div>
-          <div id="d3PairedEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
-          <div id="d3PairedCorr" style="text-align:center;font-size:9px;color:#9FE1CB;margin-bottom:3px"></div>
-          <div id="d3PairedStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
-          <div id="fallowShpiFetchStatus" style="display:none;font-size:8px;color:#F5A623;text-align:center;margin-top:3px"></div>
+          <div class="chart-heading-row">
+            <span style="font-size:9px;color:#9FE1CB;font-weight:600">📅 Per-pixel CPI trajectory</span>
+            <button class="chart-expand-btn" onclick="openChartFs_('cpiPassesChart')" title="Fullscreen">⛶</button>
+          </div>
+          <div style="height:130px;margin-top:4px"><canvas id="cpiPassesChart"></canvas></div>
+          <div id="cpiPassesStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px">ⓘ Load pass rasters in ③e to populate.</div>
+        </div>
+        <!-- Stage M: SHPI Passes panel — per-pixel SHPI trajectory all 7-day fallow passes -->
+        <div id="tsSoilPassesPanel" style="display:none">
+          <div style="display:flex;gap:4px;margin-bottom:5px;align-items:center">
+            <span style="font-size:9px;color:#9FE1CB;flex-shrink:0">Year:</span>
+            <select id="shpiPassYearSel" style="flex:1;font-size:9px" onchange="renderShpiPassesChart_(+this.value)"></select>
+          </div>
+          <div class="chart-heading-row">
+            <span style="font-size:9px;color:#9FE1CB;font-weight:600">📅 Per-pixel SHPI trajectory</span>
+            <button class="chart-expand-btn" onclick="openChartFs_('shpiPassesChart')" title="Fullscreen">⛶</button>
+          </div>
+          <div style="height:130px;margin-top:4px"><canvas id="shpiPassesChart"></canvas></div>
+          <div id="shpiPassesStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px">ⓘ Load pass rasters in ③e to populate.</div>
+        </div>
+        <!-- N4 Btn6: CPI/SHPI Ratio tab — pass-date trendline with Timeline/By Season toggle -->
+        <div id="tsRatioPanel" style="display:none">
+          <div style="display:flex;gap:4px;margin-bottom:5px;align-items:center;flex-wrap:wrap">
+            <button class="ts-idx-btn active" id="ratioViewTimeline" onclick="setRatioViewMode_('timeline')" style="font-size:8px">📈 Timeline</button>
+            <button class="ts-idx-btn" id="ratioViewSeason" onclick="setRatioViewMode_('season')" style="font-size:8px">📅 By Season</button>
+            <button class="ts-idx-btn active" id="ratioSeasonKharif" onclick="renderRatioChart_('kharif')" style="font-size:9px">🌾 Kharif</button>
+            <button class="ts-idx-btn" id="ratioSeasonRabi" onclick="renderRatioChart_('rabi')" style="font-size:9px">🌱 Rabi</button>
+          </div>
+          <div class="chart-heading-row">
+            <span style="font-size:9px;color:#9FE1CB;font-weight:600">📊 CPI/(CPI+SHPI) ratio trend</span>
+            <button class="chart-expand-btn" onclick="openChartFs_('ratioChart')" title="Fullscreen">⛶</button>
+          </div>
+          <div style="height:160px;margin-top:4px"><canvas id="ratioChart"></canvas></div>
+          <div id="ratioChartStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px">ⓘ Load ③e Pass-Date Explorer to view ratio trendline.</div>
         </div>
       </div>
     </div>
 
-    <!-- Step 4: Run -->
-    <div class="sb">
-      <button class="btn btn-run" id="runBtn" onclick="runAnalysis()" disabled>
-        ▶ Run Phase 1 Analysis
-      </button>
-      <button class="btn btn-sec" id="runAllBtn" style="margin-top:6px" onclick="runAllROIs_()">
-        ▶▶ Run All Saved ROIs
-      </button>
-      <div class="progress" id="progress">
-        <div class="prog-msg" id="progMsg">Initialising...</div>
-        <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+    <!-- ③b PER-YEAR SCATTER (Stage I) -->
+    <div class="research-step" id="perYearScatterStep" style="display:none">
+      <div class="step-hdr" onclick="toggleResearchStep_('perYearBody',this)">
+        <span class="step-num step-sub">③b</span>
+        <span class="step-title">PER-YEAR SCATTER<small>Stage I</small></span>
+        <span class="step-badge" id="perYearBadge"></span>
+        <span class="step-chevron">▼</span>
       </div>
-      <div class="batch-progress" id="batchProgress">
-        <div style="font-size:10px;font-weight:700;color:#F5A623;margin-bottom:6px">Batch Progress</div>
-        <div id="batchItems"></div>
+      <div id="perYearBody" class="step-body">
+        <div id="stageIPanel">
+          <div id="stageKToggle" style="display:none;gap:4px;margin-bottom:5px;justify-content:center">
+            <button class="ts-idx-btn active" id="stageKMeanCpiBtn" onclick="setStageKMode_('cpi')" style="font-size:9px">📈 Mean CPI</button>
+            <button class="ts-idx-btn" id="stageKAucBtn" onclick="setStageKMode_('auc')" style="font-size:9px">📊 NDVI-AUC</button>
+          </div>
+          <div id="stageIBanner" style="font-size:9px;color:#9FE1CB;text-align:center;margin-bottom:4px;padding:3px;border-radius:3px"></div>
+          <div id="stageIYearGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:4px;margin-bottom:5px"></div>
+          <div id="stageIRhoTable" style="font-size:8px;color:#9FE1CB;margin-top:3px"></div>
+        </div>
+        <button class="chart-expand-btn" style="width:100%;margin-top:6px;font-size:11px" onclick="openChartFs_('shpiCpiScatter');setTimeout(function(){setScatterViewMode_('stagei')},80)">⛶ Full scatter grid</button>
       </div>
     </div>
 
-    <!-- Results -->
-    <div class="results" id="results">
-      <h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623">Results</h3>
-      <div class="banner" id="banner"></div>
-      <div id="dataSourceBadge" style="text-align:center;font-size:10px;padding:3px 8px;border-radius:4px;display:none"></div>
-      <!-- D4: ROI clip verification stats -->
-      <div id="clipStats" style="display:none;margin:4px 0;padding:4px 6px;background:rgba(0,0,0,0.3);border-radius:4px;border:1px solid #2E6B4F;font-size:9px;color:#9FE1CB;line-height:1.7"></div>
-      <div class="stat-grid" id="statGrid"></div>
-      <table class="ztbl">
-        <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
-        <tbody id="zoneTbody"></tbody>
-      </table>
-      <div class="chart-heading-row"><h3 style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-top:6px">SHPI vs CPI correlation</h3><button class="chart-expand-btn" onclick="openChartFs_('shpiCpiScatter')" title="Fullscreen">⛶</button></div>
-      <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
-      <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
-      <div id="corrSummary" style="margin:3px 0 2px;font-size:9px;color:#9FE1CB;text-align:center"></div>
-      <div id="scatterOutlierNote" style="text-align:center;font-size:8px;color:#6FA898;margin-bottom:4px"></div>
-      <div id="results-map-ctrls">
-        <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
-        <input type="range" id="rasterOpacity" min="10" max="100" value="80" oninput="updateRasterOpacity_(this.value, 'rasterOpacityVal', false)">
-        <span id="rasterOpacityVal" style="font-size:10px;color:#F5A623;width:30px">80%</span>
-        <button class="rm-ctrl-btn" onclick="toggleResultsFullscreen_()" title="Fullscreen">⛶</button>
+    <!-- ③c POOLED SCATTER (All pixels) -->
+    <div class="research-step" id="pooledScatterStep" style="display:none">
+      <div class="step-hdr" onclick="toggleResearchStep_('pooledBody',this)">
+        <span class="step-num step-sub">③c</span>
+        <span class="step-title">POOLED SCATTER<small>All pixels</small></span>
+        <span class="step-badge" id="pooledBadge"></span>
+        <span class="step-chevron">▼</span>
       </div>
-      <div id="results-map"></div>
-      <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
-      <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
+      <div id="pooledBody" class="step-body">
+        <div class="chart-heading-row"><span style="font-size:9px;color:#9FE1CB;font-weight:600">All (SHPI_y, CPI_y) — colour by year</span><button class="chart-expand-btn" onclick="openChartFs_('shpiCpiScatter')" title="Fullscreen">⛶</button></div>
+        <div class="chart-wrap" style="height:160px"><canvas id="shpiCpiScatter"></canvas></div>
+        <div id="scatterEq" style="text-align:center;font-size:9px;color:#9FE1CB;margin-top:2px"></div>
+        <div id="corrSummary" style="margin:3px 0 2px;font-size:9px;color:#9FE1CB;text-align:center"></div>
+        <div id="scatterOutlierNote" style="text-align:center;font-size:8px;color:#6FA898;margin-bottom:4px"></div>
+      </div>
     </div>
 
-    <!-- Monthly Satellite Imagery (context overlay for reviewing results) -->
-    <div class="sb mon-section">
-      <h3 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px" onclick="toggleMonSection_()">
-        <span>🛰 Monthly Imagery</span>
-        <span id="monToggleIcon" style="font-size:10px;margin-left:auto">▶</span>
-      </h3>
-      <div id="monBody" style="display:none">
-        <p class="hint" style="margin:0 0 6px">View satellite imagery for any month. Uses ESRI Wayback (no setup) or Sentinel-2 via your SH/CDS instance ID.</p>
-        <label class="field">Source</label>
-        <select id="monSource" onchange="onMonSourceChange_()">
-          <option value="esri">🌍 ESRI Wayback (free, no login)</option>
-          <option value="sh">🛰 Sentinel-2 WMS (requires Instance ID)</option>
-        </select>
+    <!-- ③d ZONE MEANS (collapsed by default) -->
+    <div class="research-step" id="zoneMeansStep" style="display:none">
+      <div class="step-hdr" onclick="toggleResearchStep_('zonesBody',this)">
+        <span class="step-num step-sub">③d</span>
+        <span class="step-title">ZONE MEANS<small>Adaptive bins</small></span>
+        <span class="step-badge" id="zonesBadge"></span>
+        <span class="step-chevron">▶</span>
+      </div>
+      <div id="zonesBody" class="step-body" style="display:none">
+        <div id="dataSourceBadge" style="text-align:center;font-size:10px;padding:3px 8px;border-radius:4px;display:none"></div>
+        <div id="clipStats" style="display:none;margin:4px 0;padding:4px 6px;background:rgba(0,0,0,0.3);border-radius:4px;border:1px solid #2E6B4F;font-size:9px;color:#9FE1CB;line-height:1.7"></div>
+        <div class="stat-grid" id="statGrid"></div>
+        <table class="ztbl">
+          <thead><tr><th>Zone</th><th>Pixels</th><th>SHPI</th><th>CPI</th></tr></thead>
+          <tbody id="zoneTbody"></tbody>
+        </table>
+      </div>
+    </div>
 
-        <!-- ESRI Wayback controls -->
-        <div id="esriWaybackCtrl">
-          <label class="field">Select date</label>
-          <div class="mon-row">
-            <select id="esriReleaseSelect" style="flex:2">
-              <option value="">— load dates —</option>
-            </select>
-            <button onclick="loadEsriRelease_()">▶ Apply</button>
-          </div>
-          <div class="mon-hint">Dates are ESRI's update cycles (not exact calendar months).</div>
-          <div id="esriReleaseMsg" class="mon-hint" style="color:#9FE1CB"></div>
+    <!-- ③e PASS-DATE EXPLORER (Stage M) — per-pass Ref-SHPI × CPI scatter grid -->
+    <div class="research-step" id="passExplorerStep" style="display:none">
+      <div class="step-hdr" onclick="toggleResearchStep_('passExplorerBody',this)">
+        <span class="step-num step-sub">③e</span>
+        <span class="step-title">PASS-DATE EXPLORER<small>Stage M</small></span>
+        <span class="step-badge" id="passExplorerBadge"></span>
+        <span class="step-chevron">▼</span>
+      </div>
+      <div id="passExplorerBody" class="step-body">
+        <!-- Season selector (mirrors activePipelineSeason) -->
+        <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
+          <span style="font-size:9px;color:#9FE1CB;flex-shrink:0">Season:</span>
+          <select id="stageMSeasonSel" style="flex:1;font-size:9px" onchange="onStageMSeasonChange_()">
+            <option value="kharif">🌾 Kharif</option>
+            <option value="rabi">🌿 Rabi</option>
+          </select>
+          <span style="font-size:9px;color:#9FE1CB;flex-shrink:0">Year:</span>
+          <select id="stageMYearSel" style="flex:1;font-size:9px" onchange="renderPassDateGrid_()"></select>
         </div>
-
-        <!-- Sentinel Hub WMS controls -->
-        <div id="shWmsCtrl" style="display:none">
-          <label class="field">Instance ID (from CDS/SH dashboard)</label>
-          <input type="text" id="shInstanceId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="width:100%;background:#0f1a17;border:1px solid #2E6B4F;color:#9FE1CB;border-radius:4px;padding:4px 6px;font-size:10px;box-sizing:border-box">
-          <label class="field" style="margin-top:6px">Month / Year</label>
-          <div class="mon-row">
-            <select id="shMonth">
-              <option value="01">January</option><option value="02">February</option>
-              <option value="03">March</option><option value="04">April</option>
-              <option value="05">May</option><option value="06">June</option>
-              <option value="07">July</option><option value="08">August</option>
-              <option value="09">September</option><option value="10">October</option>
-              <option value="11">November</option><option value="12">December</option>
-            </select>
-            <input type="number" id="shYear" value="2023" min="2017" max="2025" style="max-width:64px">
-            <button onclick="applyShWms_()">▶ Apply</button>
+        <button class="btn btn-prim" id="loadStageMBtn" onclick="loadPassDateExplorer_()" style="width:100%;margin-bottom:5px;font-size:9px">📡 Load Pass Rasters (~2–4 min)</button>
+        <div id="stageMStatus" style="font-size:8px;color:#6FA898;text-align:center;margin-bottom:4px">ⓘ Fetches all 7-day CPI + SHPI passes for retained years. Uses existing CDS credentials.</div>
+        <!-- Pass-date scatter grid (revealed after fetch) -->
+        <div id="stageMGridWrap" style="display:none">
+          <div class="chart-heading-row">
+            <span style="font-size:9px;color:#9FE1CB;font-weight:600">Ref-SHPI × CPI per pass date</span>
+            <button class="chart-expand-btn" onclick="openChartFs_('stageMScatterFs')" title="Fullscreen">⛶</button>
           </div>
-          <div class="mon-hint">Requires a WMS Configuration created in your Copernicus Browser account (sh.dataspace.copernicus.eu → Dashboard → Configurations). Paste the Configuration ID above.</div>
+          <div id="stageMGridCells" style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px"></div>
+          <!-- R² vs date summary curve -->
+          <div style="font-size:9px;color:#9FE1CB;font-weight:600;margin-bottom:2px">R² vs calendar date</div>
+          <div style="height:80px"><canvas id="stageMRhoCurveChart"></canvas></div>
+          <div id="stageMRhoLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:2px"></div>
         </div>
+      </div>
+    </div>
 
-        <button class="btn btn-sec" style="margin-top:6px;width:100%" onclick="clearMonthlyLayer_()">✕ Clear Monthly Imagery</button>
-        <div id="monLoading" class="mon-loading">Loading release list…</div>
+    <!-- ④ CONCLUDE — Hypothesis -->
+    <div class="research-step" id="concludeStep" style="display:none">
+      <div class="step-hdr" onclick="toggleResearchStep_('concludeBody',this)">
+        <span class="step-num">④</span>
+        <span class="step-title">CONCLUDE<small>Hypothesis</small></span>
+        <span class="step-badge" id="concludeBadge"></span>
+        <span class="step-chevron">▼</span>
+      </div>
+      <div id="concludeBody" class="step-body">
+        <div class="banner" id="banner"></div>
+        <div id="results-map-ctrls">
+          <span style="font-size:10px;color:#9FE1CB">Opacity:</span>
+          <input type="range" id="rasterOpacity" min="10" max="100" value="80" oninput="updateRasterOpacity_(this.value, 'rasterOpacityVal', false)">
+          <span id="rasterOpacityVal" style="font-size:10px;color:#F5A623;width:30px">80%</span>
+          <button class="rm-ctrl-btn" onclick="toggleResultsFullscreen_()" title="Fullscreen">⛶</button>
+        </div>
+        <div id="results-map"></div>
+        <button class="btn btn-sec" onclick="saveResult()">💾 Save to Google Sheet</button>
+        <button class="btn btn-sec" onclick="downloadResult()">↓ Download JSON</button>
       </div>
     </div>
 
@@ -453,6 +675,7 @@ canvas{display:block}
   </div>
 
   <!-- MAP -->
+  <div class="sidebar-resizer" id="sidebarResizer"></div>
   <div id="map">
     <div class="overlay" id="overlay">
       <div class="spinner"></div>
@@ -496,7 +719,7 @@ let currentFsLayer = 'zones'   // 'zones' | 'shpi' | 'cpi'
 let currentRoiId = null        // UUID of the library ROI currently loaded (null if drawn/ad-hoc)
 let cmpScatterChart = null
 let cmpScatterMode = 'zones'   // 'zones' | 'summary'
-let scatterViewMode = 'bins'   // 'bins'  | 'pixels'
+let scatterViewMode = 'bins'   // 'bins'  | 'pixels' | 'stagei'
 let scatterSeasonMode = 'all'  // 'all' | 'kharif' | 'rabi' — season filter for scatter FS
 let seasonCpiCache = {}        // {season: scatter pts array} — cached season CPI decode results
 let compareMapFs = null
@@ -511,7 +734,8 @@ let tsYearsForCpi  = []           // confirmed year list stored for Stage 2 CPI 
 let soilTsData        = null      // fetched soil time-series array (bare-soil SHPI sub-indices)
 let soilTsChart       = null      // soil TS Chart instance
 let soilCurIndex      = 'sab'     // active soil index key (sab|claysi|ri2|smi)
-let tsPanelMode       = 'crop'    // 'crop' | 'soil' — which TS tab is active
+let tsPanelMode       = 'crop'    // 'crop' | 'soil' | 'cpipasses' | 'shpipasses' | 'ratio' — which TS tab is active
+let ratioChart        = null      // N4 CPI/SHPI ratio Chart instance
 const ZONE_COLORS         = ['#a50026','#d73027','#f46d43','#fdae61','#fee090','#d9ef8b','#a6d96a','#66bd63','#1a9850','#006837']
 const ROI_COLORS          = ['#4ecdc4','#ff6b6b','#a8e6cf','#ffcc02','#c3a6e0','#ff9f43','#54a0ff','#5f27cd','#ee5a24','#0abde3']
 const BATCH_DELAY_MS      = 1200  // ms between sequential API calls in batch run
@@ -636,8 +860,49 @@ var layerCtrl = L.control.layers(
     '📍 District Boundaries (India)': boundaryLayers.district,
     '🗺 Subdistrict Boundaries (India)': boundaryLayers.tehsil
   },
-  { position: 'topright', collapsed: false }
+  { position: 'topright', collapsed: true }
 ).addTo(map)
+
+// Make layer control click-only collapsible (remove hover auto-expand/collapse)
+;(function() {
+  var lc   = layerCtrl
+  var cont = lc._container
+  // Remove Leaflet's hover expand/collapse listeners
+  var evs = cont._leaflet_events
+  if (evs) {
+    ;['mouseenter', 'mouseleave'].forEach(function(t) {
+      var arr = evs[t]
+      if (arr) arr.slice().forEach(function(h) { L.DomEvent.off(cont, t, h.fn, h.ctx) })
+    })
+  }
+  // Toggle on the built-in toggle button click
+  var btn = cont.querySelector('.leaflet-control-layers-toggle')
+  if (btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation()
+      if (cont.classList.contains('leaflet-control-layers-expanded')) {
+        L.DomUtil.removeClass(cont, 'leaflet-control-layers-expanded')
+      } else {
+        L.DomUtil.addClass(cont, 'leaflet-control-layers-expanded')
+      }
+    })
+  }
+  // Inject a "▲ Collapse" button at the bottom of the list
+  var list = cont.querySelector('.leaflet-control-layers-list')
+  if (list) {
+    var collapseBtn = document.createElement('button')
+    collapseBtn.className = 'lc-collapse-btn'
+    collapseBtn.textContent = '▲ Collapse'
+    L.DomEvent.on(collapseBtn, 'click', function(e) {
+      L.DomEvent.stopPropagation(e)
+      L.DomEvent.preventDefault(e)
+      L.DomUtil.removeClass(cont, 'leaflet-control-layers-expanded')
+    })
+    list.appendChild(collapseBtn)
+  }
+  // Collapse on map click
+  map.on('click', function() { L.DomUtil.removeClass(cont, 'leaflet-control-layers-expanded') })
+})()
 
 // Load boundary GeoJSON when overlay is turned on
 map.on('overlayadd', function (e) {
@@ -707,7 +972,9 @@ function clearROI() {
   currentRoiId = null
   document.getElementById('runBtn').disabled = true
   document.getElementById('roiStatus').classList.remove('show')
-  document.getElementById('results').classList.remove('show')
+  ['pooledScatterStep','zoneMeansStep','concludeStep','perYearScatterStep'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.style.display='none';
+  })
   updateAreaDisplay_()
   renderLibraryPanel_()
 }
@@ -733,8 +1000,10 @@ function runAnalysis() {
 
   showOverlay(true, 'Fetching satellite archive (all months, all years)...')
   setProgress(true, 10, 'Fetching satellite archive (all months, all years)...')
-  document.getElementById('runBtn').disabled = true
-  document.getElementById('results').classList.remove('show')
+  document.getElementById('runBtn').disabled = true;
+  ['pooledScatterStep','zoneMeansStep','concludeStep','perYearScatterStep'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.style.display='none';
+  })
 
   const params = { geojson: roi, yearStart, yearEnd, resolution }
 
@@ -881,7 +1150,7 @@ function decodeRasterToResult_(rawData, callback) {
 
     // F3: If fallow SHPI cache is available with matching dimensions, use it to build richer
     // pixelPairs — breaks the seasonal mutual-exclusion bottleneck in the combined raster.
-    var activeSeason = (typeof d3SeasonTab !== 'undefined' ? d3SeasonTab : null) || 'kharif'
+    var activeSeason = activePipelineSeason || 'kharif'
     if (fallowShpiCache[activeSeason] && fallowShpiCache[activeSeason].length === W * H) {
       var fallowPairs = []
       for (var fi = 0; fi < W * H; fi++) {
@@ -980,32 +1249,17 @@ function decodeRasterToResult_(rawData, callback) {
       }
     }
 
-    // Spearman ρ on zone means — the meaningful signal (matches scatter plot logic)
-    var zoneMeanShpi = zoneStats.map(function(zs) { return zs.mean_shpi })
-    var zoneMeanCpi  = zoneStats.map(function(zs) { return zs.mean_cpi })
-    function rankAvgVal_(arr) {
-      var sorted = arr.slice().sort(function(a, b) { return a - b })
-      return arr.map(function(v) {
-        var idx = []
-        sorted.forEach(function(s, i) { if (s === v) idx.push(i + 1) })
-        return idx.reduce(function(a, b) { return a + b }, 0) / idx.length
-      })
-    }
-    var rxz = rankAvgVal_(zoneMeanShpi), ryz = rankAvgVal_(zoneMeanCpi)
-    var nz  = rxz.length
-    var rmxz = rxz.reduce(function(a, b) { return a + b }, 0) / nz
-    var rmyz = ryz.reduce(function(a, b) { return a + b }, 0) / nz
-    var rNumZ = rxz.reduce(function(a, v, i) { return a + (v - rmxz) * (ryz[i] - rmyz) }, 0)
-    var rdxZ  = Math.sqrt(rxz.reduce(function(a, v) { return a + (v - rmxz) * (v - rmxz) }, 0))
-    var rdyZ  = Math.sqrt(ryz.reduce(function(a, v) { return a + (v - rmyz) * (v - rmyz) }, 0))
-    var rho = (rdxZ * rdyZ > 0) ? rNumZ / (rdxZ * rdyZ) : 0
-    rho = Math.round(rho * 1000) / 1000
-    var rho_r2 = Math.round(rho * rho * 1000) / 1000
+    // OLS regression on non-empty zone means only — empty zones (pixel_count=0) have mean 0,0 which contaminates OLS
+    var nonEmptyZones = zoneStats.filter(function(zs) { return zs.pixel_count > 0 })
+    var zoneMeanShpi = nonEmptyZones.map(function(zs) { return zs.mean_shpi })
+    var zoneMeanCpi  = nonEmptyZones.map(function(zs) { return zs.mean_cpi })
+    var zonePts      = zoneMeanShpi.map(function(s, i) { return { x: s, y: zoneMeanCpi[i] } })
+    var zoneOls      = olsLine_(zonePts)
+    var zoneR2    = Math.round((zoneOls ? zoneOls.r2 : 0) * 1000) / 1000
+    var zoneSlope = zoneOls ? zoneOls.slope : 0
 
-    // mono / ratio describe the ordinal zone pattern
-    var mono  = zoneMeanCpi.every(function(v, i) { return i === 0 || v >= zoneMeanCpi[i - 1] })
-    var ratio = (nBins >= 2 && zoneMeanCpi[0] > 0.01)
-      ? Math.round(zoneMeanCpi[nBins - 1] / zoneMeanCpi[0] * 100) / 100
+    var ratio = (nonEmptyZones.length >= 2 && zoneMeanCpi[0] > 0.01)
+      ? Math.round(zoneMeanCpi[nonEmptyZones.length - 1] / zoneMeanCpi[0] * 100) / 100
       : null
 
     // K-means k=5 clustering on SHPI pixel values (supplementary analytics)
@@ -1119,14 +1373,9 @@ function decodeRasterToResult_(rawData, callback) {
         valid_crop_pixels: cpiPixels.length
       },
       validation: {
-        spearman_r:      rho,
-        r_squared:       rho_r2,
-        is_monotonic:    mono,
+        r_squared:       zoneR2,
         cpi_ratio:       ratio,
-        confirmed:       nBins === 0 ? null
-                       : nBins >= 8 ? (rho > 0.60 && mono)
-                       : nBins >= 4 ? (rho > 0.55)
-                       : (rho > 0.50),
+        confirmed:       nBins === 0 ? null : (zoneSlope > 0 && zoneR2 >= 0.10),
         n_zones:         nBins,
         data_source:     'real',
         shpi_thresholds: cutPoints
@@ -1152,9 +1401,14 @@ function decodeRasterAndAnalyse_(rawData) {
       return
     }
     lastResult = result
-    // Clear season CPI cache so stale season data from a previous ROI is not shown
+    // Clear season CPI cache and Stage I result so stale data from a previous ROI is not shown
     seasonCpiCache = {}
     scatterSeasonMode = 'all'
+    stageIResult = null
+    var stageIPanelEl = document.getElementById('stageIPanel')
+    if (stageIPanelEl) stageIPanelEl.style.display = 'none'
+    var perYearEl = document.getElementById('perYearScatterStep')
+    if (perYearEl) perYearEl.style.display = 'none'
     if (currentRoiId) {
       var cache = loadResultsCache_()
       cache[currentRoiId] = result
@@ -1175,16 +1429,9 @@ function renderResults(data) {
 
   // Banner
   const banner = document.getElementById('banner')
-  if (v.confirmed === null) {
-    banner.textContent = '⚠ Insufficient spatial data — zone correlation skipped; see D3 Paired Scatter'
-    banner.className   = 'banner banner-no'
-  } else if (v.confirmed) {
-    banner.textContent = '✓ Hypothesis confirmed — CPI increases across ' + (v.n_zones || 10) + ' SHPI zones'
-    banner.className   = 'banner banner-yes'
-  } else {
-    banner.textContent = '⚠ Hypothesis not confirmed — check data coverage (' + (v.n_zones || 10) + ' zones)'
-    banner.className   = 'banner banner-no'
-  }
+  // N3: Hypothesis verdict deferred to Stage M (per-pass OLS) — show pending until ③e loads
+  banner.textContent = '⏳ Load ③e Pass-Date Explorer to confirm hypothesis'
+  banner.className   = 'banner banner-pending'
 
   // Data source badge
   var badge = document.getElementById('dataSourceBadge')
@@ -1219,18 +1466,14 @@ function renderResults(data) {
     clipEl.style.display = 'none'
   }
 
-  // Stat cards — use Spearman ρ (zone-level, consistent with scatter) with fallback for old cached results
+  // Stat cards — R² from zone OLS (exploratory; hypothesis driven by Stage M OLS)
   const statGrid = document.getElementById('statGrid')
   statGrid.innerHTML = ''
-  var isNew  = v.spearman_r !== undefined
-  var rhoVal = isNew ? v.spearman_r : v.pearson_r
-  var rhoLbl = isNew ? 'Spearman ρ (zones)' : 'Pearson r'
-  var r2Lbl  = isNew ? 'R² (zones)' : 'R²'
+  var r2Val = v.r_squared !== undefined ? v.r_squared : '—'
   const stats = [
-    { val: rhoVal,  lbl: rhoLbl },
-    { val: v.r_squared,  lbl: r2Lbl },
+    { val: r2Val,  lbl: 'R² (zone means, Phase 1)' },
     { val: v.cpi_ratio ? v.cpi_ratio + 'x' : '—', lbl: 'CPI Hi/Lo zone ratio' },
-    { val: v.confirmed === null ? '—' : v.confirmed ? 'YES' : 'NO', lbl: 'Hypothesis' },
+    { val: '⏳', lbl: 'Hypothesis', id: 'hypothesisStatVal' },
   ]
   stats.forEach(s => {
     const card = document.createElement('div')
@@ -1238,6 +1481,7 @@ function renderResults(data) {
     const val = document.createElement('div')
     val.className = 'stat-val'
     val.textContent = s.val
+    if (s.id) val.id = s.id
     const lbl = document.createElement('div')
     lbl.className = 'stat-lbl'
     lbl.textContent = s.lbl
@@ -1285,10 +1529,15 @@ function renderResults(data) {
   // ── SHPI vs CPI scatter plot — delegated to renderScatterPlot_() ──────────
   renderScatterPlot_(data)
 
-  document.getElementById('results').classList.add('show')
-  document.getElementById('results-map-ctrls').style.display = 'flex'
+  document.getElementById('results-map-ctrls').style.display = 'flex';
+  ['pooledScatterStep','zoneMeansStep','concludeStep'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.style.display='';
+  })
+  setBadge_('pooledBadge', '✓')
+  setBadge_('zonesBadge', '✓')
+  setBadge_('concludeBadge', '⏳')
 
-  // Zone map — rendered after 'show' so the container has layout
+  // Zone map — rendered after sections are visible so the container has layout
   setTimeout(function() { renderResultsMap_(data) }, 50)
 }
 
@@ -1642,8 +1891,17 @@ var AreaDisplayCtrl = L.Control.extend({
   },
   update: function (ha) {
     if (ha === null || ha === undefined) { this._div.style.display = 'none'; return }
-    // < 10 000 ha → show in ha; ≥ 10 000 ha (100 km²) → show in km²
-    var label = ha >= 10000 ? (ha / 10000).toFixed(2) + ' km²' : Math.round(ha) + ' ha'
+    // ≥ 10 000 ha → km²; ≥ 1 ha → ha; ≥ 1 acre (0.404686 ha) → acres; < 1 acre → m²
+    var label
+    if (ha >= 10000) {
+      label = (ha / 10000).toFixed(2) + ' km²'
+    } else if (ha >= 1) {
+      label = ha.toFixed(2) + ' ha'
+    } else if (ha >= 0.404686) {
+      label = (ha / 0.404686).toFixed(2) + ' ac'
+    } else {
+      label = Math.round(ha * 10000) + ' m²'
+    }
     this._div.innerHTML = '📐 ' + label
     this._div.style.display = 'block'
   }
@@ -1972,14 +2230,14 @@ function renderLibraryPanel_() {
     var dot       = '<span class="roi-color-dot" style="background:' + dotColor + '"></span>'
     var nameCell  = dot + '<span style="cursor:pointer;color:#9FE1CB" onclick="zoomToROI_(\'' + item.id + '\')" title="Zoom to ROI">' + escHtml_(item.name) + '</span>'
 
-    var shpiCell = '—', rCell = '—', r2Cell = '—', ratioCell = '—'
+    var shpiCell = '—', r2Cell = '—', ratioCell = '—'
     if (hasResult) {
       var v  = d.validation
       var z  = d.zone_stats
-      var sMin = Math.min.apply(null, z.map(function(zs) { return zs.mean_shpi }))
-      var sMax = Math.max.apply(null, z.map(function(zs) { return zs.mean_shpi }))
+      var sArr = z.map(function(zs) { return zs.mean_shpi })
+      var sMin = sArr.reduce(function(m, v) { return v < m ? v : m }, Infinity)
+      var sMax = sArr.reduce(function(m, v) { return v > m ? v : m }, -Infinity)
       shpiCell  = sMin.toFixed(2) + '–' + sMax.toFixed(2)
-      rCell     = (v.spearman_r !== undefined ? v.spearman_r : v.pearson_r !== undefined ? v.pearson_r : '—')
       r2Cell    = v.r_squared  !== undefined ? v.r_squared  : '—'
       ratioCell = v.cpi_ratio  !== undefined ? v.cpi_ratio + '×' : '—'
     }
@@ -1988,10 +2246,10 @@ function renderLibraryPanel_() {
       (hasResult ? '<button class="lib-btn lib-btn-cached" onclick="viewCachedResult_(\'' + item.id + '\')">📊 Results</button>' : '') +
       '<button class="lib-btn lib-btn-del" onclick="deleteROIFromLibrary_(\'' + item.id + '\')">🗑</button>'
 
-    return '<tr' + active + '><td>' + nameCell + '</td><td>' + item.areaHa + ' ha</td><td>' + date + '</td><td>' + shpiCell + '</td><td>' + rCell + '</td><td>' + r2Cell + '</td><td>' + ratioCell + '</td><td>' + actions + '</td></tr>'
+    return '<tr' + active + '><td>' + nameCell + '</td><td>' + item.areaHa + ' ha</td><td>' + date + '</td><td>' + shpiCell + '</td><td>' + r2Cell + '</td><td>' + ratioCell + '</td><td>' + actions + '</td></tr>'
   }).join('')
 
-  var emptyMsg = lib.length === 0 ? '<tr><td colspan="8" style="text-align:center;color:#5a8a6a">No saved ROIs yet</td></tr>' : ''
+  var emptyMsg = lib.length === 0 ? '<tr><td colspan="7" style="text-align:center;color:#5a8a6a">No saved ROIs yet</td></tr>' : ''
   var bodyHtml = rows || emptyMsg
 
   var body = document.getElementById('roiMergedBody')
@@ -2187,13 +2445,28 @@ function renderCompareView_() {
 
 function setScatterViewMode_(mode) {
   scatterViewMode = mode
-  var bfsEl = document.getElementById('scatterTabBins-fs')
-  var pfsEl = document.getElementById('scatterTabPx-fs')
+  var bfsEl  = document.getElementById('scatterTabBins-fs')
+  var pfsEl  = document.getElementById('scatterTabPx-fs')
+  var sifsEl = document.getElementById('scatterTabStageI-fs')
   var owfsEl = document.getElementById('outlierToggleWrap-fs')
-  if (bfsEl) bfsEl.classList.toggle('active', mode === 'bins')
-  if (pfsEl) pfsEl.classList.toggle('active', mode === 'pixels')
-  if (owfsEl) owfsEl.style.display = mode === 'pixels' ? 'flex' : 'inline-flex'
-  renderScatterFsActive_()
+  var canvasWrap = null
+  var scatterOverlay = document.getElementById('chartFs-shpiCpiScatter')
+  if (scatterOverlay) canvasWrap = scatterOverlay.querySelector('.chart-fs-body')
+  var stageIFsGrid = document.getElementById('stageIFsGrid')
+  if (bfsEl)  bfsEl.classList.toggle('active',  mode === 'bins')
+  if (pfsEl)  pfsEl.classList.toggle('active',  mode === 'pixels')
+  if (sifsEl) sifsEl.classList.toggle('active', mode === 'stagei')
+  if (owfsEl) owfsEl.style.display = mode === 'pixels' ? 'flex' : (mode === 'bins' ? 'inline-flex' : 'none')
+  // Toggle visibility of standard canvas vs Stage I grid
+  if (canvasWrap)  canvasWrap.style.display  = mode === 'stagei' ? 'none' : ''
+  if (stageIFsGrid) stageIFsGrid.style.display = mode === 'stagei' ? 'flex' : 'none'
+  if (mode === 'stagei') {
+    renderStageIFsPanel_()
+    return
+  }
+  // Defer render by one animation frame so the canvas has valid layout dimensions
+  // after being un-hidden (display:none → '' transition).
+  requestAnimationFrame(function() { renderScatterFsActive_() })
 }
 
 // ── Season scatter helpers (Stage 2 / Stage 3) ────────────────────────────
@@ -2343,7 +2616,8 @@ function olsLine_(pts) {
   pts.forEach(function(p) { ssTot += (p.y - yMean) ** 2; ssRes += (p.y - (slope * p.x + intercept)) ** 2 })
   var r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0
   var xVals = pts.map(function(p) { return p.x })
-  var xMin = Math.min.apply(null, xVals), xMax = Math.max.apply(null, xVals)
+  var xMin = xVals.reduce(function(m, v) { return v < m ? v : m }, Infinity)
+  var xMax = xVals.reduce(function(m, v) { return v > m ? v : m }, -Infinity)
   return { slope: slope, intercept: intercept, r2: r2,
            lineData: [{ x: xMin, y: slope * xMin + intercept }, { x: xMax, y: slope * xMax + intercept }] }
 }
@@ -2417,39 +2691,14 @@ function renderScatterPlot_(data) {
     'y = ' + reg.slope.toFixed(3) + 'x' + intSign + Math.abs(reg.intercept).toFixed(3) +
     '   R² = ' + reg.r2.toFixed(3) + '  n=' + n + ' zones'
 
-  // Spearman ρ across zone means
+  // OLS annotation on zone means
   ;(function() {
-    if (n < 3) {
-      document.getElementById('corrSummary').textContent = 'n < 3 zones — correlation not computed'
+    if (n < 2) {
+      document.getElementById('corrSummary').textContent = 'n < 2 zones — regression not computed'
       return
     }
-    var scatterX = bPts.map(function(p) { return p.x }), scatterY = bPts.map(function(p) { return p.y })
-    function rankAvg_(arr) {
-      var sorted = arr.slice().sort(function(a, b) { return a - b })
-      return arr.map(function(v) {
-        var idx = []
-        sorted.forEach(function(s, i) { if (s === v) idx.push(i + 1) })
-        return idx.reduce(function(a, b) { return a + b }, 0) / idx.length
-      })
-    }
-    var rx = rankAvg_(scatterX), ry = rankAvg_(scatterY)
-    var rmx = rx.reduce(function(a, b) { return a + b }, 0) / n
-    var rmy = ry.reduce(function(a, b) { return a + b }, 0) / n
-    var rNum = rx.reduce(function(a, v, i) { return a + (v - rmx) * (ry[i] - rmy) }, 0)
-    var rdx = Math.sqrt(rx.reduce(function(a, v) { return a + (v - rmx) * (v - rmx) }, 0))
-    var rdy = Math.sqrt(ry.reduce(function(a, v) { return a + (v - rmy) * (v - rmy) }, 0))
-    var rho = (rdx * rdy > 0) ? rNum / (rdx * rdy) : 0
-    var tStat = rho * Math.sqrt(n - 2) / Math.sqrt(Math.max(1e-15, 1 - rho * rho))
-    function normCdf_(x) {
-      var t2 = 1 / (1 + 0.2316419 * Math.abs(x))
-      var d = 0.3989423 * Math.exp(-x * x / 2)
-      var p = d * t2 * (0.3193815 + t2 * (-0.3565638 + t2 * (1.7814779 + t2 * (-1.8212560 + t2 * 1.3302744))))
-      return x > 0 ? 1 - p : p
-    }
-    var pVal = 2 * normCdf_(-Math.abs(tStat))
-    var pStr = pVal < 0.001 ? 'p < 0.001' : 'p = ' + pVal.toFixed(3)
     document.getElementById('corrSummary').textContent =
-      'Spearman ρ = ' + rho.toFixed(3) + ',  ' + pStr + ',  R² = ' + reg.r2.toFixed(3)
+      'OLS: y = ' + reg.slope.toFixed(3) + 'x + ' + reg.intercept.toFixed(3) + '   R² = ' + reg.r2.toFixed(3) + '  (n=' + n + ' zones, exploratory only)'
   })()
 
   var noteEl = document.getElementById('scatterOutlierNote')
@@ -2539,33 +2788,8 @@ function renderScatterPlotFs_(data) {
     ;(function() {
       var csEl = document.getElementById('corrSummary-fs')
       if (!csEl) return
-      if (n < 3) { csEl.textContent = 'n < 3 zones — correlation not computed'; return }
-      var scatterX = bPts.map(function(p) { return p.x }), scatterY = bPts.map(function(p) { return p.y })
-      function rankAvg_(arr) {
-        var sorted = arr.slice().sort(function(a, b) { return a - b })
-        return arr.map(function(v) {
-          var idx = []
-          sorted.forEach(function(s, i) { if (s === v) idx.push(i + 1) })
-          return idx.reduce(function(a, b) { return a + b }, 0) / idx.length
-        })
-      }
-      var rx = rankAvg_(scatterX), ry = rankAvg_(scatterY)
-      var rmx = rx.reduce(function(a, b) { return a + b }, 0) / n
-      var rmy = ry.reduce(function(a, b) { return a + b }, 0) / n
-      var rNum = rx.reduce(function(a, v, i) { return a + (v - rmx) * (ry[i] - rmy) }, 0)
-      var rdx = Math.sqrt(rx.reduce(function(a, v) { return a + (v - rmx) * (v - rmx) }, 0))
-      var rdy = Math.sqrt(ry.reduce(function(a, v) { return a + (v - rmy) * (v - rmy) }, 0))
-      var rho = (rdx * rdy > 0) ? rNum / (rdx * rdy) : 0
-      var tStat = rho * Math.sqrt(n - 2) / Math.sqrt(Math.max(1e-15, 1 - rho * rho))
-      function normCdf_(x) {
-        var t2 = 1 / (1 + 0.2316419 * Math.abs(x))
-        var d = 0.3989423 * Math.exp(-x * x / 2)
-        var p = d * t2 * (0.3193815 + t2 * (-0.3565638 + t2 * (1.7814779 + t2 * (-1.8212560 + t2 * 1.3302744))))
-        return x > 0 ? 1 - p : p
-      }
-      var pVal = 2 * normCdf_(-Math.abs(tStat))
-      var pStr = pVal < 0.001 ? 'p < 0.001' : 'p = ' + pVal.toFixed(3)
-      csEl.textContent = 'Spearman ρ = ' + rho.toFixed(3) + ',  ' + pStr + ',  R² = ' + reg.r2.toFixed(3)
+      if (n < 2) { csEl.textContent = 'n < 2 zones — regression not computed'; return }
+      csEl.textContent = 'OLS: y = ' + reg.slope.toFixed(3) + 'x + ' + reg.intercept.toFixed(3) + '   R² = ' + reg.r2.toFixed(3) + '  (n=' + n + ' zones, exploratory only)'
     })()
 
     var noteEl = document.getElementById('scatterOutlierNote-fs')
@@ -2761,7 +2985,8 @@ function renderCmpScatterZones_(rois, cache) {
     var denom = n*sxx-sx*sx
     var slope = Math.abs(denom)>EPSILON_DENOM ? (n*sxy-sx*sy)/denom : 0
     var icpt  = (sy-slope*sx)/n
-    var xMin  = Math.min.apply(null,xs), xMax = Math.max.apply(null,xs)
+    var xMin  = xs.reduce(function(m,v){return v<m?v:m}, Infinity)
+    var xMax  = xs.reduce(function(m,v){return v>m?v:m}, -Infinity)
     datasets.push({
       type: 'line', label: item.name+' fit',
       data: [{x:xMin,y:slope*xMin+icpt},{x:xMax,y:slope*xMax+icpt}],
@@ -2801,7 +3026,8 @@ function renderCmpScatterSummary_(rois, cache) {
   var denom = n*sxx-sx*sx
   var slope = Math.abs(denom)>EPSILON_DENOM?(n*sxy-sx*sy)/denom:0
   var icpt  = (sy-slope*sx)/n
-  var xMin  = Math.min.apply(null,xs), xMax = Math.max.apply(null,xs)
+  var xMin  = xs.reduce(function(m,v){return v<m?v:m}, Infinity)
+  var xMax  = xs.reduce(function(m,v){return v>m?v:m}, -Infinity)
   var yMean = sy/n
   var ssTot = ys.reduce(function(a,y){return a+(y-yMean)*(y-yMean)},0)
   var ssRes = xs.reduce(function(a,x,i){return a+(ys[i]-(slope*x+icpt))*(ys[i]-(slope*x+icpt))},0)
@@ -2926,8 +3152,13 @@ function closeCompareMap_() {
 // ── Chart fullscreen expand / collapse ───────────────────────
 // Map from source chart ID to the corresponding Chart.js instance variable
 function _getChartInstance(id) {
-  if (id === 'shpiCpiScatter') return scatterChart
-  if (id === 'cmpScatterChart') return cmpScatterChart
+  if (id === 'shpiCpiScatter')    return scatterChart
+  if (id === 'cmpScatterChart')   return cmpScatterChart
+  if (id === 'tsChart')           return tsChart
+  if (id === 'soilTsChart')       return soilTsChart
+  if (id === 'cpiPassesChart')    return cpiPassesChartInst
+  if (id === 'shpiPassesChart')   return shpiPassesChartInst
+  if (id === 'ratioChart')        return ratioChart
   return null
 }
 
@@ -3049,31 +3280,51 @@ function downloadResult() {
   a.click()
 }
 
-// ── Time Series — collapse / expand panel ─────────────────────
-function toggleTsPanel_() {
-  const body    = document.getElementById('tsPanelBody')
-  const chevron = document.getElementById('tsPanelChevron')
-  const open    = body.style.display !== 'none'
-  body.style.display    = open ? 'none' : 'block'
-  chevron.textContent   = open ? '▶' : '▼'
+// ── Time Series — collapse / expand panel (no-op: panel is now always open as research step ③a)
+function toggleTsPanel_() {}
+
+function toggleResearchStep_(bodyId, hdrEl) {
+  var body = document.getElementById(bodyId)
+  if (!body) return
+  var open = body.style.display !== 'none'
+  body.style.display = open ? 'none' : ''
+  var chevron = hdrEl ? hdrEl.querySelector('.step-chevron') : null
+  if (chevron) chevron.textContent = open ? '▶' : '▼'
+}
+
+function setBadge_(id, text) {
+  var b = document.getElementById(id)
+  if (!b) return
+  b.textContent = text
+  b.classList.add('show')
 }
 
 // ── D1: Time Series — switch between Crop and Soil tabs ───────
 function setTsPanelMode_(mode) {
   tsPanelMode = mode
-  var cropTab  = document.getElementById('tsPanelCropTab')
-  var soilTab  = document.getElementById('tsPanelSoilTab')
-  var pairedTab = document.getElementById('tsPanelPairedTab')
-  var cropPanel = document.getElementById('tsCropPanel')
-  var soilPanel = document.getElementById('tsSoilPanel')
-  var pairedPanel = document.getElementById('tsPairedPanel')
-  if (cropTab) cropTab.classList.toggle('active', mode === 'crop')
-  if (soilTab) soilTab.classList.toggle('active', mode === 'soil')
-  if (pairedTab) pairedTab.classList.toggle('active', mode === 'paired')
-  if (cropPanel) cropPanel.style.display = mode === 'crop' ? 'block' : 'none'
-  if (soilPanel) soilPanel.style.display = mode === 'soil' ? 'block' : 'none'
-  if (pairedPanel) pairedPanel.style.display = mode === 'paired' ? 'block' : 'none'
-  if (mode === 'paired') renderPairedScatter_(d3SeasonTab)
+  var cropTab   = document.getElementById('tsPanelCropTab')
+  var soilTab   = document.getElementById('tsPanelSoilTab')
+  var cpiPassTab  = document.getElementById('tsPanelCpiPassesTab')
+  var soilPassTab = document.getElementById('tsPanelSoilPassesTab')
+  var ratioTab    = document.getElementById('tsPanelRatioTab')
+  var cropPanel   = document.getElementById('tsCropPanel')
+  var soilPanel   = document.getElementById('tsSoilPanel')
+  var cpiPassPanel  = document.getElementById('tsCpiPassesPanel')
+  var soilPassPanel = document.getElementById('tsSoilPassesPanel')
+  var ratioPanel    = document.getElementById('tsRatioPanel')
+  if (cropTab)     cropTab.classList.toggle('active',     mode === 'crop')
+  if (soilTab)     soilTab.classList.toggle('active',     mode === 'soil')
+  if (cpiPassTab)  cpiPassTab.classList.toggle('active',  mode === 'cpipasses')
+  if (soilPassTab) soilPassTab.classList.toggle('active', mode === 'shpipasses')
+  if (ratioTab)    ratioTab.classList.toggle('active',    mode === 'ratio')
+  if (cropPanel)   cropPanel.style.display   = mode === 'crop'      ? 'block' : 'none'
+  if (soilPanel)   soilPanel.style.display   = mode === 'soil'      ? 'block' : 'none'
+  if (cpiPassPanel)  cpiPassPanel.style.display  = mode === 'cpipasses'  ? 'block' : 'none'
+  if (soilPassPanel) soilPassPanel.style.display = mode === 'shpipasses' ? 'block' : 'none'
+  if (ratioPanel)    ratioPanel.style.display    = mode === 'ratio'       ? 'block' : 'none'
+  if (mode === 'cpipasses')  refreshCpiPassesPanel_()
+  if (mode === 'shpipasses') refreshShpiPassesPanel_()
+  if (mode === 'ratio')      renderRatioChart_(activePipelineSeason)
 }
 
 // ── Time Series — decode one window PNG (RGBA → index means) ────────
@@ -3442,160 +3693,6 @@ function computeYearSeasonPairs_(season) {
   return pairs
 }
 
-// ── D3: Switch paired scatter season tab ──────────────────────
-function setD3Season_(season) {
-  d3SeasonTab = season
-  var kTab = document.getElementById('d3KharifTab')
-  var rTab = document.getElementById('d3RabiTab')
-  if (kTab) kTab.classList.toggle('active', season === 'kharif')
-  if (rTab) rTab.classList.toggle('active', season === 'rabi')
-  renderPairedScatter_(season)
-}
-
-// ── D3: Render year×season paired scatter ─────────────────────
-function renderPairedScatter_(season) {
-  var statusEl = document.getElementById('d3PairedStatus')
-  var eqEl     = document.getElementById('d3PairedEq')
-  var corrEl   = document.getElementById('d3PairedCorr')
-  var wrapEl   = document.getElementById('d3PairedChartWrap')
-
-  if (!tsData || !soilTsData) {
-    if (statusEl) statusEl.textContent = '⚠ Fetch both Crop Series and Soil Series first.'
-    if (wrapEl)   wrapEl.style.display = 'none'
-    return
-  }
-
-  var pairs = computeYearSeasonPairs_(season)
-  if (pairs.length < 2) {
-    if (statusEl) statusEl.textContent = '⚠ Need ≥2 years with both fallow SHPI and season CPI data.'
-    if (wrapEl)   wrapEl.style.display = 'none'
-    return
-  }
-  if (statusEl) statusEl.textContent = ''
-  if (wrapEl)   wrapEl.style.display = 'block'
-
-  var pts = pairs.map(function(p) { return { x: p.shpi, y: p.cpi } })
-  var reg = olsLine_(pts)
-  var n   = pts.length
-
-  var intSign = reg.intercept >= 0 ? ' + ' : ' - '
-  var seasonLabel = season === 'kharif' ? 'Kharif' : 'Rabi'
-  var shpiWindow  = season === 'kharif' ? 'Feb–May' : 'Oct–Nov'
-  var cpiWindow   = season === 'kharif' ? 'Jun–Oct' : 'Nov–Mar'
-  if (eqEl) eqEl.textContent =
-    seasonLabel + ' · y = ' + reg.slope.toFixed(3) + 'x' + intSign +
-    Math.abs(reg.intercept).toFixed(3) + '   R² = ' + reg.r2.toFixed(3) + '  n=' + n + ' yrs'
-
-  // Spearman ρ
-  ;(function() {
-    if (n < 3) { if (corrEl) corrEl.textContent = 'n < 3 — ρ not computed'; return }
-    var xs = pts.map(function(p){ return p.x }), ys = pts.map(function(p){ return p.y })
-    function rankAvg_(arr) {
-      var sorted = arr.slice().sort(function(a,b){return a-b})
-      return arr.map(function(v) {
-        var idx=[]; sorted.forEach(function(s,i){if(s===v)idx.push(i+1)})
-        return idx.reduce(function(a,b){return a+b},0)/idx.length
-      })
-    }
-    var rx = rankAvg_(xs), ry = rankAvg_(ys)
-    var rmx = rx.reduce(function(a,b){return a+b},0)/n
-    var rmy = ry.reduce(function(a,b){return a+b},0)/n
-    var rNum = rx.reduce(function(a,v,i){return a+(v-rmx)*(ry[i]-rmy)},0)
-    var rdx = Math.sqrt(rx.reduce(function(a,v){return a+(v-rmx)*(v-rmx)},0))
-    var rdy = Math.sqrt(ry.reduce(function(a,v){return a+(v-rmy)*(v-rmy)},0))
-    var rho = (rdx*rdy>0) ? rNum/(rdx*rdy) : 0
-    var tStat = rho * Math.sqrt(n-2) / Math.sqrt(Math.max(1e-15, 1-rho*rho))
-    function normCdf_(x) {
-      var t2=1/(1+0.2316419*Math.abs(x)), d=0.3989423*Math.exp(-x*x/2)
-      var p=d*t2*(0.3193815+t2*(-0.3565638+t2*(1.7814779+t2*(-1.8212560+t2*1.3302744))))
-      return x>0?1-p:p
-    }
-    var pVal = 2*normCdf_(-Math.abs(tStat))
-    var pStr = pVal<0.001 ? 'p < 0.001' : 'p = '+pVal.toFixed(3)
-    if (corrEl) corrEl.textContent =
-      'Spearman ρ = '+rho.toFixed(3)+'  '+pStr+'  R² = '+reg.r2.toFixed(3)
-  })()
-
-  // Build chart datasets
-  var YEAR_COLORS = ['#4ecdc4','#ff6b6b','#f9ca24','#6c5ce7','#a29bfe','#fd79a8','#00b894','#e17055','#0984e3','#00cec9']
-  var scatterDataset = {
-    type: 'scatter',
-    label: seasonLabel + ' years',
-    data: pairs.map(function(p, i) {
-      return { x: p.shpi, y: p.cpi, year: p.year, nShpi: p.nShpi, nCpi: p.nCpi }
-    }),
-    backgroundColor: pairs.map(function(p, i) { return YEAR_COLORS[i % YEAR_COLORS.length] }),
-    borderColor: '#fff',
-    borderWidth: 1,
-    pointRadius: 7,
-    pointHoverRadius: 9,
-    order: 0
-  }
-
-  var olsDataset = {
-    type: 'line',
-    label: 'OLS fit',
-    data: reg.lineData,
-    borderColor: '#F5A623',
-    borderWidth: 2,
-    pointRadius: 0,
-    fill: false,
-    order: 1
-  }
-
-  if (pairedScatterChart) { pairedScatterChart.destroy(); pairedScatterChart = null }
-  var ctx = document.getElementById('pairedScatterCanvas').getContext('2d')
-  pairedScatterChart = new Chart(ctx, {
-    data: { datasets: [scatterDataset, olsDataset] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: function(item) {
-              var d = item.raw
-              if (!d || d.year == null) return ''
-              return d.year + ' · SHPI('+shpiWindow+')=' + d.x.toFixed(3) +
-                     ' · CPI('+cpiWindow+')=' + d.y.toFixed(3) +
-                     ' · n(soil)='+d.nShpi+' n(crop)='+d.nCpi
-            }
-          }
-        },
-        datalabels: false
-      },
-      scales: {
-        x: {
-          title: { display: true, text: 'SHPI ('+shpiWindow+' fallow)', color: '#9FE1CB', font: { size: 9 } },
-          ticks: { color: '#9FE1CB', font: { size: 8 } }
-        },
-        y: {
-          title: { display: true, text: 'CPI ('+cpiWindow+' season)', color: '#9FE1CB', font: { size: 9 } },
-          ticks: { color: '#9FE1CB', font: { size: 8 } }
-        }
-      }
-    },
-    plugins: [{
-      // Year label annotations drawn on each point
-      id: 'yearLabels',
-      afterDatasetsDraw: function(chart) {
-        var meta = chart.getDatasetMeta(0)
-        var ctx2 = chart.ctx
-        ctx2.save()
-        ctx2.font = 'bold 8px sans-serif'
-        ctx2.textAlign = 'center'
-        ctx2.fillStyle = '#fff'
-        pairs.forEach(function(p, i) {
-          var el = meta.data[i]
-          if (!el) return
-          ctx2.fillText(p.year, el.x, el.y - 9)
-        })
-        ctx2.restore()
-      }
-    }]
-  })
-}
 function dateToDoy_(dateStr) {
   var d     = new Date(dateStr + 'T00:00:00')
   var start = new Date(d.getFullYear(), 0, 0)
@@ -3795,7 +3892,7 @@ function renderTsChartSeason_(indexKey) {
     }
   })
 
-  // Mean-year line: average val at each biweekly DOY bucket (round to nearest 14)
+  // Median year line: median val at each biweekly DOY bucket (round to nearest 14)
   const buckets = {}
   selYears.forEach(function(yr) {
     ;(byYear[yr] || []).forEach(function(p) {
@@ -3805,17 +3902,19 @@ function renderTsChartSeason_(indexKey) {
       buckets[bkt].push(p.val)
     })
   })
-  const meanPts = Object.keys(buckets)
+  const medianPts = Object.keys(buckets)
     .map(Number)
     .sort(function(a, b) { return a - b })
     .map(function(doy) {
-      const vals = buckets[doy]
-      return { x: doy, y: Math.round(vals.reduce(function(a, b) { return a + b }, 0) / vals.length * 1000) / 1000 }
+      const vals = buckets[doy].slice().sort(function(a, b) { return a - b })
+      const mid  = Math.floor(vals.length / 2)
+      const med  = vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid]
+      return { x: doy, y: Math.round(med * 1000) / 1000 }
     })
   datasets.push({
     type: 'line',
-    label: 'Mean',
-    data: meanPts,
+    label: 'Median',
+    data: medianPts,
     borderColor: '#F5A623',
     backgroundColor: 'transparent',
     borderWidth: 2.5,
@@ -3882,7 +3981,7 @@ function renderTsChartSeason_(indexKey) {
 
   document.getElementById('tsChartLabel').textContent =
     'Seasons overlaid — ' + selYears.length + ' year' + (selYears.length > 1 ? 's' : '') +
-    ' (' + selYears.join(', ') + ')  |  orange line = mean'
+    ' (' + selYears.join(', ') + ')  |  orange line = median'
 }
 
 // ── D1: Soil TS — decode one window PNG (RGBA → soil index means) ─
@@ -3926,10 +4025,35 @@ function setSoilTsIndex_(key) {
 let soilSelectedYears  = null   // Set<string> of checked years for soil chart (populated after soil fetch)
 let tsYearsForShpi     = []     // confirmed year list for D2 fallow SHPI raster calls
 let fallowShpiCache    = {}     // { 'kharif': shpiArr, 'rabi': shpiArr } — cached per-season fallow SHPI
-// D3: Year×season paired scatter state
-let d3SeasonTab        = 'kharif'  // 'kharif' | 'rabi'
-let pairedScatterChart = null
+// Active season for auto-run pipeline and analysis
+let activePipelineSeason = 'kharif'  // 'kharif' | 'rabi'
 
+// ── Stage I globals ────────────────────────────────────────────────────────
+let perYearRastersCache = {}   // { 'kharif': { year: { shpi:Float32Array, cpi:Float32Array } } }
+let stageIResult        = null // latest Stage I output (set by runStageI_)
+
+// ── Stage K globals ────────────────────────────────────────────────────────
+let stageKResult  = null  // { season, perYearAucPairs, perYearR2Auc, pooledAucPairs, validationAuc }
+let stageKCache   = {}    // { 'kharif': { year: Float32Array(aucArr) }, ... }
+let stageKMode    = 'cpi' // 'cpi' | 'auc' — current display mode in ③b scatter
+
+// ── Stage M globals ────────────────────────────────────────────────────────
+// cropPassCache[season][year] = [{date, label, cpiB64}]
+// fallowPassCache[season][year] = [{date, label, shpiB64}]
+let cropPassCache    = {}  // raw base64 PNGs per season/year from getAllCropPassRasters
+let fallowPassCache  = {}  // raw base64 PNGs per season/year from getAllFallowPassRasters
+// Decoded pixel arrays: [season][year] = [{date, label, pixels: Float32Array (CPI or SHPI)}]
+let cropPassPixels   = {}
+let fallowPassPixels = {}
+// refShpiPassMap[season][year] = {idx, date, label, pixels} — min field-sum fallow pass (ref SHPI)
+let refShpiPassMap   = {}
+// OLS per pass for each year: stageMOlsMap[season][year] = [{date, label, r2, slope, intercept, n}]
+let stageMOlsMap     = {}
+let stageMOlsCurveInst  = null  // Chart.js R²-curve instance
+let cpiPassesChartInst  = null  // Chart.js per-pixel CPI trajectory instance
+let shpiPassesChartInst = null  // Chart.js per-pixel SHPI trajectory instance
+let stageMSeason     = 'kharif' // currently selected season in ③e
+// Mini canvas instances inside the ③e grid are kept in a simple array (re-created on each render)
 // ── D1: Soil TS — switch view mode ────────────────────────────
 let soilTsViewMode = 'timeline'
 function setSoilTsViewMode_(mode) {
@@ -4093,7 +4217,7 @@ function renderSoilTsChartSeason_(indexKey) {
     }
   })
 
-  // Mean line
+  // Median line
   const buckets = {}
   years.forEach(function(yr) {
     ;(byYear[yr] || []).forEach(function(p) {
@@ -4103,13 +4227,15 @@ function renderSoilTsChartSeason_(indexKey) {
       buckets[bkt].push(p.val)
     })
   })
-  const meanPts = Object.keys(buckets).map(Number).sort((a, b) => a - b)
+  const medianPts = Object.keys(buckets).map(Number).sort((a, b) => a - b)
     .map(doy => {
-      const vals = buckets[doy]
-      return { x: doy, y: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 1000) / 1000 }
+      const vals = buckets[doy].slice().sort((a, b) => a - b)
+      const mid  = Math.floor(vals.length / 2)
+      const med  = vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid]
+      return { x: doy, y: Math.round(med * 1000) / 1000 }
     })
   datasets.push({
-    type: 'line', label: 'Mean', data: meanPts,
+    type: 'line', label: 'Median', data: medianPts,
     borderColor: '#cd853f', backgroundColor: 'transparent',
     borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.4, spanGaps: true
   })
@@ -4152,7 +4278,280 @@ function renderSoilTsChartSeason_(indexKey) {
   })
   document.getElementById('soilChartLabel').textContent =
     'Bare-soil seasons overlaid — ' + years.length + ' year' + (years.length > 1 ? 's' : '') +
-    ' (' + years.join(', ') + ')  |  brown line = mean'
+    ' (' + years.join(', ') + ')  |  brown line = median'
+}
+
+// ── N4 Btn6: CPI/SHPI Ratio chart ────────────────────────────────────────────
+// Shows CPI/(CPI+SHPI) ratio — pass-date trendline (Stage M) or annual fallback.
+let ratioChartSeason = 'kharif'  // last-rendered season for ratio tab
+let ratioViewMode_   = 'timeline' // 'timeline' | 'season'
+
+// Toggle Timeline / By Season view mode for the Ratio tab
+function setRatioViewMode_(mode) {
+  ratioViewMode_ = mode
+  var tlBtn = document.getElementById('ratioViewTimeline')
+  var snBtn = document.getElementById('ratioViewSeason')
+  if (tlBtn) tlBtn.classList.toggle('active', mode === 'timeline')
+  if (snBtn) snBtn.classList.toggle('active', mode === 'season')
+  renderRatioChart_(ratioChartSeason)
+}
+
+// Render CPI/(CPI+SHPI) ratio trendline tab
+// Timeline mode: x = actual calendar pass dates, one line per accepted year
+// By Season mode: x = DOY, all accepted years overlaid + median line
+// No annual fallback — requires Stage M pass rasters (cropPassPixels)
+function renderRatioChart_(season) {
+  if (!season) season = ratioChartSeason
+  ratioChartSeason = season
+
+  // Update season button active state
+  var kBtn = document.getElementById('ratioSeasonKharif')
+  var rBtn = document.getElementById('ratioSeasonRabi')
+  if (kBtn) kBtn.classList.toggle('active', season === 'kharif')
+  if (rBtn) rBtn.classList.toggle('active', season === 'rabi')
+
+  var statusEl = document.getElementById('ratioChartStatus')
+  var canvasEl = document.getElementById('ratioChart')
+
+  // Destroy previous instance
+  if (ratioChart) { ratioChart.destroy(); ratioChart = null }
+
+  // Helper: field median of a pixels array (values in [0,1]; -1 = invalid/nodata — skip)
+  function fieldMedian(pixels) {
+    if (!pixels || !pixels.length) return null
+    var valid = []
+    for (var i = 0; i < pixels.length; i++) { if (pixels[i] >= 0) valid.push(pixels[i]) }
+    if (!valid.length) return null
+    valid.sort(function(a, b) { return a - b })
+    var mid = Math.floor(valid.length / 2)
+    return valid.length % 2 === 0 ? (valid[mid - 1] + valid[mid]) / 2 : valid[mid]
+  }
+
+  // Helper: field mean of a pixels array (for refSHPI — single pass)
+  function fieldMean(pixels) {
+    if (!pixels || !pixels.length) return null
+    var s = 0, cnt = 0
+    for (var i = 0; i < pixels.length; i++) { if (pixels[i] >= 0) { s += pixels[i]; cnt++ } }
+    return cnt > 0 ? s / cnt : null
+  }
+
+  var seasonData = cropPassPixels[season] || {}
+  var seasonYears = Object.keys(seasonData).map(Number).filter(function(y) {
+    var passes = seasonData[y]
+    return passes && passes.length > 0
+  })
+
+  // Stage M required — show prompt if not loaded
+  if (!seasonYears.length) {
+    if (statusEl) statusEl.textContent = 'ⓘ Load ③e Pass-Date Explorer to view ratio trendline.'
+    if (canvasEl) canvasEl.style.display = 'none'
+    return
+  }
+
+  // Determine accepted years (researcher-controlled via chip row → stageIResult.tukey.retained)
+  var acceptedYrs
+  if (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0) {
+    acceptedYrs = stageIResult.tukey.retained.map(Number).filter(function(y) { return seasonData[y] && seasonData[y].length > 0 })
+  } else {
+    acceptedYrs = seasonYears
+  }
+  acceptedYrs = acceptedYrs.sort(function(a, b) { return a - b })
+
+  if (!acceptedYrs.length) {
+    if (statusEl) statusEl.textContent = 'ⓘ No accepted-year pass data available.'
+    if (canvasEl) canvasEl.style.display = 'none'
+    return
+  }
+
+  var yearPalette = ['#4ecdc4','#ff6b6b','#ffd166','#c3a6e0','#ff9f43','#54a0ff','#a8e6cf','#ee5a24']
+  var seasonLabel = season === 'kharif' ? 'Kharif' : 'Rabi'
+  var ctx = canvasEl.getContext('2d')
+
+  if (ratioViewMode_ === 'timeline') {
+    // ── TIMELINE MODE: x = actual calendar dates ────────────────────────────
+    // Build union of all pass dates across accepted years
+    var dateSet = {}
+    acceptedYrs.forEach(function(yr) {
+      var passes = seasonData[yr] || []
+      passes.forEach(function(p) { if (p.date) dateSet[p.date] = true })
+    })
+    var allDates = Object.keys(dateSet).sort()
+
+    var datasets = acceptedYrs.map(function(yr, yi) {
+      var passes = seasonData[yr] || []
+      var refPixels = (refShpiPassMap[season] || {})[yr] ? (refShpiPassMap[season] || {})[yr].pixels : null
+      var refMeanShpi = fieldMean(refPixels)
+      var ratioPerDate = allDates.map(function(date) {
+        var pass = null
+        for (var pi = 0; pi < passes.length; pi++) { if (passes[pi].date === date) { pass = passes[pi]; break } }
+        if (!pass) return null
+        var medCpi = fieldMedian(pass.pixels)
+        if (medCpi === null || refMeanShpi === null) return null
+        var denom = medCpi + refMeanShpi
+        if (denom < 0.01) return null
+        return Math.round(medCpi / denom * 1000) / 1000
+      })
+      var col = yearPalette[yi % yearPalette.length]
+      return {
+        type: 'line',
+        label: String(yr),
+        data: ratioPerDate,
+        borderColor: col,
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 6,
+        fill: false,
+        tension: 0.3,
+        spanGaps: true
+      }
+    })
+
+    if (canvasEl) canvasEl.style.display = 'block'
+    if (statusEl) statusEl.textContent = seasonLabel + ' — ' + acceptedYrs.length + ' yr | CPI/(CPI+SHPI) per pass date'
+
+    ratioChart = new Chart(ctx, {
+      data: { labels: allDates, datasets: datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 8, padding: 4 } },
+          tooltip: { callbacks: { label: function(item) { return item.dataset.label + ': ' + item.raw } } },
+          title: { display: true, text: 'CPI/(CPI+SHPI) — ' + seasonLabel + ' (Timeline)', color: '#9FE1CB', font: { size: 9 } }
+        },
+        scales: {
+          x: { ticks: { color: '#9FE1CB', font: { size: 7 }, maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.07)' } },
+          y: { min: 0, max: 1,
+            title: { display: true, text: 'CPI/(CPI+SHPI)', color: '#9FE1CB', font: { size: 7 } },
+            ticks: { color: '#9FE1CB', font: { size: 7 } },
+            grid: { color: 'rgba(255,255,255,0.07)' }
+          }
+        }
+      }
+    })
+
+  } else {
+    // ── BY SEASON MODE: x = DOY, all years overlaid ─────────────────────────
+    var datasets2 = acceptedYrs.map(function(yr, yi) {
+      var passes = seasonData[yr] || []
+      var refPixels = (refShpiPassMap[season] || {})[yr] ? (refShpiPassMap[season] || {})[yr].pixels : null
+      var refMeanShpi = fieldMean(refPixels)
+      var pts = []
+      passes.forEach(function(p) {
+        if (!p.date || !p.pixels) return
+        var medCpi = fieldMedian(p.pixels)
+        if (medCpi === null || refMeanShpi === null) return
+        var denom = medCpi + refMeanShpi
+        if (denom < 0.01) return
+        var ratio = Math.round(medCpi / denom * 1000) / 1000
+        pts.push({ x: dateToDoy_(p.date), y: ratio })
+      })
+      pts.sort(function(a, b) { return a.x - b.x })
+      var col = yearPalette[yi % yearPalette.length]
+      return {
+        type: 'scatter',
+        label: String(yr),
+        data: pts,
+        borderColor: col,
+        backgroundColor: col,
+        pointRadius: 3,
+        pointHoverRadius: 6,
+        showLine: true,
+        borderWidth: 1.8,
+        fill: false,
+        tension: 0.3,
+        spanGaps: false
+      }
+    })
+
+    // Median line across all accepted years at biweekly DOY buckets
+    var buckets = {}
+    acceptedYrs.forEach(function(yr) {
+      var passes = seasonData[yr] || []
+      var refPixels = (refShpiPassMap[season] || {})[yr] ? (refShpiPassMap[season] || {})[yr].pixels : null
+      var refMeanShpi = fieldMean(refPixels)
+      passes.forEach(function(p) {
+        if (!p.date || !p.pixels) return
+        var medCpi = fieldMedian(p.pixels)
+        if (medCpi === null || refMeanShpi === null) return
+        var denom = medCpi + refMeanShpi
+        if (denom < 0.01) return
+        var ratio = medCpi / denom
+        var bkt = Math.round(dateToDoy_(p.date) / 14) * 14
+        if (!buckets[bkt]) buckets[bkt] = []
+        buckets[bkt].push(ratio)
+      })
+    })
+    var medPts = Object.keys(buckets).map(Number).sort(function(a, b) { return a - b }).map(function(doy) {
+      var vals = buckets[doy].slice().sort(function(a, b) { return a - b })
+      var mid = Math.floor(vals.length / 2)
+      var med = vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid]
+      return { x: doy, y: Math.round(med * 1000) / 1000 }
+    })
+    datasets2.push({
+      type: 'line',
+      label: 'Median',
+      data: medPts,
+      borderColor: '#F5A623',
+      backgroundColor: 'transparent',
+      borderWidth: 2.5,
+      pointRadius: 0,
+      fill: false,
+      tension: 0.4,
+      spanGaps: true
+    })
+
+    var MONTH_DOYS   = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+    var MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+    if (canvasEl) canvasEl.style.display = 'block'
+    if (statusEl) statusEl.textContent = seasonLabel + ' — ' + acceptedYrs.length + ' yr | CPI/(CPI+SHPI) by DOY'
+
+    ratioChart = new Chart(ctx, {
+      data: { datasets: datasets2 },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 8, padding: 4 } },
+          tooltip: {
+            callbacks: {
+              title: function(items) {
+                var doy = items[0].raw.x
+                var ref = new Date(new Date(2001, 0, 1).getTime() + (doy - 1) * 86400000)
+                return 'DOY ' + doy + ' (~' + ref.toLocaleDateString('en', { month: 'short', day: 'numeric' }) + ')'
+              },
+              label: function(item) { return item.dataset.label + ': ' + item.raw.y }
+            }
+          },
+          title: { display: true, text: 'CPI/(CPI+SHPI) — ' + seasonLabel + ' (By Season)', color: '#9FE1CB', font: { size: 9 } }
+        },
+        scales: {
+          x: {
+            type: 'linear', min: 1, max: 365,
+            title: { display: true, text: 'Day of year', color: '#9FE1CB', font: { size: 8 } },
+            ticks: {
+              color: '#9FE1CB', font: { size: 7 },
+              callback: function(v) {
+                var idx = MONTH_DOYS.indexOf(v)
+                return idx >= 0 ? MONTH_LABELS[idx] : ''
+              },
+              includeBounds: false
+            },
+            afterBuildTicks: function(axis) { axis.ticks = MONTH_DOYS.map(function(v) { return { value: v } }) },
+            grid: { color: 'rgba(255,255,255,0.07)' }
+          },
+          y: {
+            min: 0, max: 1,
+            title: { display: true, text: 'CPI/(CPI+SHPI)', color: '#9FE1CB', font: { size: 7 } },
+            ticks: { color: '#9FE1CB', font: { size: 7 } },
+            grid: { color: 'rgba(255,255,255,0.07)' }
+          }
+        }
+      }
+    })
+  }
 }
 
 // ── UI helpers ────────────────────────────────────────────────
@@ -4168,163 +4567,184 @@ function setProgress(show, pct, msg) {
   if (msg)               document.getElementById('progMsg').textContent  = msg
 }
 
-// ── Monthly Imagery (ESRI Wayback + SH WMS) ────────────────────
-var monthlyLayer = null
-var esriWaybackReleases = null  // cached release list
-
-function toggleMonSection_() {
-  var body = document.getElementById('monBody')
-  var icon = document.getElementById('monToggleIcon')
-  var shown = body.style.display !== 'none'
-  body.style.display = shown ? 'none' : 'block'
-  icon.textContent = shown ? '▶' : '▼'
-  if (!shown && !esriWaybackReleases) loadEsriReleases_()
-}
-
-function onMonSourceChange_() {
-  var src = document.getElementById('monSource').value
-  document.getElementById('esriWaybackCtrl').style.display = src === 'esri' ? 'block' : 'none'
-  document.getElementById('shWmsCtrl').style.display       = src === 'sh'   ? 'block' : 'none'
-}
-
-function fmtWaybackDate_(dateStr) {
-  // Parse a YYYY-MM-DD (or ISO datetime) string and return "07 Nov 2023 (Wk 45)"
-  if (!dateStr) return ''
-  // Strip time component if present (e.g. "2024-01-10T21:44:30.000Z" → "2024-01-10")
-  var datePart = dateStr.length > 10 ? dateStr.substring(0, 10) : dateStr
-  var d = new Date(datePart + 'T00:00:00Z') // parse as UTC to avoid timezone shift
-  if (isNaN(d.getTime())) return dateStr
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  var jan1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-  var wk = Math.ceil(((d - jan1) / 86400000 + jan1.getUTCDay() + 1) / 7)
-  return d.getUTCDate() + ' ' + months[d.getUTCMonth()] + ' ' + d.getUTCFullYear() +
-         ' (Wk ' + wk + ')'
-}
-
-function esriExtractDate_(entry) {
-  if (!entry) return ''
-  // Handle case where entry is a primitive string (e.g. a GUID — scan for date pattern)
-  if (typeof entry === 'string') {
-    var ms = entry.match(/(\d{4}-\d{2}-\d{2})/)
-    return ms ? ms[1] : ''
-  }
-  if (typeof entry !== 'object') return ''
-  // Check known ESRI Wayback date field names first
-  var raw = entry.releaseDatetime || entry.releaseDate || entry.imageDate || entry.itemDate || ''
-  if (raw) return raw
-  // Scan ALL string-valued fields for a YYYY-MM-DD pattern
-  // (covers itemTitle: "World Imagery (Wayback 2024-01-10T...)", releaseDateLabel, etc.)
-  for (var key in entry) {
-    if (typeof entry[key] === 'string') {
-      var m = entry[key].match(/(\d{4}-\d{2}-\d{2})/)
-      if (m) return m[1]
-    }
-  }
-  return ''
-}
-
-function loadEsriReleases_() {
-  var sel = document.getElementById('esriReleaseSelect')
-  var msg = document.getElementById('monLoading')
-  msg.style.display = 'block'
-  fetch('https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json')
-    .then(function (r) { return r.json() })
-    .then(function (cfg) {
-      esriWaybackReleases = cfg
-      // Log a sample entry so we can inspect the actual field names in the browser console
-      var sampleIds = Object.keys(cfg)
-      if (sampleIds.length) {
-        var sample = cfg[sampleIds[0]]
-        console.log('[Wayback] config sample entry:', sampleIds[0], sample)
-        console.log('[Wayback] sample type:', typeof sample, '| keys:', typeof sample === 'object' ? Object.keys(sample).join(', ') : '(primitive)')
-        console.log('[Wayback] extracted date from sample:', esriExtractDate_(sample))
-      }
-      // sort by release date descending; fall back to numeric id descending when no date
-      var releases = Object.keys(cfg).sort(function (a, b) {
-        var da = esriExtractDate_(cfg[a])
-        var db = esriExtractDate_(cfg[b])
-        if (da && db) return new Date(db) - new Date(da)
-        if (da) return -1
-        if (db) return 1
-        return Number(b) - Number(a)
-      })
-      sel.innerHTML = '<option value="">— choose a release date —</option>'
-      releases.forEach(function (id) {
-        var entry = cfg[id]
-        var rawDate = esriExtractDate_(entry)
-        var datePart = ''
-        if (rawDate) {
-          datePart = fmtWaybackDate_(rawDate)
-        } else if (entry && typeof entry === 'object' && entry.releaseDateLabel) {
-          // releaseDateLabel is already human-readable (e.g. "Jan 10, 2024")
-          datePart = entry.releaseDateLabel
-        }
-        // Always show the date alongside the numeric ID so users can correlate
-        var label = datePart ? (datePart + ' · #' + id) : ('#' + id)
-        var opt = document.createElement('option')
-        opt.value = id
-        opt.textContent = label
-        sel.appendChild(opt)
-      })
-      msg.style.display = 'none'
-      document.getElementById('esriReleaseMsg').textContent = releases.length + ' releases loaded.'
-    })
-    .catch(function (err) {
-      msg.textContent = 'Could not load releases.'
-      console.error('ESRI Wayback config error:', err)
-    })
-}
-
-function loadEsriRelease_() {
-  var releaseId = document.getElementById('esriReleaseSelect').value
-  if (!releaseId) { alert('Please select a date first.'); return }
-  // Build new layer before removing old one to avoid blank-map flash
-  var newLayer = L.tileLayer(
-    'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/' +
-    releaseId + '/{z}/{y}/{x}',
-    { attribution: 'ESRI Wayback', maxZoom: 19, opacity: 0.9, keepBuffer: 0 }
-  )
-  if (monthlyLayer) { map.removeLayer(monthlyLayer) }
-  monthlyLayer = newLayer
-  monthlyLayer.addTo(map)
-  monthlyLayer.redraw()  // force fresh tile requests for the selected release
-  // bring drawn layer & results raster to front
-  drawn.bringToFront()
-  if (resultsRasterLayer) resultsRasterLayer.bringToFront()
-  var selEl = document.getElementById('esriReleaseSelect')
-  document.getElementById('esriReleaseMsg').textContent =
-    selEl.selectedOptions && selEl.selectedOptions.length
-      ? '✓ Showing imagery from: ' + selEl.selectedOptions[0].text
-      : '✓ Layer loaded.'
-}
-
-function applyShWms_() {
-  var instanceId = document.getElementById('shInstanceId').value.trim()
-  if (!instanceId) { alert('Please enter your Sentinel Hub / CDS Instance ID.'); return }
-  var month = document.getElementById('shMonth').value
-  var year  = document.getElementById('shYear').value
-  // date range: first to last day of month
-  var daysInMonth = new Date(year, parseInt(month), 0).getDate()
-  var timeParam = year + '-' + month + '-01/' + year + '-' + month + '-' + daysInMonth
-  clearMonthlyLayer_()
-  var wmsUrl = 'https://sh.dataspace.copernicus.eu/ogc/wms/' + instanceId
-  monthlyLayer = L.tileLayer.wms(wmsUrl, {
-    layers:      'TRUE-COLOR',
-    format:      'image/png',
-    transparent: true,
-    version:     '1.3.0',
-    time:        timeParam,
-    attribution: 'Sentinel-2 © ESA / Copernicus Data Space',
-    opacity:     0.9
+// ── Sidebar resize handle ─────────────────────────────────────
+;(function() {
+  var resizer = document.getElementById('sidebarResizer')
+  var sidebar = document.querySelector('.sidebar')
+  if (!resizer || !sidebar) return
+  var dragging = false, startX = 0, startW = 0
+  resizer.addEventListener('mousedown', function(e) {
+    dragging = true; startX = e.clientX; startW = sidebar.offsetWidth
+    resizer.classList.add('dragging'); e.preventDefault()
   })
-  monthlyLayer.addTo(map)
-  drawn.bringToFront()
-  if (resultsRasterLayer) resultsRasterLayer.bringToFront()
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return
+    var newW = Math.max(220, Math.min(600, startW + (e.clientX - startX)))
+    sidebar.style.width = newW + 'px'
+  })
+  document.addEventListener('mouseup', function() {
+    dragging = false; resizer.classList.remove('dragging')
+  })
+})()
+
+// ── Browse Imagery (GAS tile proxy — Sentinel-2 via CDS credentials) ──────
+var monthlyLayer = null
+var MON_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+// toggleMonSection_ is a no-op: Browse Imagery is now always open as research step ①
+function toggleMonSection_() {}
+
+function applyGasTile_() {
+  if (drawn.getLayers().length === 0) { alert('Draw an ROI first.'); return }
+  var cadence = document.getElementById('shCadence') ? document.getElementById('shCadence').value : 'monthly'
+  var startDate, endDate
+  if (cadence === 'monthly') {
+    var month = document.getElementById('shMonth').value
+    var year  = document.getElementById('shYear').value
+    var daysInMonth = new Date(year, parseInt(month, 10), 0).getDate()
+    startDate = year + '-' + month + '-01'
+    endDate   = year + '-' + month + '-' + String(daysInMonth).padStart(2, '0')
+  } else {
+    var pd = currentPeriodDates_()
+    if (!pd) return
+    startDate = pd.start
+    endDate   = pd.end
+  }
+  var bounds = drawn.getBounds()
+  if (!bounds || !bounds.isValid()) { alert('Invalid ROI bounds — please redraw the polygon.'); return }
+  var bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]
+  clearMonthlyLayer_()
+  var msgEl = document.getElementById('monMsg')
+  if (msgEl) msgEl.textContent = '⏳ Loading imagery…'
+  google.script.run
+    .withSuccessHandler(function(data) {
+      if (msgEl) msgEl.textContent = ''
+      if (!data.success) {
+        if (msgEl) msgEl.textContent = '⚠ ' + (data.error || 'Tile fetch failed')
+        return
+      }
+      if (!data.png_b64 || data.png_b64.length < 100) {
+        if (msgEl) msgEl.textContent = '⚠ No clear imagery for this period'
+        return
+      }
+      var dataUrl = 'data:image/png;base64,' + data.png_b64
+      monthlyLayer = L.imageOverlay(dataUrl, bounds, {
+        opacity: 0.9,
+        attribution: 'Sentinel-2 © ESA / Copernicus Data Space'
+      })
+      monthlyLayer.addTo(map)
+      drawn.bringToFront()
+      if (resultsRasterLayer) resultsRasterLayer.bringToFront()
+    })
+    .withFailureHandler(function(err) {
+      if (msgEl) msgEl.textContent = '⚠ ' + err.message
+    })
+    .serveTile({ bbox: bbox, startDate: startDate, endDate: endDate })
 }
 
 function clearMonthlyLayer_() {
   if (monthlyLayer) { map.removeLayer(monthlyLayer); monthlyLayer = null }
-  document.getElementById('esriReleaseMsg').textContent = ''
+  var msg = document.getElementById('monMsg')
+  if (msg) msg.textContent = ''
+}
+
+// ── Stage G: Cadence toggle + period stepper ────────────────────────────────
+var shCurrentPeriod = 1   // period index (1-based) for weekly/biweekly stepper
+
+// Returns {start:'YYYY-MM-DD', end:'YYYY-MM-DD', label:'W06 — Feb 6–12'} for current period
+function currentPeriodDates_() {
+  var cadence = document.getElementById('shCadence').value
+  var year    = parseInt(document.getElementById('shPeriodYear').value, 10)
+  if (isNaN(year)) return null
+  var cadenceDays = cadence === 'weekly' ? 7 : 14
+  var maxPeriods  = cadence === 'weekly' ? 52 : 26
+  var p = Math.max(1, Math.min(shCurrentPeriod, maxPeriods))
+  var jan1 = new Date(Date.UTC(year, 0, 1))
+  var startMs = jan1.getTime() + (p - 1) * cadenceDays * 86400000
+  var endMs   = startMs + (cadenceDays - 1) * 86400000
+  // Cap end at Dec 31 of the year
+  var dec31 = new Date(Date.UTC(year, 11, 31)).getTime()
+  if (endMs > dec31) endMs = dec31
+  function fmtDate(ms) {
+    var d = new Date(ms)
+    var mo = String(d.getUTCMonth() + 1).padStart(2, '0')
+    var dy = String(d.getUTCDate()).padStart(2, '0')
+    return d.getUTCFullYear() + '-' + mo + '-' + dy
+  }
+  function fmtShort(ms) {
+    var d = new Date(ms)
+    return MON_ABBR[d.getUTCMonth()] + ' ' + d.getUTCDate()
+  }
+  var prefix = cadence === 'weekly' ? ('W' + String(p).padStart(2, '0')) : ('BW' + String(p).padStart(2, '0'))
+  return {
+    start: fmtDate(startMs),
+    end:   fmtDate(endMs),
+    label: prefix + ' — ' + fmtShort(startMs) + '–' + fmtShort(endMs)
+  }
+}
+
+function updateShPeriodLabel_() {
+  var pd = currentPeriodDates_()
+  if (pd) document.getElementById('shPeriodLabel').textContent = pd.label
+}
+
+function onMonCadenceChange_() {
+  var cadence = document.getElementById('shCadence').value
+  document.getElementById('shMonthlyCtrl').style.display  = cadence === 'monthly' ? 'block' : 'none'
+  document.getElementById('shPeriodCtrl').style.display   = cadence !== 'monthly' ? 'block' : 'none'
+  shCurrentPeriod = 1
+  updateShPeriodLabel_()
+}
+
+function stepPeriod_(delta) {
+  var cadence    = document.getElementById('shCadence').value
+  var maxPeriods = cadence === 'weekly' ? 52 : 26
+  shCurrentPeriod = shCurrentPeriod + delta
+  if (shCurrentPeriod < 1) shCurrentPeriod = maxPeriods
+  if (shCurrentPeriod > maxPeriods) shCurrentPeriod = 1
+  updateShPeriodLabel_()
+}
+
+// ── Stage G: Analysis window pickers ───────────────────────────────────────
+// Globals set by runWithWindows_(); null = use hard-coded season defaults
+var customCropMonthStart = null
+var customCropMonthEnd   = null
+var customBareMonthStart = null
+var customBareMonthEnd   = null
+
+function onWindowChange_() {
+  var bs = parseInt(document.getElementById('wBareStart').value, 10)
+  var be = parseInt(document.getElementById('wBareEnd').value, 10)
+  var cs = parseInt(document.getElementById('wCropStart').value, 10)
+  var ce = parseInt(document.getElementById('wCropEnd').value, 10)
+  // Overlap check: bare range [bs,be] vs crop range [cs,ce] (within one year, no wrap assumed)
+  var bLo = Math.min(bs, be), bHi = Math.max(bs, be)
+  var cLo = Math.min(cs, ce), cHi = Math.max(cs, ce)
+  var overlap = bLo <= cHi && cLo <= bHi
+  document.getElementById('wOverlapWarn').style.display = overlap ? 'block' : 'none'
+}
+
+function runWithWindows_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+  var bs = parseInt(document.getElementById('wBareStart').value, 10)
+  var be = parseInt(document.getElementById('wBareEnd').value, 10)
+  var cs = parseInt(document.getElementById('wCropStart').value, 10)
+  var ce = parseInt(document.getElementById('wCropEnd').value, 10)
+  var bLo = Math.min(bs, be), bHi = Math.max(bs, be)
+  var cLo = Math.min(cs, ce), cHi = Math.max(cs, ce)
+  if (bLo <= cHi && cLo <= bHi) {
+    alert('Bare-soil and crop windows overlap. Please separate them before running.')
+    return
+  }
+  // Store custom windows — passed to the API fetch calls and reset after pipeline completes
+  customCropMonthStart = cLo
+  customCropMonthEnd   = cHi
+  customBareMonthStart = bLo
+  customBareMonthEnd   = bHi
+  // Set active season from radio
+  var seasonEl = document.querySelector('input[name="wSeason"]:checked')
+  if (seasonEl) activePipelineSeason = seasonEl.value
+  autoRunPipeline_()
 }
 
 // Tooltip CSS for boundary tooltips (inject dynamically)
@@ -4380,12 +4800,17 @@ function tukeyFence_(perYearMeans) {
 // Updates tsSelectedYears and checkboxes. Returns tukeyFence_ result.
 function congruentCpiYears_(season) {
   if (!tsData || tsData.length === 0) return { retained: [], rejected: [] }
+  // Use custom crop window if set by runWithWindows_(); otherwise fall back to hard-coded season defaults
+  var useCustom = (customCropMonthStart !== null && customCropMonthEnd !== null)
   var byYear = {}
   tsData.forEach(function(d) {
     var yr = d.date.substring(0, 4)
     var mo = parseInt(d.date.substring(5, 7), 10)
     var inWindow
-    if (season === 'kharif') {
+    if (useCustom) {
+      // Custom window is always within one calendar year (no year rollback needed)
+      inWindow = (mo >= customCropMonthStart && mo <= customCropMonthEnd)
+    } else if (season === 'kharif') {
       inWindow = (mo >= 6 && mo <= 10)
     } else {
       inWindow = (mo >= 11 || mo <= 3)
@@ -4415,12 +4840,16 @@ function congruentCpiYears_(season) {
 // Updates soilSelectedYears and checkboxes. Returns tukeyFence_ result.
 function congruentShpiYears_(season) {
   if (!soilTsData || soilTsData.length === 0) return { retained: [], rejected: [] }
+  // Use custom bare-soil window if set by runWithWindows_(); otherwise fall back to hard-coded season defaults
+  var useCustom = (customBareMonthStart !== null && customBareMonthEnd !== null)
   var byYear = {}
   soilTsData.forEach(function(d) {
     var yr = d.date.substring(0, 4)
     var mo = parseInt(d.date.substring(5, 7), 10)
     var inWindow
-    if (season === 'kharif') {
+    if (useCustom) {
+      inWindow = (mo >= customBareMonthStart && mo <= customBareMonthEnd)
+    } else if (season === 'kharif') {
       inWindow = (mo >= 2 && mo <= 5)
     } else {
       inWindow = (mo >= 10 && mo <= 11)
@@ -4463,21 +4892,79 @@ function autoLogClear_() {
   if (log) { log.innerHTML = ''; log.style.display = 'block' }
 }
 
+// ── N2: Build researcher year chip rows in ② FETCH ────────────────────────────
+// Creates clickable ✓/✗ chips; clicking updates tsSelectedYears and re-syncs
+// the existing checkboxes in ③a so both panels stay in sync.
+function buildFetchCpiChips_(years) {
+  var container = document.getElementById('cpiYearChips')
+  var row = document.getElementById('cpiChipRow')
+  var area = document.getElementById('fetchChipArea')
+  if (!container) return
+  container.innerHTML = ''
+  years.forEach(function(y) {
+    var btn = document.createElement('button')
+    btn.className = 'year-chip'
+    btn.dataset.year = y
+    btn.textContent = '✓ ' + y
+    btn.title = 'Click to include / exclude this year from CPI analysis'
+    btn.onclick = function() {
+      var nowRej = btn.classList.toggle('rejected')
+      btn.textContent = (nowRej ? '✗ ' : '✓ ') + y
+      toggleTsYear_(y, !nowRej)
+      // sync the ③a crop checkbox if present
+      var cb = document.querySelector('#tsYearChecks input[value="' + y + '"]')
+      if (cb) { cb.checked = !nowRej }
+    }
+    container.appendChild(btn)
+  })
+  if (row) row.style.display = 'flex'
+  if (area) area.style.display = 'block'
+}
+
+function buildFetchShpiChips_(years) {
+  var container = document.getElementById('shpiYearChips')
+  var row = document.getElementById('shpiChipRow')
+  if (!container) return
+  container.innerHTML = ''
+  years.forEach(function(y) {
+    var btn = document.createElement('button')
+    btn.className = 'year-chip'
+    btn.dataset.year = y
+    btn.textContent = '✓ ' + y
+    btn.title = 'Click to include / exclude this year from SHPI analysis'
+    btn.onclick = function() {
+      var nowRej = btn.classList.toggle('rejected')
+      btn.textContent = (nowRej ? '✗ ' : '✓ ') + y
+      toggleSoilYear_(y, !nowRej)
+      // sync the ③a soil checkbox if present
+      var cb = document.querySelector('#soilYearChecks input[value="' + y + '"]')
+      if (cb) { cb.checked = !nowRej }
+    }
+    container.appendChild(btn)
+  })
+  if (row) row.style.display = 'flex'
+}
+
 // ── E3: Auto-Run Pipeline (async chain) ──────────────────────────────────────
-// Steps: Fetch Crop TS → E1 CPI filter → lock CPI → Fetch Soil TS →
-//        E2 SHPI filter → lock SHPI → Run Analysis
+// Steps: Fetch Crop TS → lock CPI → Fetch Soil TS → lock SHPI → Run Analysis
+// Year selection is researcher-controlled via chip rows — no Tukey auto-filter.
 async function autoRunPipeline_() {
   if (!roi) { alert('Draw or upload an ROI first.'); return }
   var btn = document.getElementById('autoRunBtn')
   if (btn) { btn.disabled = true; btn.textContent = 'Running...' }
   autoLogClear_()
-  var season = d3SeasonTab || 'kharif'
+  var season = activePipelineSeason || 'kharif'
   var yearStart = parseInt(document.getElementById('yearStart').value, 10)
   var yearEnd   = parseInt(document.getElementById('yearEnd').value, 10)
   if (isNaN(yearStart) || isNaN(yearEnd)) {
     autoLogLine_('[ERROR] Set a valid year range first.', true)
     if (btn) { btn.disabled = false; btn.textContent = '🚀 Auto-Run Pipeline' }
     return
+  }
+  // Log custom windows if active
+  if (customCropMonthStart !== null) {
+    autoLogLine_('[G] Custom windows: bare ' + MON_ABBR[customBareMonthStart - 1] + '–' + MON_ABBR[customBareMonthEnd - 1] +
+      ', crop ' + MON_ABBR[customCropMonthStart - 1] + '–' + MON_ABBR[customCropMonthEnd - 1] + ', season: ' + season)
   }
   try {
     // [1/7] Fetch crop time series
@@ -4506,20 +4993,11 @@ async function autoRunPipeline_() {
     var allCropYrs = Array.from(new Set(tsData.map(function(d) { return d.date.substring(0, 4) }))).sort()
     autoLogLine_('[1/7] Crop TS fetched (' + allCropYrs[0] + '-' + allCropYrs[allCropYrs.length - 1] + ')')
 
-    // [2/7] CPI year filter
-    autoLogLine_('[2/7] CPI filter (' + season + ')...')
-    var cpiResult = congruentCpiYears_(season)
-    var cpiMsg = '[2/7] CPI filter: retained ' + cpiResult.retained.sort().join(', ')
-    if (cpiResult.rejected.length > 0) {
-      cpiMsg += '; rejected ' + cpiResult.rejected.map(function(r) {
-        return r.year + ' (' + r.side + ' fence, val=' + r.value.toFixed(3) + ')'
-      }).join(', ')
-      autoLogLine_(cpiMsg, true)
-    } else {
-      autoLogLine_(cpiMsg)
-    }
+    // [2/7] CPI years — researcher chip row (no auto-filter, B1/P2)
+    buildFetchCpiChips_(allCropYrs)
+    autoLogLine_('[2/7] CPI years: ' + allCropYrs.join(', ') + ' — toggle chips to include/exclude')
 
-    // [3/7] Lock CPI years
+    // [3/7] Lock CPI years (uses current tsSelectedYears from chips)
     useYearsForCpi_()
     autoLogLine_('[3/7] CPI locked: ' + tsYearsForCpi.join(', '))
 
@@ -4549,36 +5027,1653 @@ async function autoRunPipeline_() {
     var allSoilYrs = Array.from(new Set(soilTsData.map(function(d) { return d.date.substring(0, 4) }))).sort()
     autoLogLine_('[4/7] Soil TS fetched (' + allSoilYrs[0] + '-' + allSoilYrs[allSoilYrs.length - 1] + ')')
 
-    // [5/7] SHPI year filter
-    autoLogLine_('[5/7] SHPI filter (' + season + ' fallow)...')
-    var shpiResult = congruentShpiYears_(season)
-    var shpiMsg = '[5/7] SHPI filter: retained ' + shpiResult.retained.sort().join(', ')
-    if (shpiResult.rejected.length > 0) {
-      shpiMsg += '; rejected ' + shpiResult.rejected.map(function(r) {
-        return r.year + ' (' + r.side + ' fence, val=' + r.value.toFixed(3) + ')'
-      }).join(', ')
-      autoLogLine_(shpiMsg, true)
-    } else {
-      autoLogLine_(shpiMsg)
-    }
+    // [5/7] SHPI years — researcher chip row (no auto-filter, B1/P2)
+    buildFetchShpiChips_(allSoilYrs)
+    autoLogLine_('[5/7] SHPI years: ' + allSoilYrs.join(', ') + ' — toggle chips to include/exclude')
 
-    // [6/7] Lock SHPI years
+    // [6/7] Lock SHPI years (uses current soilSelectedYears from chips)
     useYearsForShpi_()
     autoLogLine_('[6/7] SHPI locked: ' + tsYearsForShpi.join(', '))
 
     // [7/7] Run Phase 1 Analysis
     autoLogLine_('[7/7] Running Phase 1 Analysis...')
+    // runAnalysis is synchronous from the UI perspective; Stage I runs after it completes
+    // by watching for lastResult to be populated. We wrap it in a short poll.
     runAnalysis()
+    // [8/8] Stage I — per-year spatial filter (runs after Phase 1 analysis decodes)
+    autoLogLine_('[8/8] Stage I: will start after Phase 1 raster decodes...')
+    await new Promise(function(resolve) {
+      var attempts = 0
+      var maxAttempts = 60  // wait up to 30 seconds (500 ms × 60)
+      var poll = setInterval(function() {
+        attempts++
+        if (lastResult || attempts >= maxAttempts) {
+          clearInterval(poll)
+          resolve()
+        }
+      }, 500)
+    })
+    if (lastResult) {
+      autoLogLine_('[8/8] Stage I: fetching per-year rasters (' + tsYearsForShpi.join(',') + ')...')
+      try {
+        await runStageI_(season, tsYearsForShpi)
+      } catch(siErr) {
+        autoLogLine_('[8/8] Stage I failed: ' + siErr.message, true)
+      }
+    }
+
+    // [9/8] Stage K — biweekly NDVI-AUC per pixel
+    if (lastResult && stageIResult && stageIResult.tukey.retained.length > 0) {
+      autoLogLine_('[9/8] Stage K: fetching biweekly NDVI for AUC (' + stageIResult.tukey.retained.join(',') + ')...')
+      try {
+        await runStageK_(season, stageIResult.tukey.retained)
+      } catch(kErr) {
+        autoLogLine_('[9/8] Stage K failed: ' + kErr.message, true)
+      }
+    }
 
   } catch (err) {
     autoLogLine_('[ERROR] ' + err.message, true)
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🚀 Auto-Run Pipeline' }
+    setBadge_('fetchBadge', '✓ done')
+    setBadge_('fieldTsBadge', '✓')
+    // Reset custom windows so next plain Auto-Run uses season defaults
+    customCropMonthStart = null; customCropMonthEnd = null
+    customBareMonthStart = null; customBareMonthEnd = null
   }
 }
 </script>
 
-<!-- Fullscreen results map -->
+<!-- ── Stage I: Per-year spatial filter ──────────────────────────────────── -->
+<script>
+
+// ── I-helper: OLS linear regression on arrays ────────────────────────────────
+// Returns { slope, intercept, r2 } or null for n < 2.
+function olsArr_(xs, ys) {
+  var n = xs.length
+  if (n < 2) return null
+  var xm = 0, ym = 0
+  for (var i = 0; i < n; i++) { xm += xs[i]; ym += ys[i] }
+  xm /= n; ym /= n
+  var ssx = 0, sxy = 0
+  for (var i = 0; i < n; i++) { var dx = xs[i] - xm; ssx += dx * dx; sxy += dx * (ys[i] - ym) }
+  if (ssx === 0) return null
+  var slope = sxy / ssx
+  var intercept = ym - slope * xm
+  var ssRes = 0, ssTot = 0
+  for (var j = 0; j < n; j++) {
+    var r = ys[j] - (slope * xs[j] + intercept); ssRes += r * r
+    var t = ys[j] - ym; ssTot += t * t
+  }
+  var r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0
+  return { slope: Math.round(slope * 10000) / 10000, intercept: Math.round(intercept * 10000) / 10000, r2: Math.round(r2 * 10000) / 10000 }
+}
+
+// ── I-helper: Decode a per-year PNG pair from Stage I API response ────────────
+// Returns a promise resolving to { shpi: Float32Array, cpi: Float32Array } or null.
+function decodePerYearPngs_(shpiB64, cpiB64) {
+  return new Promise(function(resolve) {
+    if (!shpiB64 || !cpiB64) { resolve(null); return }
+    var shpiImg = new Image(), cpiImg = new Image()
+    var shpiDone = false, cpiDone = false
+    var shpiArr = null, cpiArr = null, W = 0, H = 0
+
+    function tryResolve() {
+      if (!shpiDone || !cpiDone) return
+      if (!shpiArr || !cpiArr || shpiArr.length !== cpiArr.length) { resolve(null); return }
+      resolve({ shpi: shpiArr, cpi: cpiArr, W: W, H: H })
+    }
+
+    shpiImg.onload = function() {
+      W = shpiImg.naturalWidth; H = shpiImg.naturalHeight
+      var c = document.createElement('canvas'); c.width = W; c.height = H
+      var ctx = c.getContext('2d'); ctx.drawImage(shpiImg, 0, 0)
+      var px = ctx.getImageData(0, 0, W, H).data
+      var total = W * H
+      shpiArr = new Float32Array(total)
+      for (var i = 0; i < total; i++) {
+        shpiArr[i] = px[i * 4 + 3] > 0 ? px[i * 4] / 254 : -1  // R=SHPI×254, A=count
+      }
+      shpiDone = true; tryResolve()
+    }
+    shpiImg.onerror = function() { shpiDone = true; tryResolve() }
+
+    cpiImg.onload = function() {
+      var cW = cpiImg.naturalWidth, cH = cpiImg.naturalHeight
+      var c = document.createElement('canvas'); c.width = cW; c.height = cH
+      var ctx = c.getContext('2d'); ctx.drawImage(cpiImg, 0, 0)
+      var px = ctx.getImageData(0, 0, cW, cH).data
+      var total = cW * cH
+      cpiArr = new Float32Array(total)
+      for (var i = 0; i < total; i++) {
+        cpiArr[i] = px[i * 4 + 3] > 0 ? px[i * 4 + 1] / 254 : -1  // G=CPI×254, A=count
+      }
+      cpiDone = true; tryResolve()
+    }
+    cpiImg.onerror = function() { cpiDone = true; tryResolve() }
+
+    shpiImg.src = 'data:image/png;base64,' + shpiB64
+    cpiImg.src  = 'data:image/png;base64,' + cpiB64
+  })
+}
+
+// ── I1: Build per-year pixel pairs with ROI polygon mask ─────────────────────
+// yearData: { year, shpi: Float32Array, cpi: Float32Array, W, H }
+// geojson: ROI polygon; bbox: [minLng, minLat, maxLng, maxLat]
+// Returns [{shpi, cpi}, ...] — pixels with valid (non-negative) values inside ROI
+function buildPerYearPixelPairs_(yearData, geojson, bbox) {
+  var shpiArr = yearData.shpi, cpiArr = yearData.cpi
+  var W = yearData.W, H = yearData.H
+  var pairs = []
+  if (!shpiArr || !cpiArr || shpiArr.length !== cpiArr.length) return pairs
+  var polyMask = null
+  if (bbox && geojson) {
+    var lngRange = bbox[2] - bbox[0], latRange = bbox[3] - bbox[1]
+    if (lngRange > 0 && latRange > 0) {
+      polyMask = new Uint8Array(W * H)
+      for (var mi = 0; mi < W * H; mi++) {
+        var col = mi % W, row = Math.floor(mi / W)
+        var lng = bbox[0] + (col + 0.5) / W * lngRange
+        var lat = bbox[3] - (row + 0.5) / H * latRange
+        polyMask[mi] = pointInPolygon_(lng, lat, geojson) ? 1 : 0
+      }
+    }
+  }
+  for (var i = 0; i < shpiArr.length; i++) {
+    if (polyMask && !polyMask[i]) continue
+    if (shpiArr[i] < 0 || cpiArr[i] < 0) continue
+    pairs.push({ shpi: shpiArr[i], cpi: cpiArr[i] })
+  }
+  return pairs
+}
+
+// ── I2: Compute per-year OLS R² from pixel pairs ─────────────────────────────
+// perYearPairs: { year: [{shpi, cpi}, ...] }
+// Returns { year: r2 (number|null), ... }
+function computePerYearR2_(perYearPairs) {
+  var r2Map = {}
+  Object.keys(perYearPairs).forEach(function(yr) {
+    var pairs = perYearPairs[yr]
+    if (pairs.length < 3) { r2Map[yr] = null; return }
+    var xs = pairs.map(function(p) { return p.shpi })
+    var ys = pairs.map(function(p) { return p.cpi })
+    var res = olsArr_(xs, ys)
+    r2Map[yr] = res ? res.r2 : null
+  })
+  return r2Map
+}
+
+// ── I3: All fetched years are retained — researcher controls inclusion via chips ─
+// r2Map: { year: r2 (number|null) }
+// Returns { retained: [year, ...], rejected: [] }
+function stageIRetainAll_(r2Map) {
+  var allYears = Object.keys(r2Map).filter(function(yr) { return r2Map[yr] !== null })
+  return { retained: allYears, rejected: [] }
+}
+
+// ── I5: Run adaptive binning + OLS hypothesis on pooled per-year pairs ────────
+// pooledPairs: [{shpi, cpi}, ...] from all retained years
+// Returns validation object (same shape as decodeRasterToResult_ validation block)
+function stageIAdaptiveBins_(pooledPairs) {
+  if (pooledPairs.length < 6) {
+    return { confirmed: null, n_zones: 0, r_squared: 0,
+             cpi_ratio: null, shpi_thresholds: [], data_source: 'stage_i' }
+  }
+  // F1: nBins = floor(n/3) — 3 pairs per bin is the minimum for a meaningful bin mean; capped [2,10]
+  var nBins = Math.min(10, Math.max(2, Math.floor(pooledPairs.length / 3)))
+  var shpiSorted = pooledPairs.map(function(p) { return p.shpi }).sort(function(a, b) { return a - b })
+  var cuts = []
+  for (var ki = 1; ki < nBins; ki++) cuts.push(percentile_(shpiSorted, ki / nBins * 100))
+  function assignBin(v) {
+    for (var ci = 0; ci < cuts.length; ci++) { if (v < cuts[ci]) return ci }
+    return nBins - 1
+  }
+  var bins = []
+  for (var bi = 0; bi < nBins; bi++) bins.push([])
+  pooledPairs.forEach(function(p) { bins[assignBin(p.shpi)].push(p) })
+  // Filter out empty bins (can occur with duplicate SHPI values near quantile cut-points)
+  bins = bins.filter(function(b) { return b.length > 0 })
+  if (bins.length < 2) {
+    return { confirmed: null, n_zones: 0, r_squared: 0,
+             cpi_ratio: null, shpi_thresholds: [], data_source: 'stage_i' }
+  }
+  function mean(arr, k) { return arr.length ? arr.reduce(function(s, p) { return s + p[k] }, 0) / arr.length : 0 }
+  var binMeansShpi = bins.map(function(b) { return mean(b, 'shpi') })
+  var binMeansCpi  = bins.map(function(b) { return mean(b, 'cpi') })
+  // OLS on bin means for exploratory chart (③d ZONE MEANS)
+  var binOls = olsArr_(binMeansShpi, binMeansCpi)
+  var binR2    = binOls ? binOls.r2 : 0
+  var binSlope = binOls ? binOls.slope : 0
+  // CPI ratio: lowest to highest bin; guard against near-zero denominator (< 0.01 = bare soil / no crop)
+  var ratio = (bins.length >= 2 && binMeansCpi[0] > 0.01)
+    ? Math.round(binMeansCpi[bins.length - 1] / binMeansCpi[0] * 100) / 100 : null
+  // Confirmation: positive slope AND R² ≥ 0.10 on bin means (exploratory only; hypothesis driven by Stage M OLS)
+  var confirmed = bins.length === 0 ? null : (binSlope > 0 && binR2 >= 0.10)
+  return {
+    confirmed: confirmed, n_zones: bins.length, r_squared: binR2,
+    cpi_ratio: ratio, shpi_thresholds: cuts, data_source: 'stage_i',
+    bin_means_shpi: binMeansShpi, bin_means_cpi: binMeansCpi
+  }
+}
+
+// ── Main Stage I orchestrator ─────────────────────────────────────────────────
+// season: 'kharif'|'rabi'; years: string[] (locked SHPI years)
+// Fetches per-year rasters, builds pairs, computes OLS R²_y per year,
+// pools all retained years (researcher controls via chips), runs adaptive binning.
+async function runStageI_(season, years) {
+  if (!roi || !lastResult) return
+  var bbox = lastResult.bbox
+  if (!bbox) return
+  var yearInts = years.map(function(y) { return parseInt(y, 10) }).filter(Boolean)
+  if (yearInts.length === 0) return
+
+  // Clear stale result so Stage K does not run with outdated Stage I results if this run fails
+  stageIResult = null
+  var apiResult = await new Promise(function(resolve, reject) {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(reject)
+      .getPerYearRasters({ geojson: roi, season: season, years: yearInts })
+  })
+  if (!apiResult || !apiResult.success) throw new Error(apiResult ? apiResult.error : 'GAS call failed')
+
+  // Decode all per-year PNG pairs
+  var perYearPairs = {}
+  var perYearPairsRaw = {}
+  for (var i = 0; i < apiResult.years.length; i++) {
+    var yrData = apiResult.years[i]
+    var decoded = await decodePerYearPngs_(yrData.shpiB64, yrData.cpiB64)
+    if (!decoded) continue
+    var pairs = buildPerYearPixelPairs_(decoded, roi, bbox)
+    if (pairs.length < 3) continue
+    perYearPairs[yrData.year]   = pairs
+    perYearPairsRaw[yrData.year] = decoded  // keep full arrays for scatter
+  }
+
+  // Cache decoded rasters
+  if (!perYearRastersCache[season]) perYearRastersCache[season] = {}
+  Object.assign(perYearRastersCache[season], perYearPairsRaw)
+
+  // Diagnostic: detect if any two years share identical SHPI values (stable soil / fetch overlap)
+  var shpiIdenticalWarning = ''
+  var rawYearKeys = Object.keys(perYearPairsRaw)
+  if (rawYearKeys.length >= 2) {
+    var nCheck = Math.min(200, (perYearPairsRaw[rawYearKeys[0]].shpi || []).length)
+    var identicalPairs = []
+    for (var qi = 0; qi < rawYearKeys.length; qi++) {
+      for (var qj = qi + 1; qj < rawYearKeys.length; qj++) {
+        var arrA = perYearPairsRaw[rawYearKeys[qi]].shpi
+        var arrB = perYearPairsRaw[rawYearKeys[qj]].shpi
+        var same = (arrA && arrB && arrA.length === arrB.length && nCheck > 0)
+        if (same) {
+          for (var qq = 0; qq < nCheck; qq++) {
+            if (arrA[qq] !== arrB[qq]) { same = false; break }
+          }
+        }
+        if (same) identicalPairs.push(rawYearKeys[qi] + '/' + rawYearKeys[qj])
+      }
+    }
+    if (identicalPairs.length > 0) {
+      shpiIdenticalWarning = ' ⚠ SHPI identical for years ' + identicalPairs.join(', ') + ' — stable soil or fetch overlap'
+    }
+  }
+
+  // I2: per-year OLS R²
+  var perYearR2 = computePerYearR2_(perYearPairs)
+
+  // I3: all fetched years retained — researcher controls inclusion via chip row (N2)
+  var tukey = stageIRetainAll_(perYearR2)
+
+  // I4: pool all retained years
+  var pooledPairs = []
+  tukey.retained.forEach(function(yr) {
+    if (perYearPairs[yr]) pooledPairs = pooledPairs.concat(perYearPairs[yr])
+  })
+
+  // I5: adaptive binning on pooled pairs (OLS R²)
+  var validation = stageIAdaptiveBins_(pooledPairs)
+
+  stageIResult = {
+    season:             season,
+    perYearPairs:       perYearPairs,
+    perYearR2:          perYearR2,
+    tukey:              tukey,
+    pooledPairs:        pooledPairs,
+    validation:         validation,
+    shpiIdenticalWarn:  shpiIdenticalWarning
+  }
+
+  // Render Stage I panel in the sidebar
+  renderStageIPanel_(stageIResult)
+
+  // Log summary
+  autoLogLine_('[8/8] Stage I: ' + tukey.retained.length + ' years | pooled R²=' + validation.r_squared + ' (' + validation.n_zones + ' bins)',
+    false)
+}
+
+// ── Render Stage I sidebar panel ──────────────────────────────────────────────
+var YEAR_COLORS = ['#4DC9F6','#F67019','#F53794','#537BC4','#ACC236','#166A8F','#00A950','#58595B']
+
+function renderStageIPanel_(result) {
+  var panel = document.getElementById('stageIPanel')
+  var banner = document.getElementById('stageIBanner')
+  if (!panel || !result) return
+  panel.style.display = 'block'
+  var stepEl = document.getElementById('perYearScatterStep')
+  if (stepEl) stepEl.style.display = ''
+  setBadge_('perYearBadge', '✓')
+
+  // Banner (always shows exploratory OLS result — hypothesis driven by Stage M OLS)
+  var v = result.validation
+  var bannerText, bannerColor
+  if (v.confirmed === null) {
+    bannerText = '⚠ Stage I: Insufficient pairs — see ③c Pooled Scatter'
+    bannerColor = '#3e5f4a'
+  } else if (v.confirmed) {
+    bannerText = '✓ Stage I exploratory — R²=' + v.r_squared + ' (' + v.n_zones + ' bins, pooled ' + result.pooledPairs.length + ' pairs)'
+    bannerColor = 'rgba(27,120,55,0.35)'
+  } else {
+    bannerText = '⚠ Stage I exploratory — R²=' + v.r_squared + ' (' + v.n_zones + ' bins)'
+    bannerColor = 'rgba(120,27,27,0.35)'
+  }
+  banner.textContent = bannerText
+  banner.style.background = bannerColor
+
+  // Render mini scatter grid (CPI mode by default; AUC toggle available after Stage K)
+  stageKMode = 'cpi'
+  var cpiBtn = document.getElementById('stageKMeanCpiBtn')
+  var aucBtn = document.getElementById('stageKAucBtn')
+  if (cpiBtn) cpiBtn.classList.add('active')
+  if (aucBtn) { aucBtn.classList.remove('active'); aucBtn.style.opacity = '0.5' }
+  renderStageIPanelGrid_(result, 'cpi')
+}
+
+// ── Render Stage I fullscreen panel ──────────────────────────────────────────
+var stageIFsCharts = {}  // year → Chart instance for FS mini scatter
+
+function renderStageIFsPanel_() {
+  var grid   = document.getElementById('stageIFsYearGrid')
+  var banner = document.getElementById('stageIFsBanner')
+  var tbl    = document.getElementById('stageIFsRhoTable')
+  if (!grid) return
+  // Destroy old charts
+  Object.keys(stageIFsCharts).forEach(function(k) { if (stageIFsCharts[k]) stageIFsCharts[k].destroy() })
+  stageIFsCharts = {}
+  grid.innerHTML = ''
+
+  if (!stageIResult) {
+    banner.textContent = 'Run Auto-Run Pipeline first — Stage I data not available'
+    banner.style.background = '#2e3e30'
+    return
+  }
+
+  var result = stageIResult
+  var v = result.validation
+  if (v.confirmed === null) {
+    banner.textContent = '⚠ Stage I: Insufficient pairs — see ③c Pooled Scatter'
+    banner.style.background = '#3e5f4a'
+  } else if (v.confirmed) {
+    banner.textContent = '✓ Stage I exploratory — R²=' + v.r_squared + ' (' + v.n_zones + ' bins, ' + result.pooledPairs.length + ' pooled pairs)'
+    banner.style.background = 'rgba(27,120,55,0.35)'
+  } else {
+    banner.textContent = '⚠ Stage I exploratory — R²=' + v.r_squared + ' (' + v.n_zones + ' bins)'
+    banner.style.background = 'rgba(120,27,27,0.35)'
+  }
+
+  var allYears = Object.keys(result.perYearPairs).sort()
+  allYears.forEach(function(yr, yi) {
+    var pairs = result.perYearPairs[yr]
+    var r2    = result.perYearR2[yr]
+    var isRej = false  // all years retained — researcher controls via chips
+    var color = YEAR_COLORS[yi % YEAR_COLORS.length]
+
+    var wrap = document.createElement('div')
+    wrap.style.cssText = 'border:1px solid #2E6B4F;border-radius:6px;padding:8px;background:rgba(0,0,0,0.3);display:flex;flex-direction:column;height:260px'
+    var title = document.createElement('div')
+    title.style.cssText = 'font-size:11px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:4px;flex-shrink:0'
+    title.textContent = yr + (r2 !== null ? '   R² = ' + r2.toFixed(4) : '   R² = n/a')
+    wrap.appendChild(title)
+
+    var canvasWrap = document.createElement('div')
+    canvasWrap.style.cssText = 'flex:1;position:relative;min-height:0'
+    var canvas = document.createElement('canvas')
+    canvasWrap.appendChild(canvas)
+    wrap.appendChild(canvasWrap)
+    grid.appendChild(wrap)
+
+    if (pairs.length < 3) return
+    var step = Math.max(1, Math.floor(pairs.length / 500))
+    var ptData = []
+    for (var pi = 0; pi < pairs.length; pi += step) ptData.push({ x: pairs[pi].shpi, y: pairs[pi].cpi })
+    var reg = olsLine_(ptData)
+    stageIFsCharts[yr] = new Chart(canvas.getContext('2d'), {
+      data: {
+        datasets: [
+          { type: 'scatter', label: yr, data: ptData,
+            backgroundColor: (function() { var c = hexToRgb_(color); return c ? 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (isRej ? '0.7' : '0.73') + ')' : color + 'bb' })(), pointRadius: 2.5, pointHoverRadius: 4 },
+          { type: 'line', label: 'fit', data: reg ? reg.lineData : [],
+            borderColor: '#F5A623', borderWidth: 1.5, pointRadius: 0, fill: false }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: { title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 9 } },
+               ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } },
+          y: { title: { display: true, text: 'CPI', color: '#9FE1CB', font: { size: 9 } },
+               ticks: { color: '#9FE1CB', font: { size: 9 } }, grid: { color: '#1e3d30' } }
+        }
+      }
+    })
+  })
+
+  // R² table
+  var rows = allYears.map(function(yr) {
+    var r2 = result.perYearR2[yr]
+    return '<span style="margin-right:16px;color:#9FE1CB">' +
+      yr + ': R² = ' + (r2 !== null && r2 !== undefined ? r2.toFixed(4) : 'n/a') + '  ✓</span>'
+  }).join('')
+  var warnHtml = result.shpiIdenticalWarn
+    ? '<br><span style="color:#F5A623;font-size:10px">' + result.shpiIdenticalWarn + '</span>' : ''
+  tbl.innerHTML = '<strong style="color:#F5A623">Per-year R² summary</strong>  ' + rows +
+    '<br><span style="color:#6FA898;font-size:10px">Year inclusion via researcher chips · pooled ' + result.pooledPairs.length + ' pairs from ' + result.tukey.retained.length + ' years</span>' + warnHtml
+}
+
+</script>
+
+<!-- ── Stage K: NDVI-AUC per pixel ──────────────────────────────────────── -->
+<script>
+
+// ── K-helper: Decode a single biweekly NDVI PNG ───────────────────────────────
+// PNG encoding: R = best NDVI×254 in the window; A = 1 valid, 0 = all cloudy.
+// Returns Promise<{arr: Float32Array, W, H}|null>; arr[i] = NDVI in [0,1] or -1 for no-data.
+function decodeWeeklyNdvi_(b64) {
+  return new Promise(function(resolve) {
+    if (!b64) { resolve(null); return }
+    var img = new Image()
+    img.onload = function() {
+      var W = img.naturalWidth, H = img.naturalHeight
+      var c = document.createElement('canvas'); c.width = W; c.height = H
+      var ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0)
+      var px = ctx.getImageData(0, 0, W, H).data
+      var n = W * H
+      var arr = new Float32Array(n)
+      for (var i = 0; i < n; i++) {
+        arr[i] = px[i * 4 + 3] > 0 ? px[i * 4] / 254 : -1  // R = NDVI×254, A = valid
+      }
+      resolve({ arr: arr, W: W, H: H })
+    }
+    img.onerror = function() { resolve(null) }
+    img.src = 'data:image/png;base64,' + b64
+  })
+}
+
+// ── K-helper: Compute per-pixel mean NDVI (= normalized AUC) ─────────────────
+// weeklyDecoded: [{arr: Float32Array, W, H}, ...] — one per biweekly window.
+// Returns Float32Array length W×H; value = mean of valid NDVI observations, -1 if none.
+function computePixelAuc_(weeklyDecoded) {
+  if (!weeklyDecoded || weeklyDecoded.length === 0) return null
+  var first = weeklyDecoded.find(function(d) { return d !== null })
+  if (!first) return null
+  var W = first.W, H = first.H, n = W * H
+  var sumArr = new Float32Array(n)
+  var cntArr = new Uint8Array(n)
+  weeklyDecoded.forEach(function(wk) {
+    if (!wk || !wk.arr) return
+    for (var i = 0; i < n; i++) {
+      if (wk.arr[i] >= 0) { sumArr[i] += wk.arr[i]; cntArr[i]++ }
+    }
+  })
+  var aucArr = new Float32Array(n)
+  for (var i = 0; i < n; i++) {
+    aucArr[i] = cntArr[i] > 0 ? sumArr[i] / cntArr[i] : -1
+  }
+  return { arr: aucArr, W: W, H: H }
+}
+
+// ── K-helper: Build (SHPI, AUC) pixel pairs for one year ─────────────────────
+function buildAucPixelPairs_(aucData, shpiArr, bbox, geojson) {
+  var pairs = []
+  if (!aucData || !aucData.arr || !shpiArr) return pairs
+  var W = aucData.W, H = aucData.H, n = W * H
+  if (shpiArr.length !== n) return pairs
+  var polyMask = null
+  if (bbox && geojson) {
+    var lngRange = bbox[2] - bbox[0], latRange = bbox[3] - bbox[1]
+    if (lngRange > 0 && latRange > 0) {
+      polyMask = new Uint8Array(n)
+      for (var mi = 0; mi < n; mi++) {
+        var col = mi % W, row = Math.floor(mi / W)
+        var lng = bbox[0] + (col + 0.5) / W * lngRange
+        var lat = bbox[3] - (row + 0.5) / H * latRange
+        polyMask[mi] = pointInPolygon_(lng, lat, geojson) ? 1 : 0
+      }
+    }
+  }
+  for (var i = 0; i < n; i++) {
+    if (polyMask && !polyMask[i]) continue
+    if (aucData.arr[i] < 0 || shpiArr[i] < 0) continue
+    pairs.push({ shpi: shpiArr[i], auc: aucData.arr[i] })
+  }
+  return pairs
+}
+
+// ── K: Toggle CPI / AUC mode in ③b scatter ────────────────────────────────────
+function setStageKMode_(mode) {
+  stageKMode = mode
+  var cpiBtn = document.getElementById('stageKMeanCpiBtn')
+  var aucBtn = document.getElementById('stageKAucBtn')
+  if (cpiBtn) cpiBtn.classList.toggle('active', mode === 'cpi')
+  if (aucBtn) aucBtn.classList.toggle('active', mode === 'auc')
+  // Re-render the sidebar mini scatter grid
+  if (mode === 'cpi' && stageIResult) {
+    renderStageIPanelGrid_(stageIResult, 'cpi')
+  } else if (mode === 'auc' && stageKResult) {
+    renderStageIPanelGrid_(stageIResult, 'auc')
+  }
+}
+
+// ── K: Re-render only the mini scatter grid in ③b ─────────────────────────────
+// mode: 'cpi' uses stageIResult.perYearPairs (SHPI×CPI)
+//       'auc' uses stageKResult.perYearAucPairs (SHPI×AUC)
+function renderStageIPanelGrid_(result, mode) {
+  var grid = document.getElementById('stageIYearGrid')
+  var tbl  = document.getElementById('stageIRhoTable')
+  if (!grid || !result) return
+  var pairs  = mode === 'auc' && stageKResult ? stageKResult.perYearAucPairs  : result.perYearPairs
+  var r2Map  = mode === 'auc' && stageKResult ? stageKResult.perYearR2Auc     : result.perYearR2
+  var yKey = mode === 'auc' ? 'auc' : 'cpi'
+  var yLabel = mode === 'auc' ? 'NDVI-AUC' : 'Mean CPI'
+  grid.innerHTML = ''
+  var allYears = Object.keys(pairs).sort()
+  allYears.forEach(function(yr, yi) {
+    var pts   = pairs[yr]
+    var r2    = r2Map ? r2Map[yr] : null
+    var color = YEAR_COLORS[yi % YEAR_COLORS.length]
+    var wrap  = document.createElement('div')
+    wrap.style.cssText = 'border:1px solid #2E6B4F;border-radius:4px;padding:4px;background:rgba(0,0,0,0.25)'
+    var label = document.createElement('div')
+    label.style.cssText = 'font-size:8px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:2px'
+    label.textContent = yr + (r2 !== null && r2 !== undefined ? '  R²=' + (typeof r2 === 'number' ? r2.toFixed(4) : r2) : '  R²=n/a')
+    wrap.appendChild(label)
+    var canvas = document.createElement('canvas')
+    canvas.width = 120; canvas.height = 80
+    wrap.appendChild(canvas)
+    grid.appendChild(wrap)
+    var ctx = canvas.getContext('2d')
+    if (!pts || pts.length < 3) { ctx.fillStyle = '#555'; ctx.font = '8px sans-serif'; ctx.fillText('< 3 pairs', 20, 40); return }
+    var xs = pts.map(function(p) { return p.shpi })
+    var ys = pts.map(function(p) { return p[yKey] })
+    var xMin = xs.reduce(function(m, v) { return v < m ? v : m }, Infinity)
+    var xMax = xs.reduce(function(m, v) { return v > m ? v : m }, -Infinity)
+    var yMin = ys.reduce(function(m, v) { return v < m ? v : m }, Infinity)
+    var yMax = ys.reduce(function(m, v) { return v > m ? v : m }, -Infinity)
+    var xRange = xMax - xMin || 0.01, yRange = yMax - yMin || 0.01
+    var pad = 8, cW = 120, cH = 80
+    function px(x) { return pad + (x - xMin) / xRange * (cW - 2 * pad) }
+    function py(y) { return cH - pad - (y - yMin) / yRange * (cH - 2 * pad) }
+    ctx.fillStyle = '#0b1f17'; ctx.fillRect(0, 0, cW, cH)
+    var step = Math.max(1, Math.floor(pts.length / 300))
+    ctx.fillStyle = color
+    for (var pi = 0; pi < pts.length; pi += step) {
+      ctx.beginPath(); ctx.arc(px(pts[pi].shpi), py(pts[pi][yKey]), 1.5, 0, 2 * Math.PI); ctx.fill()
+    }
+    var reg = olsLine_(pts.map(function(p) { return { x: p.shpi, y: p[yKey] } }))
+    if (reg && reg.lineData && reg.lineData.length >= 2) {
+      var ld = reg.lineData
+      ctx.strokeStyle = '#F5A623'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(px(ld[0].x), py(ld[0].y)); ctx.lineTo(px(ld[1].x), py(ld[1].y)); ctx.stroke()
+    }
+  })
+  // R² table
+  var rows = allYears.map(function(yr) {
+    var r2    = r2Map ? r2Map[yr] : null
+    var r2Str = r2 !== null && r2 !== undefined ? (typeof r2 === 'number' ? r2.toFixed(4) : r2) : 'n/a'
+    return '<span style="color:#9FE1CB">' + yr + ': R²=' + r2Str + ' ✓</span>'
+  }).join('  ')
+  var warnHtml = (mode === 'cpi' && stageIResult && stageIResult.shpiIdenticalWarn)
+    ? '<br><span style="color:#F5A623;font-size:7px">' + stageIResult.shpiIdenticalWarn + '</span>' : ''
+  var extra = mode === 'auc' && stageKResult && stageKResult.validationAuc
+    ? '<br><span style="color:#F5A623;font-size:7px">AUC exploratory: R²=' + stageKResult.validationAuc.r_squared + ' (' + stageKResult.validationAuc.n_zones + ' bins)</span>'
+    : ''
+  tbl.innerHTML = rows + warnHtml + extra
+}
+
+// ── Stage K orchestrator ──────────────────────────────────────────────────────
+// season: 'kharif'|'rabi'; years: string[] (retained from Stage I Tukey fence)
+async function runStageK_(season, years) {
+  if (!roi || !lastResult || !stageIResult) return
+  var bbox = lastResult.bbox
+  if (!bbox) return
+  var yearInts = years.map(function(y) { return parseInt(y, 10) }).filter(Boolean)
+  if (yearInts.length === 0) return
+
+  // Fetch biweekly NDVI rasters from GAS
+  var apiResult = await new Promise(function(resolve, reject) {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(reject)
+      .getWeeklyCpiRasters({ geojson: roi, season: season, years: yearInts })
+  })
+  if (!apiResult || !apiResult.success) throw new Error(apiResult ? apiResult.error : 'GAS call failed')
+
+  // Decode all biweekly PNGs per year and compute per-pixel AUC
+  if (!stageKCache[season]) stageKCache[season] = {}
+  var perYearAucPairs = {}
+  var perYearR2Auc    = {}
+
+  for (var i = 0; i < apiResult.years.length; i++) {
+    var yrEntry = apiResult.years[i]
+    var yr = yrEntry.year
+
+    // Decode all weekly PNGs for this year
+    var weeklyDecoded = []
+    for (var wi = 0; wi < yrEntry.weeks.length; wi++) {
+      var decoded = await decodeWeeklyNdvi_(yrEntry.weeks[wi].ndviB64)
+      if (decoded) weeklyDecoded.push(decoded)
+    }
+    if (weeklyDecoded.length === 0) continue
+
+    // Compute per-pixel AUC (mean NDVI across valid windows)
+    var aucData = computePixelAuc_(weeklyDecoded)
+    if (!aucData) continue
+    stageKCache[season][yr] = aucData
+
+    // Build (SHPI, AUC) pixel pairs using Stage I SHPI rasters
+    var shpiData = perYearRastersCache[season] && perYearRastersCache[season][yr]
+    if (!shpiData || !shpiData.shpi) continue
+    var pairs = buildAucPixelPairs_(aucData, shpiData.shpi, bbox, roi)
+    if (pairs.length < 3) continue
+    perYearAucPairs[yr] = pairs
+
+    // Per-year OLS R² (SHPI × AUC)
+    var xs = pairs.map(function(p) { return p.shpi })
+    var ys = pairs.map(function(p) { return p.auc })
+    var res = pairs.length >= 3 ? olsArr_(xs, ys) : null
+    perYearR2Auc[yr] = res ? res.r2 : null
+  }
+
+  // Pool retained pairs and run adaptive binning on AUC (exploratory)
+  var pooledAucPairs = []
+  years.forEach(function(yr) {
+    if (perYearAucPairs[yr]) pooledAucPairs = pooledAucPairs.concat(perYearAucPairs[yr])
+  })
+  // Re-use stageIAdaptiveBins_ which expects {shpi, cpi} pairs — pass AUC as the 'cpi' field
+  var pairsForBins = pooledAucPairs.map(function(p) { return { shpi: p.shpi, cpi: p.auc } })
+  var validationAuc = stageIAdaptiveBins_(pairsForBins)
+
+  stageKResult = {
+    season:          season,
+    perYearAucPairs: perYearAucPairs,
+    perYearR2Auc:    perYearR2Auc,
+    pooledAucPairs:  pooledAucPairs,
+    validationAuc:   validationAuc
+  }
+
+  // Show the AUC toggle in ③b
+  var toggle = document.getElementById('stageKToggle')
+  if (toggle) toggle.style.display = 'flex'
+  var aucBtn = document.getElementById('stageKAucBtn')
+  if (aucBtn) aucBtn.style.opacity = '1'
+
+  // Log comparison
+  var r2Comparison = Object.keys(perYearR2Auc).map(function(yr) {
+    var aucR2 = perYearR2Auc[yr]
+    var cpiR2 = stageIResult.perYearR2[yr]
+    return yr + ': R²_CPI=' + (cpiR2 !== null ? cpiR2.toFixed(3) : 'n/a') +
+                '  R²_AUC=' + (aucR2 !== null ? aucR2.toFixed(3) : 'n/a')
+  }).join(', ')
+  autoLogLine_('[9/8] Stage K: pooled ' + pooledAucPairs.length + ' AUC pairs | AUC R²=' + validationAuc.r_squared +
+    ' (' + validationAuc.n_zones + ' bins)')
+  if (r2Comparison) autoLogLine_('[9/8] R² comparison: ' + r2Comparison)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Stage M — Pass-Date Explorer
+// Fetches all 7-day CPI and fallow SHPI pass rasters, decodes them per-pixel,
+// and renders:
+//   ③a 📅 CPI Passes — per-pixel CPI trajectory through crop season
+//   ③a 📅 SHPI Passes — per-pixel SHPI trajectory through fallow window
+//   ③e grid — Ref-SHPI × CPI scatter for every 7-day pass (coloured by R²)
+//   ③e R²-curve — OLS R² vs calendar date summary line chart
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── M0: helpers ───────────────────────────────────────────────
+
+// Decode a CPI pass PNG (G=CPI×254, A=count) to Float32Array of per-pixel CPI.
+// Returns Promise<{pixels: Float32Array, W, H}|null>
+function decodeCropPassPng_(b64) {
+  return new Promise(function(resolve) {
+    if (!b64) { resolve(null); return }
+    var img = new Image()
+    img.onerror = function() { resolve(null) }
+    img.onload = function() {
+      var W = img.naturalWidth, H = img.naturalHeight
+      var c = document.createElement('canvas'); c.width = W; c.height = H
+      var ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0)
+      var px = ctx.getImageData(0, 0, W, H).data
+      var total = W * H
+      var pixels = new Float32Array(total)
+      for (var i = 0; i < total; i++) {
+        pixels[i] = px[i * 4 + 3] > 0 ? px[i * 4 + 1] / 254 : -1  // G=CPI×254, A=count
+      }
+      resolve({ pixels: pixels, W: W, H: H })
+    }
+    img.src = 'data:image/png;base64,' + b64
+  })
+}
+
+// Decode a fallow SHPI pass PNG (R=SHPI×254, A=count) to Float32Array.
+// Returns Promise<{pixels: Float32Array, W, H}|null>
+function decodeFallowPassPng_(b64) {
+  return new Promise(function(resolve) {
+    if (!b64) { resolve(null); return }
+    var img = new Image()
+    img.onerror = function() { resolve(null) }
+    img.onload = function() {
+      var W = img.naturalWidth, H = img.naturalHeight
+      var c = document.createElement('canvas'); c.width = W; c.height = H
+      var ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0)
+      var px = ctx.getImageData(0, 0, W, H).data
+      var total = W * H
+      var pixels = new Float32Array(total)
+      for (var i = 0; i < total; i++) {
+        pixels[i] = px[i * 4 + 3] > 0 ? px[i * 4] / 254 : -1  // R=SHPI×254, A=count
+      }
+      resolve({ pixels: pixels, W: W, H: H })
+    }
+    img.src = 'data:image/png;base64,' + b64
+  })
+}
+
+// Find the fallow pass with the minimum field-wide pixel sum of valid SHPI values.
+// fallowArr: [{date, label, pixels}] — decoded per-pixel SHPI arrays
+// Returns index into fallowArr.
+function selectRefShpiPassIdx_(fallowArr) {
+  var bestIdx = 0, bestSum = Infinity
+  for (var i = 0; i < fallowArr.length; i++) {
+    var pix = fallowArr[i].pixels
+    if (!pix) continue
+    var sum = 0, cnt = 0
+    for (var j = 0; j < pix.length; j++) {
+      if (pix[j] >= 0) { sum += pix[j]; cnt++ }
+    }
+    if (cnt > 0 && sum < bestSum) { bestSum = sum; bestIdx = i }
+  }
+  return bestIdx
+}
+
+// Compute OLS regression between refSHPI pixels and CPI pixels from a single crop pass.
+// refPixels, cpiPixels: Float32Array; -1 = no data.
+// Returns { slope, intercept, r2, n } or null if insufficient data.
+function computePassOls_(refPixels, cpiPixels) {
+  if (!refPixels || !cpiPixels) return null
+  var len = Math.min(refPixels.length, cpiPixels.length)
+  var xs = [], ys = []
+  for (var i = 0; i < len; i++) {
+    if (refPixels[i] >= 0 && cpiPixels[i] >= 0) {
+      xs.push(refPixels[i]); ys.push(cpiPixels[i])
+    }
+  }
+  if (xs.length < 4) return null
+  var res = olsArr_(xs, ys)
+  if (!res) return null
+  return { slope: res.slope, intercept: res.intercept, r2: res.r2, n: xs.length }
+}
+
+// R²-colour: green for high R², grey for weak, darker for near-zero.
+function r2ToColor_(r2) {
+  if (r2 === null || isNaN(r2)) return '#444'
+  if (r2 >= 0.50) return '#2ECC71'
+  if (r2 >= 0.30) return '#82E0AA'
+  if (r2 >= 0.15) return '#A9DFBF'
+  if (r2 >= 0.05) return '#9FE1CB'
+  return '#888'
+}
+
+// ── M1: Load all crop pass rasters (GAS call) ─────────────────
+function loadPassDateExplorer_() {
+  if (!roi) { alert('Draw or upload an ROI first.'); return }
+  var seasonSel = document.getElementById('stageMSeasonSel')
+  var season = seasonSel ? seasonSel.value : (activePipelineSeason || 'kharif')
+  stageMSeason = season
+
+  // Use Stage I retained years if available, otherwise fall back to yearStart/yearEnd
+  var years = []
+  if (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0) {
+    years = stageIResult.tukey.retained.map(Number)
+  } else {
+    var ys = parseInt(document.getElementById('yearStart').value, 10)
+    var ye = parseInt(document.getElementById('yearEnd').value, 10)
+    if (isNaN(ys) || isNaN(ye)) { alert('Set a valid year range first.'); return }
+    for (var y = ys; y <= ye; y++) years.push(y)
+  }
+
+  var btn = document.getElementById('loadStageMBtn')
+  var statusEl = document.getElementById('stageMStatus')
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Fetching… (~2–4 min)' }
+  if (statusEl) statusEl.textContent = '[1/2] Fetching ' + years.length + '×' + (season === 'kharif' ? '22' : '22') + ' crop pass rasters…'
+
+  google.script.run
+    .withSuccessHandler(async function(cropData) {
+      if (!cropData.success) {
+        if (btn) { btn.disabled = false; btn.textContent = '📡 Load Pass Rasters (~2–4 min)' }
+        if (statusEl) statusEl.textContent = '⚠ Crop pass fetch failed: ' + (cropData.error || 'unknown')
+        return
+      }
+      if (statusEl) statusEl.textContent = '[2/2] Fetching fallow SHPI pass rasters…'
+
+      // Store raw and kick off fallow fetch
+      cropPassCache[season] = {}
+      for (var i = 0; i < cropData.years.length; i++) {
+        var yd = cropData.years[i]
+        cropPassCache[season][yd.year] = yd.passes
+      }
+
+      google.script.run
+        .withSuccessHandler(async function(fallowData) {
+          if (btn) { btn.disabled = false; btn.textContent = '📡 Load Pass Rasters (~2–4 min)' }
+          if (!fallowData.success) {
+            if (statusEl) statusEl.textContent = '⚠ Fallow pass fetch failed: ' + (fallowData.error || 'unknown')
+            return
+          }
+          fallowPassCache[season] = {}
+          for (var j = 0; j < fallowData.years.length; j++) {
+            var fd = fallowData.years[j]
+            fallowPassCache[season][fd.year] = fd.passes
+          }
+
+          if (statusEl) statusEl.textContent = 'Decoding rasters…'
+          await decodeStageMRasters_(season, years)
+          populateStageMYearSel_(season, years)
+          var gridWrap = document.getElementById('stageMGridWrap')
+          if (gridWrap) gridWrap.style.display = 'block'
+          var passExplorerStep = document.getElementById('passExplorerStep')
+          if (passExplorerStep) passExplorerStep.style.display = 'block'
+          setBadge_('passExplorerBadge', '✓')
+          // populate year selectors in ③a too
+          populateCpiPassYearSel_(season, years)
+          populateShpiPassYearSel_(season, years)
+          // Reveal ③a new tabs
+          var cpiPassTab  = document.getElementById('tsPanelCpiPassesTab')
+          var soilPassTab = document.getElementById('tsPanelSoilPassesTab')
+          if (cpiPassTab)  cpiPassTab.style.display = 'inline-block'
+          if (soilPassTab) soilPassTab.style.display = 'inline-block'
+          // Re-render ratio chart in pass-trendline mode if already on that tab
+          if (tsPanelMode === 'ratio') renderRatioChart_(season)
+
+          renderPassDateGrid_()
+          updateConcludeFromBestPass_(season)   // N3: update ④ CONCLUDE with per-pass OLS verdict
+          if (statusEl) statusEl.textContent = 'Done — ' + years.length + ' years loaded.'
+        })
+        .withFailureHandler(function(err) {
+          if (btn) { btn.disabled = false; btn.textContent = '📡 Load Pass Rasters (~2–4 min)' }
+          if (statusEl) statusEl.textContent = '⚠ Fallow pass error: ' + err
+        })
+        .getAllFallowPassRasters({ geojson: roi, season: season, years: years })
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.textContent = '📡 Load Pass Rasters (~2–4 min)' }
+      if (statusEl) statusEl.textContent = '⚠ Crop pass error: ' + err
+    })
+    .getAllCropPassRasters({ geojson: roi, season: season, years: years })
+}
+
+// ── M2: Decode all pass PNGs per season → pixel arrays ────────
+async function decodeStageMRasters_(season, years) {
+  if (!cropPassPixels[season]) cropPassPixels[season] = {}
+  if (!fallowPassPixels[season]) fallowPassPixels[season] = {}
+  if (!refShpiPassMap[season]) refShpiPassMap[season] = {}
+  if (!stageMOlsMap[season]) stageMOlsMap[season] = {}
+
+  for (var yi = 0; yi < years.length; yi++) {
+    var yr = years[yi]
+    var cropPasses   = (cropPassCache[season] || {})[yr] || []
+    var fallowPasses = (fallowPassCache[season] || {})[yr] || []
+
+    // Decode crop passes
+    var decodedCrop = []
+    for (var ci = 0; ci < cropPasses.length; ci++) {
+      var cp = cropPasses[ci]
+      var result = await decodeCropPassPng_(cp.cpiB64)
+      decodedCrop.push({ date: cp.date, label: cp.label, pixels: result ? result.pixels : null, W: result ? result.W : 0, H: result ? result.H : 0 })
+    }
+    cropPassPixels[season][yr] = decodedCrop
+
+    // Decode fallow passes
+    var decodedFallow = []
+    for (var fi = 0; fi < fallowPasses.length; fi++) {
+      var fp = fallowPasses[fi]
+      var fresult = await decodeFallowPassPng_(fp.shpiB64)
+      decodedFallow.push({ date: fp.date, label: fp.label, pixels: fresult ? fresult.pixels : null })
+    }
+    fallowPassPixels[season][yr] = decodedFallow
+
+    // Select reference SHPI pass (min field-sum)
+    var refIdx = selectRefShpiPassIdx_(decodedFallow)
+    refShpiPassMap[season][yr] = {
+      idx: refIdx,
+      date: decodedFallow[refIdx] ? decodedFallow[refIdx].date : '',
+      label: decodedFallow[refIdx] ? decodedFallow[refIdx].label : '',
+      pixels: decodedFallow[refIdx] ? decodedFallow[refIdx].pixels : null
+    }
+
+    // Compute OLS for each crop pass vs this year's ref SHPI
+    var refPixels = refShpiPassMap[season][yr].pixels
+    var olsArr2 = []
+    for (var ri = 0; ri < decodedCrop.length; ri++) {
+      var passOls = computePassOls_(refPixels, decodedCrop[ri].pixels)
+      olsArr2.push({ date: decodedCrop[ri].date, label: decodedCrop[ri].label,
+        r2: passOls ? passOls.r2 : null,
+        slope: passOls ? passOls.slope : null,
+        intercept: passOls ? passOls.intercept : null,
+        n: passOls ? passOls.n : 0 })
+    }
+    stageMOlsMap[season][yr] = olsArr2
+  }
+}
+
+// ── M3: Populate year selectors ───────────────────────────────
+function populateStageMYearSel_(season, years) {
+  var sel = document.getElementById('stageMYearSel')
+  if (!sel) return
+  sel.innerHTML = ''
+  years.forEach(function(y) {
+    var opt = document.createElement('option'); opt.value = y; opt.textContent = y
+    sel.appendChild(opt)
+  })
+}
+
+function populateCpiPassYearSel_(season, years) {
+  var sel = document.getElementById('cpiPassYearSel')
+  if (!sel) return
+  sel.innerHTML = ''
+  years.forEach(function(y) {
+    var opt = document.createElement('option'); opt.value = y; opt.textContent = y
+    sel.appendChild(opt)
+  })
+}
+
+function populateShpiPassYearSel_(season, years) {
+  var sel = document.getElementById('shpiPassYearSel')
+  if (!sel) return
+  sel.innerHTML = ''
+  years.forEach(function(y) {
+    var opt = document.createElement('option'); opt.value = y; opt.textContent = y
+    sel.appendChild(opt)
+  })
+}
+
+// ── M4: Render ③e pass-date scatter grid ──────────────────────
+function renderPassDateGrid_() {
+  var seasonSel = document.getElementById('stageMSeasonSel')
+  var season = stageMSeason || (seasonSel ? seasonSel.value : 'kharif')
+  var yearSel = document.getElementById('stageMYearSel')
+  var year = yearSel ? parseInt(yearSel.value, 10) : null
+  if (!year || !cropPassPixels[season] || !cropPassPixels[season][year]) return
+
+  var cropPasses = cropPassPixels[season][year] || []
+  var olsEntries = (stageMOlsMap[season] || {})[year] || []
+  var refData    = (refShpiPassMap[season] || {})[year] || {}
+  var refPixels  = refData.pixels || null
+
+  // Find best-R² pass
+  var bestR2 = -Infinity, bestIdx = 0
+  olsEntries.forEach(function(r, i) { if (r.r2 !== null && r.r2 > bestR2) { bestR2 = r.r2; bestIdx = i } })
+
+  var container = document.getElementById('stageMGridCells')
+  if (!container) return
+  container.innerHTML = ''
+
+  olsEntries.forEach(function(r, i) {
+    var cell = document.createElement('div')
+    cell.className = 'pass-cell' + (i === bestIdx ? ' pass-best' : '')
+    cell.title = r.date + '  R²=' + (r.r2 !== null ? r.r2.toFixed(3) : 'n/a')
+    cell.onclick = (function(idx) { return function() { onPassCellClick_(season, year, idx) } })(i)
+
+    // Mini canvas
+    var cnv = document.createElement('canvas')
+    cnv.width = 60; cnv.height = 50
+    cell.appendChild(cnv)
+
+    var labelDiv = document.createElement('div')
+    labelDiv.className = 'pass-cell-label'
+    labelDiv.textContent = r.label || r.date.substring(5)
+    cell.appendChild(labelDiv)
+
+    var r2Div = document.createElement('div')
+    r2Div.className = 'pass-cell-r2'
+    r2Div.style.color = r2ToColor_(r.r2)
+    r2Div.textContent = r.r2 !== null ? 'R²=' + r.r2.toFixed(2) : 'n/a'
+    cell.appendChild(r2Div)
+
+    container.appendChild(cell)
+
+    // Draw mini scatter on next frame
+    ;(function(canvas, passIdx, r2Val) {
+      requestAnimationFrame(function() {
+        drawMiniScatter_(canvas, refPixels, cropPasses[passIdx] ? cropPasses[passIdx].pixels : null, r2Val)
+      })
+    })(cnv, i, r.r2)
+  })
+
+  // Render R²-vs-date curve
+  renderStageMOlsCurve_(season, year, olsEntries, bestIdx)
+}
+
+// Draw a tiny scatter on a 60×50 canvas (ref-SHPI x, CPI y)
+function drawMiniScatter_(canvas, refPix, cpiPix, r2) {
+  var ctx = canvas.getContext('2d')
+  var W = canvas.width, H = canvas.height
+  ctx.fillStyle = '#1a3d30'; ctx.fillRect(0, 0, W, H)
+  if (!refPix || !cpiPix) {
+    ctx.fillStyle = '#3a6a4a'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText('no data', W / 2, H / 2); return
+  }
+  var len = Math.min(refPix.length, cpiPix.length)
+  var pts = []
+  for (var i = 0; i < len; i++) {
+    if (refPix[i] >= 0 && cpiPix[i] >= 0) pts.push({ x: refPix[i], y: cpiPix[i] })
+  }
+  if (pts.length === 0) {
+    ctx.fillStyle = '#3a6a4a'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText('no pts', W / 2, H / 2); return
+  }
+  var pad = 4
+  var dotColor = r2ToColor_(r2)
+  ctx.fillStyle = dotColor
+  pts.forEach(function(p) {
+    var px = pad + p.x * (W - 2 * pad)
+    var py = (H - pad) - p.y * (H - 2 * pad)
+    ctx.beginPath(); ctx.arc(px, py, 1.2, 0, 2 * Math.PI); ctx.fill()
+  })
+}
+
+// Render R²-vs-date line chart — one line per accepted year
+function renderStageMOlsCurve_(season, year, olsEntries, bestIdx) {
+  var canvas = document.getElementById('stageMRhoCurveChart')
+  if (!canvas) return
+
+  // Collect all accepted years that have OLS data for this season
+  var allYears = (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0)
+    ? stageIResult.tukey.retained.map(Number).sort()
+    : [year]  // fallback: only the currently selected year
+  var yearOlsMap = stageMOlsMap[season] || {}
+
+  // Build a union date-label axis (sorted by date)
+  var allDatesSet = {}
+  allYears.forEach(function(yr) {
+    var ra = yearOlsMap[yr] || []
+    ra.forEach(function(r) { if (r.r2 !== null) allDatesSet[r.label || r.date.substring(5)] = r.date })
+  })
+  var allLabels = Object.keys(allDatesSet).sort(function(a, b) {
+    return allDatesSet[a] < allDatesSet[b] ? -1 : 1
+  })
+
+  // Per-year datasets
+  var yearColors = ['#9FE1CB','#F67019','#F53794','#4DC9F6','#ACC236','#F5A623','#00A950','#58595B']
+  var datasets = allYears.map(function(yr, yi) {
+    var ra = yearOlsMap[yr] || []
+    var byLabel = {}
+    ra.forEach(function(r) { if (r.r2 !== null) byLabel[r.label || r.date.substring(5)] = r.r2 })
+    var data = allLabels.map(function(lbl) { return byLabel[lbl] !== undefined ? byLabel[lbl] : null })
+    var isCurYear = (yr === year)
+    return {
+      label: String(yr),
+      data: data,
+      borderColor: yearColors[yi % yearColors.length],
+      backgroundColor: 'transparent',
+      borderWidth: isCurYear ? 2 : 1.2,
+      borderDash: isCurYear ? [] : [3, 2],
+      pointRadius: isCurYear ? 3 : 1.5,
+      pointBackgroundColor: yearColors[yi % yearColors.length],
+      tension: 0.3, spanGaps: true
+    }
+  })
+
+  if (stageMOlsCurveInst) { stageMOlsCurveInst.destroy(); stageMOlsCurveInst = null }
+  stageMOlsCurveInst = new Chart(canvas, {
+    type: 'line',
+    data: { labels: allLabels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { display: allYears.length > 1, labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 14 } },
+        tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + '  R²=' + (ctx.parsed.y !== null ? ctx.parsed.y.toFixed(3) : 'n/a') } } }
+      },
+      scales: {
+        x: { ticks: { color: '#9FE1CB', font: { size: 8 }, maxRotation: 45 }, grid: { color: '#1e3d30' } },
+        y: { min: 0, max: 1, ticks: { color: '#9FE1CB', font: { size: 8 } }, grid: { color: '#1e3d30' } }
+      }
+    }
+  })
+  var labelEl = document.getElementById('stageMRhoLabel')
+  if (labelEl) {
+    var bestR = olsEntries[bestIdx]
+    labelEl.textContent = bestR ? 'Best: ' + (bestR.label || bestR.date) + '  R²=' + (bestR.r2 !== null ? bestR.r2.toFixed(3) : 'n/a') : ''
+  }
+}
+
+// ── M5: Click on a scatter cell → select pass date for ③c ────
+function onPassCellClick_(season, year, passIdx) {
+  var passes = (cropPassPixels[season] || {})[year] || []
+  if (!passes[passIdx]) return
+  var selectedDate = passes[passIdx].date
+  var selectedLabel = passes[passIdx].label || selectedDate.substring(5)
+  // Highlight selected cell
+  var cells = document.querySelectorAll('#stageMGridCells .pass-cell')
+  cells.forEach(function(c, i) { c.classList.toggle('pass-best', i === passIdx) })
+  // Populate ③c with this pass date
+  updatePooledScatterForPass_(season, year, passIdx, selectedLabel)
+}
+
+// Update ③c scatter — pool ALL accepted years, per-year faint OLS + pooled bold OLS + 95% CI band
+// Gaps 1, 2, 3 fix
+function updatePooledScatterForPass_(season, clickedYear, passIdx, passLabel) {
+  // Determine which years to pool (all Stage I retained years, or just clicked year if no Stage I)
+  var acceptedYears = (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0)
+    ? stageIResult.tukey.retained.map(Number).sort()
+    : [clickedYear]
+  var rejectedYears = (stageIResult && stageIResult.tukey)
+    ? stageIResult.tukey.rejected.map(function(r) { return Number(r.year) })
+    : []
+
+  // Find the clicked pass date label so we can match it across other years
+  var clickedPasses = (cropPassPixels[season] || {})[clickedYear] || []
+  var clickedPassDate = clickedPasses[passIdx] ? clickedPasses[passIdx].date : null
+  var clickedLabel   = clickedPasses[passIdx] ? (clickedPasses[passIdx].label || passLabel) : passLabel
+
+  var YEAR_COLORS_M = ['#9FE1CB','#F67019','#F53794','#4DC9F6','#ACC236','#F5A623','#00A950','#58595B']
+  // Helper: hex color → rgba string with alpha
+  function hexToRgba_(hex, alpha) {
+    var r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16)
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')'
+  }
+
+  // Per-year pixel pairs and OLS
+  var perYearDatasets = []
+  var perYearOlsLines = []
+  var allPts = []
+
+  acceptedYears.forEach(function(yr, yi) {
+    var refData    = (refShpiPassMap[season] || {})[yr]
+    var cropPasses = (cropPassPixels[season] || {})[yr] || []
+    if (!refData) return
+
+    // Find the best-matching pass index for this year by date proximity
+    var matchIdx = passIdx // default to same index
+    if (clickedPassDate && yr !== clickedYear) {
+      var best = Infinity, bi = passIdx
+      cropPasses.forEach(function(p, pi) {
+        if (!p.date) return
+        var diff = Math.abs(new Date(p.date).getTime() - new Date(clickedPassDate).getTime())
+        if (diff < best) { best = diff; bi = pi }
+      })
+      matchIdx = bi
+    }
+
+    var cpiPass = cropPasses[matchIdx]
+    if (!cpiPass || !cpiPass.pixels) return
+
+    var refPix = refData.pixels
+    var cpiPix = cpiPass.pixels
+    var len = Math.min(refPix.length, cpiPix.length)
+    var pts = []
+    for (var i = 0; i < len; i++) {
+      if (refPix[i] >= 0 && cpiPix[i] >= 0) pts.push({ x: refPix[i], y: cpiPix[i] })
+    }
+    if (pts.length === 0) return
+
+    var color = YEAR_COLORS_M[yi % YEAR_COLORS_M.length]
+    perYearDatasets.push({
+      label: String(yr),
+      data: pts.map(function(p) { return { x: p.x, y: p.y } }),
+      backgroundColor: hexToRgba_(color, 0.45),
+      pointRadius: 2.5, pointHoverRadius: 4, type: 'scatter'
+    })
+
+    // Per-year faint OLS line
+    var yrOls = computeOlsFull_(pts.map(function(p) { return p.x }), pts.map(function(p) { return p.y }))
+    if (yrOls) {
+      var xMin = pts.reduce(function(m, p) { return p.x < m ? p.x : m }, Infinity)
+      var xMax = pts.reduce(function(m, p) { return p.x > m ? p.x : m }, -Infinity)
+      perYearOlsLines.push({
+        label: 'OLS_' + yr,
+        data: [{ x: xMin, y: yrOls.slope * xMin + yrOls.intercept },
+               { x: xMax, y: yrOls.slope * xMax + yrOls.intercept }],
+        type: 'line', borderColor: color, backgroundColor: 'transparent',
+        pointRadius: 0, borderWidth: 0.9, borderDash: [3, 3], order: 2
+      })
+    }
+
+    pts.forEach(function(p) { allPts.push(p) })
+  })
+
+  // Rejected year points (grey, small)
+  rejectedYears.forEach(function(yr) {
+    var refData    = (refShpiPassMap[season] || {})[yr]
+    var cropPasses = (cropPassPixels[season] || {})[yr] || []
+    if (!refData) return
+    var matchIdx = passIdx
+    if (clickedPassDate) {
+      var best = Infinity, bi = passIdx
+      cropPasses.forEach(function(p, pi) {
+        if (!p.date) return
+        var diff = Math.abs(new Date(p.date).getTime() - new Date(clickedPassDate).getTime())
+        if (diff < best) { best = diff; bi = pi }
+      })
+      matchIdx = bi
+    }
+    var cpiPass = cropPasses[matchIdx]
+    if (!cpiPass || !cpiPass.pixels) return
+    var refPix = refData.pixels, cpiPix = cpiPass.pixels
+    var len = Math.min(refPix.length, cpiPix.length)
+    var rejPts = []
+    for (var i = 0; i < len; i++) {
+      if (refPix[i] >= 0 && cpiPix[i] >= 0) rejPts.push({ x: refPix[i], y: cpiPix[i] })
+    }
+    if (rejPts.length > 0) {
+      perYearDatasets.unshift({
+        label: String(yr) + ' (rej)',
+        data: rejPts.map(function(p) { return { x: p.x, y: p.y } }),
+        backgroundColor: 'rgba(160,160,160,0.3)', pointRadius: 2, type: 'scatter'
+      })
+    }
+  })
+
+  if (allPts.length === 0) return
+
+  // Pooled OLS with 95% CI band
+  var pooledOls = computeOlsFull_(allPts.map(function(p) { return p.x }), allPts.map(function(p) { return p.y }))
+
+  var pooledOlsData = [], ciUpperData = [], ciLowerData = []
+  if (pooledOls) {
+    var xs = allPts.map(function(p) { return p.x }).sort(function(a, b) { return a - b })
+    var xMin = xs[0], xMax = xs[xs.length - 1]
+    var nSteps = 40
+    for (var si = 0; si <= nSteps; si++) {
+      var xi = xMin + (xMax - xMin) * si / nSteps
+      var yi = pooledOls.slope * xi + pooledOls.intercept
+      pooledOlsData.push({ x: xi, y: yi })
+      // 95% CI: y_hat ± t(0.025, n-2) * se * sqrt(1/n + (x-xm)^2 / ssx)
+      var ci = pooledOls.se * 1.96 * Math.sqrt(1 / pooledOls.n + Math.pow(xi - pooledOls.xm, 2) / pooledOls.ssx)
+      ciUpperData.push({ x: xi, y: yi + ci })
+      ciLowerData.push({ x: xi, y: yi - ci })
+    }
+  }
+
+  var datasets = perYearDatasets.concat(perYearOlsLines)
+  if (ciUpperData.length > 0) {
+    var ciStyle = { type: 'line', borderColor: 'rgba(245,166,35,0.25)', backgroundColor: 'rgba(245,166,35,0.07)', pointRadius: 0, borderWidth: 1, order: 1, isCI: true }
+    datasets.push(Object.assign({ label: 'CI+', data: ciUpperData, fill: '+1' }, ciStyle))
+    datasets.push(Object.assign({ label: 'CI-', data: ciLowerData, fill: false }, ciStyle))
+  }
+  if (pooledOlsData.length > 0) {
+    datasets.push({ label: 'Pooled OLS', data: pooledOlsData, type: 'line', borderColor: '#F5A623', backgroundColor: 'transparent', pointRadius: 0, borderWidth: 2.5, order: 0, isPooledOls: true })
+  }
+
+  var corrEl = document.getElementById('corrSummary')
+  var eqEl   = document.getElementById('scatterEq')
+  if (corrEl) corrEl.textContent = 'Pass ' + clickedLabel + '  n=' + allPts.length + ' (' + acceptedYears.length + ' yr)'
+  if (eqEl && pooledOls) eqEl.textContent = 'y = ' + pooledOls.slope.toFixed(3) + 'x + ' + pooledOls.intercept.toFixed(3) + '  R²=' + pooledOls.r2.toFixed(3)
+
+  renderPooledPassScatter_(datasets, pooledOls ? pooledOls.r2 : null, clickedLabel)
+}
+
+// OLS helper with standard error for CI band: returns {slope, intercept, r2, se, n, xm, ssx}
+function computeOlsFull_(xs, ys) {
+  var n = xs.length
+  if (n < 2) return null          // need at least 2 points for OLS
+  var xm = xs.reduce(function(a, b) { return a + b }, 0) / n
+  var ym = ys.reduce(function(a, b) { return a + b }, 0) / n
+  var ssx = 0, sxy = 0
+  for (var i = 0; i < n; i++) { var dx = xs[i] - xm; ssx += dx * dx; sxy += dx * (ys[i] - ym) }
+  if (ssx === 0) return null
+  var slope = sxy / ssx
+  var intercept = ym - slope * xm
+  var ssRes = 0, ssTot = 0
+  for (var j = 0; j < n; j++) {
+    var r = ys[j] - (slope * xs[j] + intercept); ssRes += r * r
+    var t = ys[j] - ym; ssTot += t * t
+  }
+  var r2  = ssTot > 0 ? 1 - ssRes / ssTot : 0
+  // SE requires n >= 3 (df = n-2 > 0); return 0 for n=2 so CI band collapses gracefully
+  var mse = n >= 3 ? ssRes / (n - 2) : 0
+  var se  = Math.sqrt(mse)
+  return { slope: slope, intercept: intercept, r2: r2, se: se, n: n, xm: xm, ssx: ssx, ym: ym }
+}
+
+// Legacy thin wrapper — kept for callers outside Stage M
+function computeOls_(xs, ys) {
+  var res = computeOlsFull_(xs, ys)
+  if (!res) return null
+  return { slope: res.slope, intercept: res.intercept, r2: res.r2, xm: res.xm, ym: res.ym }
+}
+
+// Render ③c pooled scatter (datasets pre-built by updatePooledScatterForPass_)
+function renderPooledPassScatter_(datasets, r2, passLabel) {
+  var canvas = document.getElementById('shpiCpiScatter')
+  if (!canvas) return
+  if (scatterChart) { scatterChart.destroy(); scatterChart = null }
+  scatterChart = new Chart(canvas, {
+    type: 'scatter',
+    data: { datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { filter: function(i) { return !i.dataset.isCI && (i.dataset.type !== 'line' || i.dataset.isPooledOls) },
+          callbacks: { label: function(ctx) {
+            if (ctx.dataset.isPooledOls) return 'OLS: ' + ctx.parsed.y.toFixed(3)
+            return (ctx.dataset.label || '') + '  SHPI=' + ctx.parsed.x.toFixed(3) + '  CPI=' + ctx.parsed.y.toFixed(3)
+          }}
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Ref-SHPI', color: '#9FE1CB', font: { size: 9 } }, ticks: { color: '#9FE1CB', font: { size: 8 } }, grid: { color: '#1e3d30' } },
+        y: { title: { display: true, text: 'CPI', color: '#9FE1CB', font: { size: 9 } }, ticks: { color: '#9FE1CB', font: { size: 8 } }, grid: { color: '#1e3d30' } }
+      }
+    }
+  })
+  var pooledStep = document.getElementById('pooledScatterStep')
+  if (pooledStep) pooledStep.style.display = 'block'
+  setBadge_('pooledBadge', 'R²=' + (r2 !== null && r2 !== undefined ? r2.toFixed(2) : 'n/a'))
+}
+
+// ── M6: ③a CPI Passes chart — per-pixel CPI trajectory ────────
+function refreshCpiPassesPanel_() {
+  var sel = document.getElementById('cpiPassYearSel')
+  if (!sel || sel.options.length === 0) {
+    document.getElementById('cpiPassesStatus').textContent = 'ⓘ Load pass rasters in ③e to populate.'
+    return
+  }
+  renderCpiPassesChart_(parseInt(sel.value, 10))
+}
+
+function renderCpiPassesChart_(year) {
+  var season = stageMSeason || activePipelineSeason || 'kharif'
+  var passes = (cropPassPixels[season] || {})[year]
+  var statusEl = document.getElementById('cpiPassesStatus')
+  if (!passes || passes.length === 0) {
+    if (statusEl) statusEl.textContent = 'ⓘ No data for ' + year + '. Load pass rasters in ③e.'
+    return
+  }
+  if (statusEl) statusEl.textContent = ''
+
+  // Extract field-mean CPI per pass (filter valid pixels)
+  var labels = [], fieldMeans = []
+  passes.forEach(function(p) {
+    labels.push(p.label || p.date.substring(5))
+    var pix = p.pixels
+    if (!pix) { fieldMeans.push(null); return }
+    var sum = 0, cnt = 0
+    for (var i = 0; i < pix.length; i++) { if (pix[i] >= 0) { sum += pix[i]; cnt++ } }
+    fieldMeans.push(cnt > 0 ? sum / cnt : null)
+  })
+
+  // Build per-pixel datasets (up to 100 pixels sampled for chart readability)
+  // For the trajectory, x = pass index, y = CPI value for that pixel
+  var refPass = passes.find(function(p) { return p.pixels })
+  var pixelCount = refPass ? refPass.pixels.length : 0
+  // Sample up to 100 pixels for chart readability
+  var sampleStep = Math.max(1, Math.floor(pixelCount / 100))
+  var pixelDatasets = []
+  // Gap 4 fix: per-pixel peak-date scatter data
+  var peakScatterPts = []
+  for (var pi = 0; pi < pixelCount; pi += sampleStep) {
+    var traj = passes.map(function(p) { return p.pixels && p.pixels[pi] >= 0 ? p.pixels[pi] : null })
+    // Only include pixel if it has at least some valid observations
+    if (traj.some(function(v) { return v !== null })) {
+      pixelDatasets.push({ label: 'px' + pi, data: traj, borderColor: 'rgba(46,204,113,0.18)', borderWidth: 0.8, pointRadius: 0, tension: 0.3, spanGaps: true })
+      // Find peak pass index for this pixel
+      var peakVal = -Infinity, peakPi = -1
+      for (var ti = 0; ti < traj.length; ti++) {
+        if (traj[ti] !== null && traj[ti] > peakVal) { peakVal = traj[ti]; peakPi = ti }
+      }
+      if (peakPi >= 0) peakScatterPts.push({ x: peakPi, y: peakVal })
+    }
+  }
+  // Peak dots dataset (one dot per sampled pixel at its peak pass)
+  var peakDotsDataset = {
+    label: 'Peak', type: 'scatter',
+    data: peakScatterPts,
+    backgroundColor: 'rgba(245,166,35,0.7)', pointRadius: 3, pointHoverRadius: 4,
+    order: 1
+  }
+
+  var canvas = document.getElementById('cpiPassesChart')
+  if (!canvas) return
+  if (cpiPassesChartInst) { cpiPassesChartInst.destroy(); cpiPassesChartInst = null }
+  cpiPassesChartInst = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: pixelDatasets.concat([peakDotsDataset, {
+        label: 'Field mean', data: fieldMeans, borderColor: '#F5A623', backgroundColor: 'transparent',
+        borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#F5A623', tension: 0.3, spanGaps: true, order: 0
+      }])
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { mode: 'index', intersect: false,
+          filter: function(item) { return item.dataset.label === 'Field mean' },
+          callbacks: { label: function(ctx) { return 'Mean CPI: ' + (ctx.parsed.y !== null ? ctx.parsed.y.toFixed(3) : 'n/a') } }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#9FE1CB', font: { size: 8 }, maxRotation: 45 }, grid: { color: '#1e3d30' } },
+        y: { min: 0, max: 1, title: { display: true, text: 'CPI', color: '#9FE1CB', font: { size: 9 } }, ticks: { color: '#9FE1CB', font: { size: 8 } }, grid: { color: '#1e3d30' } }
+      }
+    }
+  })
+}
+
+// ── M7: ③a SHPI Passes chart — per-pixel SHPI trajectory ──────
+function refreshShpiPassesPanel_() {
+  var sel = document.getElementById('shpiPassYearSel')
+  if (!sel || sel.options.length === 0) {
+    document.getElementById('shpiPassesStatus').textContent = 'ⓘ Load pass rasters in ③e to populate.'
+    return
+  }
+  renderShpiPassesChart_(parseInt(sel.value, 10))
+}
+
+function renderShpiPassesChart_(year) {
+  var season = stageMSeason || activePipelineSeason || 'kharif'
+  var passes = (fallowPassPixels[season] || {})[year]
+  var refData = (refShpiPassMap[season] || {})[year]
+  var statusEl = document.getElementById('shpiPassesStatus')
+  if (!passes || passes.length === 0) {
+    if (statusEl) statusEl.textContent = 'ⓘ No data for ' + year + '. Load pass rasters in ③e.'
+    return
+  }
+  if (statusEl) statusEl.textContent = ''
+
+  var labels = [], fieldMeans = []
+  passes.forEach(function(p) {
+    labels.push(p.label || p.date.substring(5))
+    var pix = p.pixels
+    if (!pix) { fieldMeans.push(null); return }
+    var sum = 0, cnt = 0
+    for (var i = 0; i < pix.length; i++) { if (pix[i] >= 0) { sum += pix[i]; cnt++ } }
+    fieldMeans.push(cnt > 0 ? sum / cnt : null)
+  })
+
+  var refPass = passes.find(function(p) { return p.pixels })
+  var pixelCount = refPass ? refPass.pixels.length : 0
+  var sampleStep = Math.max(1, Math.floor(pixelCount / 100))
+  var pixelDatasets = []
+  var refIdx = refData ? refData.idx : -1
+  for (var pi = 0; pi < pixelCount; pi += sampleStep) {
+    var traj = passes.map(function(p) { return p.pixels && p.pixels[pi] >= 0 ? p.pixels[pi] : null })
+    if (traj.some(function(v) { return v !== null })) {
+      pixelDatasets.push({ label: 'px' + pi, data: traj, borderColor: 'rgba(160,130,80,0.18)', borderWidth: 0.8, pointRadius: 0, tension: 0.3, spanGaps: true })
+    }
+  }
+
+  // Ref-pass gold vertical annotation via pointRadius overrides on field mean
+  var refPointColors = labels.map(function(_, i) { return i === refIdx ? '#F5A623' : 'rgba(0,0,0,0)' })
+  var refPointSizes  = labels.map(function(_, i) { return i === refIdx ? 6 : 0 })
+
+  var canvas = document.getElementById('shpiPassesChart')
+  if (!canvas) return
+  if (shpiPassesChartInst) { shpiPassesChartInst.destroy(); shpiPassesChartInst = null }
+  shpiPassesChartInst = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: pixelDatasets.concat([{
+        label: 'Field mean', data: fieldMeans, borderColor: '#c8a060', backgroundColor: 'transparent',
+        borderWidth: 2, pointRadius: refPointSizes, pointBackgroundColor: refPointColors, tension: 0.3, spanGaps: true, order: 0
+      }])
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { mode: 'index', intersect: false,
+          filter: function(item) { return item.dataset.label === 'Field mean' },
+          callbacks: {
+            label: function(ctx) {
+              var refStr = ctx.dataIndex === refIdx ? ' ★ Ref pass' : ''
+              return 'Mean SHPI: ' + (ctx.parsed.y !== null ? ctx.parsed.y.toFixed(3) : 'n/a') + refStr
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#9FE1CB', font: { size: 8 }, maxRotation: 45 }, grid: { color: '#1e3d30' } },
+        y: { min: 0, max: 1, title: { display: true, text: 'SHPI', color: '#9FE1CB', font: { size: 9 } }, ticks: { color: '#9FE1CB', font: { size: 8 } }, grid: { color: '#1e3d30' } }
+      }
+    }
+  })
+}
+
+// ── M8: Season change handler in ③e ───────────────────────────
+function onStageMSeasonChange_() {
+  var sel = document.getElementById('stageMSeasonSel')
+  if (sel) {
+    stageMSeason = sel.value
+    // Re-populate year selector if data already loaded for the new season
+    var years = Object.keys((cropPassPixels[stageMSeason] || {})).map(Number).sort()
+    if (years.length > 0) {
+      populateStageMYearSel_(stageMSeason, years)
+      renderPassDateGrid_()
+    }
+  }
+}
+
+// Reveal ③e step after Stage M data is loaded (called externally after auto-run if desired)
+function revealPassExplorerStep_() {
+  var el = document.getElementById('passExplorerStep')
+  if (el) el.style.display = 'block'
+}
+
+// ── N3: Per-pass OLS hypothesis verdict ──────────────────────
+// Pools (refSHPI, CPI) pairs from all accepted years for each pass index,
+// finds the pass with the highest pooled OLS R², and returns the OLS verdict.
+function computeBestPassHypothesis_(season) {
+  var yearMap = stageMOlsMap[season]
+  if (!yearMap) return null
+  var acceptedYears = (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0)
+    ? stageIResult.tukey.retained.map(Number).sort()
+    : Object.keys(yearMap).map(Number).sort()
+  if (acceptedYears.length === 0) return null
+
+  // Determine max pass slots (use the year with most passes)
+  var maxPasses = 0
+  acceptedYears.forEach(function(yr) {
+    var passes = (cropPassPixels[season] || {})[yr] || []
+    if (passes.length > maxPasses) maxPasses = passes.length
+  })
+  if (maxPasses === 0) return null
+
+  // For each pass index, pool pixel pairs across all accepted years; find highest R²
+  var bestR2 = -Infinity, bestPassIdx = 0, bestPassLabel = '', bestPassDate = '', bestAllPts = []
+  for (var pi = 0; pi < maxPasses; pi++) {
+    var allPts = []
+    acceptedYears.forEach(function(yr) {
+      var refData    = (refShpiPassMap[season] || {})[yr]
+      var cropPasses = (cropPassPixels[season] || {})[yr] || []
+      if (!refData || !cropPasses[pi] || !cropPasses[pi].pixels) return
+      var refPix = refData.pixels, cpiPix = cropPasses[pi].pixels
+      var len = Math.min(refPix.length, cpiPix.length)
+      for (var i = 0; i < len; i++) {
+        if (refPix[i] >= 0 && cpiPix[i] >= 0) allPts.push({ x: refPix[i], y: cpiPix[i] })
+      }
+    })
+    if (allPts.length < 3) continue
+    var ols = computeOlsFull_(allPts.map(function(p) { return p.x }), allPts.map(function(p) { return p.y }))
+    if (ols && ols.r2 > bestR2) {
+      bestR2 = ols.r2
+      bestPassIdx = pi
+      // Get label/date from first available year
+      for (var yi = 0; yi < acceptedYears.length; yi++) {
+        var cp = (cropPassPixels[season] || {})[acceptedYears[yi]] || []
+        if (cp[pi]) { bestPassLabel = cp[pi].label || cp[pi].date || ''; bestPassDate = cp[pi].date || ''; break }
+      }
+      bestAllPts = allPts
+    }
+  }
+
+  if (bestAllPts.length === 0) return null
+  var bestOls = computeOlsFull_(bestAllPts.map(function(p) { return p.x }), bestAllPts.map(function(p) { return p.y }))
+  if (!bestOls) return null
+  // Verdict: positive slope AND R² ≥ 0.10 (soil explains ≥10% of CPI spatial variance)
+  var confirmed = bestOls.slope > 0 && bestOls.r2 >= 0.10
+  var marginal  = !confirmed && bestOls.slope > 0 && bestOls.r2 >= 0.05
+  return {
+    confirmed: confirmed,
+    marginal:  marginal,
+    r2: bestOls.r2, slope: bestOls.slope, intercept: bestOls.intercept,
+    passIdx: bestPassIdx, passLabel: bestPassLabel, passDate: bestPassDate,
+    n: bestAllPts.length, ols: bestOls
+  }
+}
+
+// Update ④ CONCLUDE banner and hypothesis stat card using Stage M best-R² pass verdict
+function updateConcludeFromBestPass_(season) {
+  var result = computeBestPassHypothesis_(season)
+  var banner = document.getElementById('banner')
+  if (!banner) return
+
+  if (!result || result.n < 3) {
+    banner.textContent = '⚠ Insufficient pass data — try a different season or year set'
+    banner.className   = 'banner banner-no'
+    setBadge_('concludeBadge', '⚠')
+    var sv = document.getElementById('hypothesisStatVal')
+    if (sv) sv.textContent = 'NO'
+    return
+  }
+
+  var r2Str    = result.r2.toFixed(3)
+  var slopeStr = result.slope.toFixed(4)
+  if (result.confirmed) {
+    banner.textContent = '✓ Hypothesis confirmed — best pass ' + result.passLabel + ', β₁=' + slopeStr + ', R²=' + r2Str + ' (n=' + result.n + ')'
+    banner.className   = 'banner banner-yes'
+    setBadge_('concludeBadge', 'R²=' + r2Str + ' ✓')
+    var sv = document.getElementById('hypothesisStatVal')
+    if (sv) sv.textContent = 'YES'
+  } else if (result.marginal) {
+    banner.textContent = '⚠ Hypothesis marginal — best pass ' + result.passLabel + ', β₁=' + slopeStr + ', R²=' + r2Str + ' (n=' + result.n + ')'
+    banner.className   = 'banner banner-no'
+    setBadge_('concludeBadge', 'R²=' + r2Str + ' ~')
+    var sv = document.getElementById('hypothesisStatVal')
+    if (sv) sv.textContent = 'MARG'
+  } else {
+    banner.textContent = '⚠ Hypothesis not confirmed — best pass ' + result.passLabel + ', β₁=' + slopeStr + ', R²=' + r2Str + ' (n=' + result.n + ')'
+    banner.className   = 'banner banner-no'
+    setBadge_('concludeBadge', 'R²=' + r2Str + ' ✗')
+    var sv = document.getElementById('hypothesisStatVal')
+    if (sv) sv.textContent = 'NO'
+  }
+}
+</script>
+
 <div id="results-fs-container">
   <div id="results-fs-map"></div>
   <div id="results-fs-topbar">
@@ -4658,6 +6753,7 @@ async function autoRunPipeline_() {
     <div style="display:flex;gap:6px;align-items:center;margin-left:12px;flex-wrap:wrap">
       <button id="scatterTabBins-fs" class="cmp-tab active" onclick="setScatterViewMode_('bins')" style="font-size:11px;padding:3px 10px">Zone means</button>
       <button id="scatterTabPx-fs"   class="cmp-tab"        onclick="setScatterViewMode_('pixels')" style="font-size:11px;padding:3px 10px">All pixels</button>
+      <button id="scatterTabStageI-fs" class="cmp-tab"      onclick="setScatterViewMode_('stagei')" style="font-size:11px;padding:3px 10px">Per-year (I)</button>
       <label id="outlierToggleWrap-fs" style="display:flex;align-items:center;gap:4px;font-size:11px;color:#9FE1CB;cursor:pointer;margin-left:6px">
         <input type="checkbox" id="outlierToggleFs" checked onchange="renderScatterFsActive_()" style="cursor:pointer">Filter outliers (IQR)</label>
       <span style="color:#3e7a6a;margin:0 4px">|</span>
@@ -4670,6 +6766,12 @@ async function autoRunPipeline_() {
   </div>
   <div id="seasonFetchStatus-fs" style="text-align:center;font-size:11px;color:#F5A623;padding:4px 0;display:none"></div>
   <div class="chart-fs-body"><canvas id="shpiCpiScatter-fs"></canvas></div>
+  <!-- Stage I per-year scatter grid (shown only in stagei mode) -->
+  <div id="stageIFsGrid" style="display:none;padding:12px;overflow-y:auto;flex:1;flex-direction:column">
+    <div id="stageIFsBanner" style="font-size:12px;color:#9FE1CB;text-align:center;margin-bottom:10px;padding:4px;border-radius:3px"></div>
+    <div id="stageIFsYearGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;align-content:start"></div>
+    <div id="stageIFsRhoTable" style="font-size:11px;color:#9FE1CB;margin-top:10px;padding:8px;background:rgba(0,0,0,0.3);border-radius:4px;flex-shrink:0"></div>
+  </div>
   <div id="scatterEq-fs" style="text-align:center;font-size:11px;color:#9FE1CB;padding-top:4px"></div>
   <div id="corrSummary-fs" style="margin:3px 0 2px;font-size:11px;color:#9FE1CB;text-align:center"></div>
   <div id="scatterOutlierNote-fs" style="text-align:center;font-size:10px;color:#6FA898;padding-bottom:16px"></div>
@@ -4695,8 +6797,48 @@ async function autoRunPipeline_() {
     <button class="rm-ctrl-btn" onclick="closeLibTableFs_()">✕ Close</button>
   </div>
   <div style="padding:16px;overflow:auto;flex:1">
-    <table class="cmp-table" id="roiMergedTableFs"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>ρ</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBodyFs"></tbody></table>
+    <table class="cmp-table" id="roiMergedTableFs"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBodyFs"></tbody></table>
   </div>
+</div>
+<!-- Crop TS fullscreen -->
+<div id="chartFs-tsChart" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">Crop index timeline</span>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('tsChart')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="tsChart-fs"></canvas></div>
+</div>
+<!-- Soil TS fullscreen -->
+<div id="chartFs-soilTsChart" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">Soil index timeline</span>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('soilTsChart')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="soilTsChart-fs"></canvas></div>
+</div>
+<!-- CPI Passes fullscreen -->
+<div id="chartFs-cpiPassesChart" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">📅 Per-pixel CPI trajectory</span>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('cpiPassesChart')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="cpiPassesChart-fs"></canvas></div>
+</div>
+<!-- SHPI Passes fullscreen -->
+<div id="chartFs-shpiPassesChart" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">📅 Per-pixel SHPI trajectory</span>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('shpiPassesChart')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="shpiPassesChart-fs"></canvas></div>
+</div>
+<!-- Ratio fullscreen -->
+<div id="chartFs-ratioChart" class="chart-fs-overlay">
+  <div class="chart-fs-topbar">
+    <span class="chart-fs-title">📊 CPI/(CPI+SHPI) ratio over passes</span>
+    <button class="rm-ctrl-btn" onclick="closeChartFs_('ratioChart')">✕ Close</button>
+  </div>
+  <div class="chart-fs-body"><canvas id="ratioChart-fs"></canvas></div>
 </div>
 </body>
 </html>

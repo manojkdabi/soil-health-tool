@@ -1,5 +1,5 @@
 // ============================================================
-// Soil Health Stratification Tool — Apps Script Backend BE1.8.0
+// Soil Health Stratification Tool — Apps Script Backend BE2.0.0
 // Treeconomy Soil Intelligence Division
 // All strings use single quotes and + concatenation. No backticks.
 // ============================================================
@@ -522,17 +522,18 @@ function buildFallowShpiEvalscript_(season) {
     '}';
 }
 
-function fetchFallowShpiRaster_(bbox, season, yearStart, yearEnd, token) {
+function fetchFallowShpiRaster_(bbox, season, yearStart, yearEnd, token, resOpt) {
   try {
     var from = yearStart + '-01-01T00:00:00Z';
     var to   = yearEnd   + '-12-31T23:59:59Z';
     var lngSpan = bbox[2] - bbox[0];
     var latSpan = bbox[3] - bbox[1];
+    var res = resOpt || 512;
     var W, H;
     if (lngSpan >= latSpan) {
-      W = 512; H = Math.max(1, Math.round(512 * latSpan / lngSpan));
+      W = res; H = Math.max(1, Math.round(res * latSpan / lngSpan));
     } else {
-      H = 512; W = Math.max(1, Math.round(512 * lngSpan / latSpan));
+      H = res; W = Math.max(1, Math.round(res * lngSpan / latSpan));
     }
     var payload = {
       input: {
@@ -574,6 +575,31 @@ function getFallowShpiRaster(params) {
     return { success: true, img64: img64 };
   } catch(e) {
     Logger.log('getFallowShpiRaster error: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ── I1: Per-year fallow SHPI + season CPI rasters ───────────────────────────
+// Fetches one fallow-SHPI raster and one season-CPI raster per requested year.
+// params: { geojson, season ('kharif'|'rabi'), years: [2020, 2021, ...] }
+// Returns { success, years: [{year, shpiB64, cpiB64}, ...] }
+// Each raster is fetched for the single calendar year (same evalscripts as existing paths).
+function getPerYearRasters(params) {
+  try {
+    var token  = getToken_();
+    var bbox   = getBbox_(params.geojson);
+    var season = params.season || 'kharif';
+    var years  = params.years  || [];
+    var results = [];
+    for (var i = 0; i < years.length; i++) {
+      var yr = parseInt(years[i], 10);
+      var shpiB64 = fetchFallowShpiRaster_(bbox, season, yr, yr, token, 64);
+      var cpiB64  = fetchSeasonCpiRaster_(bbox, season, yr, yr, token, 64);
+      results.push({ year: yr, shpiB64: shpiB64 || null, cpiB64: cpiB64 || null });
+    }
+    return { success: true, years: results };
+  } catch(e) {
+    Logger.log('getPerYearRasters error: ' + e.message);
     return { success: false, error: e.message };
   }
 }
@@ -632,17 +658,18 @@ function buildSeasonCpiEvalscript_(season) {
     '}';
 }
 
-function fetchSeasonCpiRaster_(bbox, season, yearStart, yearEnd, token) {
+function fetchSeasonCpiRaster_(bbox, season, yearStart, yearEnd, token, resOpt) {
   try {
     var from = yearStart + '-01-01T00:00:00Z';
     var to   = yearEnd   + '-12-31T23:59:59Z';
     var lngSpan = bbox[2] - bbox[0];
     var latSpan = bbox[3] - bbox[1];
+    var res = resOpt || 512;
     var W, H;
     if (lngSpan >= latSpan) {
-      W = 512; H = Math.max(1, Math.round(512 * latSpan / lngSpan));
+      W = res; H = Math.max(1, Math.round(res * latSpan / lngSpan));
     } else {
-      H = 512; W = Math.max(1, Math.round(512 * lngSpan / latSpan));
+      H = res; W = Math.max(1, Math.round(res * lngSpan / latSpan));
     }
     var payload = {
       input: {
@@ -714,6 +741,386 @@ function saveToSheet(data) {
     ]);
     return { success: true };
   } catch(e) {
+    return { success: false, error: e.message };
+  }
+}
+
+// ── Stage K: Biweekly NDVI rasters for NDVI-AUC per pixel ──────────────────
+// Evalscript: best-NDVI pixel per biweekly window (SCL cloud-masked).
+// R = NDVI×254 (best cloud-free NDVI); A = 1 (valid), 0 (all cloudy).
+function buildWeeklyNdviEvalscript_() {
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{input:[{bands:["B04","B08","SCL","dataMask"]}],\n' +
+    '         output:{bands:4,sampleType:"UINT8"},mosaicking:"ORBIT"};\n' +
+    '}\n' +
+    'function evaluatePixel(samples){\n' +
+    '  var best=-1;\n' +
+    '  for(var i=0;i<samples.length;i++){\n' +
+    '    var s=samples[i];\n' +
+    '    if(!s.dataMask) continue;\n' +
+    '    var scl=s.SCL;\n' +
+    '    if(scl===1||scl===2||scl===3||scl===8||scl===9||scl===10||scl===11) continue;\n' +
+    '    var nd=(s.B08-s.B04)/(s.B08+s.B04+1e-6);\n' +
+    '    if(nd>best) best=nd;\n' +
+    '  }\n' +
+    '  if(best<0) return[0,0,0,0];\n' +
+    '  return[Math.min(254,Math.round(Math.max(0,best)*254)),0,0,1];\n' +
+    '}';
+}
+
+// Fetch one biweekly NDVI raster. Returns base64-encoded RGBA PNG or null.
+function fetchWeeklyNdviRaster_(bbox, fromStr, toStr, W, H, evalscript, token) {
+  try {
+    var payload = {
+      input: {
+        bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
+        data: [{ dataFilter: { timeRange: { from: fromStr, to: toStr } }, type: 'sentinel-2-l2a' }]
+      },
+      output: {
+        width: W, height: H,
+        responses: [{ identifier: 'default', format: { type: 'image/png' } }]
+      },
+      evalscript: evalscript
+    };
+    var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() !== 200) return null;
+    return Utilities.base64Encode(resp.getContent());
+  } catch(e) {
+    Logger.log('fetchWeeklyNdviRaster_ error: ' + e.message);
+    return null;
+  }
+}
+
+// ── Stage K public: fetch biweekly NDVI rasters for each retained year ────────
+// params: { geojson, season ('kharif'|'rabi'), years: [2020, 2021, ...] }
+// Returns: { success, years: [{year, weeks: [{label, startDate, endDate, ndviB64}, ...]}] }
+// Named 'CpiRasters' for API symmetry with getPerYearRasters — the rasters contain
+// per-pixel NDVI (best cloud-free pass per 14-day window) used to compute NDVI-AUC,
+// which replaces mean CPI as the y-axis in the Stage K scatter.
+// 14-day windows → ~10–11 fetches per year; fits within 6-min GAS execution limit.
+function getWeeklyCpiRasters(params) {
+  try {
+    var token  = getToken_();
+    var bbox   = getBbox_(params.geojson);
+    var season = params.season || 'kharif';
+    var years  = params.years  || [];
+    var lngSpan = bbox[2] - bbox[0];
+    var latSpan = bbox[3] - bbox[1];
+    var W, H;
+    if (lngSpan >= latSpan) {
+      W = 64; H = Math.max(1, Math.round(64 * latSpan / lngSpan));
+    } else {
+      H = 64; W = Math.max(1, Math.round(64 * lngSpan / latSpan));
+    }
+    var evalscript = buildWeeklyNdviEvalscript_();
+    var results = [];
+    for (var yi = 0; yi < years.length; yi++) {
+      var yr = parseInt(years[yi], 10);
+      var cur, end;
+      if (season === 'kharif') {
+        cur = new Date(Date.UTC(yr, 5, 1));      // Jun 1
+        end = new Date(Date.UTC(yr, 9, 31));     // Oct 31
+      } else {
+        cur = new Date(Date.UTC(yr, 10, 1));     // Nov 1
+        end = new Date(Date.UTC(yr + 1, 2, 31)); // Mar 31 next year
+      }
+      var weeks = [];
+      while (cur <= end) {
+        var winEnd = new Date(cur.getTime() + 13 * 86400000); // 14-day window
+        if (winEnd > end) winEnd = new Date(end);
+        var fromStr = cur.toISOString().substring(0, 10) + 'T00:00:00Z';
+        var toStr   = winEnd.toISOString().substring(0, 10) + 'T23:59:59Z';
+        var label   = cur.toISOString().substring(5, 10); // MM-DD
+        var ndviB64 = fetchWeeklyNdviRaster_(bbox, fromStr, toStr, W, H, evalscript, token);
+        weeks.push({ label: label, startDate: fromStr.substring(0, 10), endDate: toStr.substring(0, 10), ndviB64: ndviB64 || null });
+        cur = new Date(cur.getTime() + 14 * 86400000);
+        if (cur <= end) Utilities.sleep(300);
+      }
+      results.push({ year: yr, weeks: weeks });
+    }
+    return { success: true, years: results };
+  } catch(e) {
+    Logger.log('getWeeklyCpiRasters error: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ── Tile Proxy for Browse Imagery (Stage G GAS proxy) ─────────
+// Returns Sentinel-2 true-colour PNG (base64) for the given
+// bbox + date range using existing CDS credentials — no
+// Instance ID or WMS configuration needed by the user.
+function serveTile(params) {
+  try {
+    var token    = getToken_();
+    var bbox     = params.bbox;        // [west, south, east, north] WGS84
+    var fromDate = params.startDate + 'T00:00:00Z';
+    var toDate   = params.endDate   + 'T23:59:59Z';
+    var lngSpan  = bbox[2] - bbox[0];
+    var latSpan  = bbox[3] - bbox[1];
+    var W, H;
+    if (lngSpan >= latSpan) {
+      W = 512; H = Math.max(1, Math.round(512 * latSpan / lngSpan));
+    } else {
+      H = 512; W = Math.max(1, Math.round(512 * lngSpan / latSpan));
+    }
+    var evalscript =
+      '//VERSION=3\n' +
+      'function setup(){return{\n' +
+      '  input:[{bands:["B02","B03","B04","dataMask"]}],\n' +
+      '  output:{bands:4,sampleType:"UINT8"}\n' +
+      '}}\n' +
+      'function evaluatePixel(s){\n' +
+      '  var r=Math.min(255,Math.round(s.B04*2.5*255));\n' +
+      '  var g=Math.min(255,Math.round(s.B03*2.5*255));\n' +
+      '  var b=Math.min(255,Math.round(s.B02*2.5*255));\n' +
+      '  return[r,g,b,Math.round(s.dataMask*255)];\n' +
+      '}';
+    var payload = {
+      input: {
+        bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
+        data: [{
+          type: 'sentinel-2-l2a',
+          dataFilter: {
+            timeRange: { from: fromDate, to: toDate },
+            maxCloudCoverage: 80,
+            mosaickingOrder: 'leastCC'
+          }
+        }]
+      },
+      output: {
+        width: W, height: H,
+        responses: [{ identifier: 'default', format: { type: 'image/png' } }]
+      },
+      evalscript: evalscript
+    };
+    var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+    Logger.log('serveTile status: ' + resp.getResponseCode());
+    if (resp.getResponseCode() !== 200) {
+      return { success: false, error: 'SH error ' + resp.getResponseCode() + ': ' + resp.getContentText().substring(0, 200) };
+    }
+    return { success: true, png_b64: Utilities.base64Encode(resp.getContent()) };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+}
+
+// ── Stage M: Per-date CPI evalscript (no month filter — caller sets date range) ──────────
+// 7-day window: picks best crop observation per pixel by NIRv rank (highest green canopy day).
+// Outputs: R=0, G=CPI×254, B=0, A=1 if valid crop obs; [0,0,0,0] = no crop pixels.
+// Identical formula to buildSeasonCpiEvalscript_ but without season month gate.
+function buildCropPassEvalscript_() {
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{input:[{bands:["B04","B05","B08","B11","SCL"]}],\n' +
+    '         output:{bands:4,sampleType:"UINT8"},mosaicking:"ORBIT"};\n' +
+    '}\n' +
+    'function evaluatePixel(samples){\n' +
+    '  function div(a,b){return b===0?0:a/b;}\n' +
+    '  function c01(v){return v<0?0:v>1?1:v;}\n' +
+    '  var best=null,bestNirv=-1;\n' +
+    '  for(var i=0;i<samples.length;i++){\n' +
+    '    var s=samples[i];\n' +
+    '    if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10) continue;\n' +
+    '    var ndvi=div(s.B08-s.B04,s.B08+s.B04);\n' +
+    '    if(ndvi<=0.35) continue;\n' +
+    '    var nirv=Math.max(0,ndvi)*s.B08;\n' +
+    '    if(nirv>bestNirv){bestNirv=nirv;best=s;}\n' +
+    '  }\n' +
+    '  if(!best) return[0,0,0,0];\n' +
+    '  var evi2=2.5*div(best.B08-best.B04,best.B08+2.4*best.B04+1);\n' +
+    '  var ndre=div(best.B08-best.B05,best.B08+best.B05);\n' +
+    '  var nirvC=Math.max(0,div(best.B08-best.B04,best.B08+best.B04))*best.B08;\n' +
+    '  var ndmi=div(best.B08-best.B11,best.B08+best.B11);\n' +
+    '  var e2N=c01(evi2/0.80),drN=c01(ndre/0.60),nvN=c01(nirvC/0.40),dmN=c01((ndmi+0.10)/0.60);\n' +
+    '  var cpi=e2N*0.35+drN*0.30+nvN*0.20+dmN*0.15;\n' +
+    '  return[0,Math.round(c01(cpi)*254),0,1];\n' +
+    '}';
+}
+
+// ── Stage M public: all 7-day CPI pass rasters for each retained year ─────────────────────
+// params: { geojson, season ('kharif'|'rabi'), years: [2020, 2021, ...] }
+// Returns: { success, years: [{year, passes: [{date, label, cpiB64}]}] }
+// 7-day windows → ~22 fetches/year for Kharif (Jun–Oct), ~22 for Rabi (Nov–Mar).
+// Fits within 6-min GAS limit for ≤5 years (≤110 fetches × ~1.2 s ≈ 132 s).
+function getAllCropPassRasters(params) {
+  try {
+    var token  = getToken_();
+    var bbox   = getBbox_(params.geojson);
+    var season = params.season || 'kharif';
+    var years  = params.years  || [];
+    var lngSpan = bbox[2] - bbox[0];
+    var latSpan = bbox[3] - bbox[1];
+    var W, H;
+    if (lngSpan >= latSpan) {
+      W = 256; H = Math.max(1, Math.round(256 * latSpan / lngSpan));
+    } else {
+      H = 256; W = Math.max(1, Math.round(256 * lngSpan / latSpan));
+    }
+    var evalscript = buildCropPassEvalscript_();
+    var results = [];
+    for (var yi = 0; yi < years.length; yi++) {
+      var yr  = parseInt(years[yi], 10);
+      var cur, end;
+      if (season === 'kharif') {
+        cur = new Date(Date.UTC(yr, 5,  1));   // Jun 1
+        end = new Date(Date.UTC(yr, 9, 31));   // Oct 31
+      } else {
+        cur = new Date(Date.UTC(yr,  10, 1));  // Nov 1
+        end = new Date(Date.UTC(yr + 1, 2, 31)); // Mar 31 next year
+      }
+      var passes = [];
+      while (cur <= end) {
+        var winEnd  = new Date(cur.getTime() + 6 * 86400000); // 7-day window
+        if (winEnd > end) winEnd = new Date(end);
+        var fromStr = cur.toISOString().substring(0, 10) + 'T00:00:00Z';
+        var toStr   = winEnd.toISOString().substring(0, 10) + 'T23:59:59Z';
+        var label   = cur.toISOString().substring(5, 10); // "MM-DD"
+        var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
+          method: 'post', contentType: 'application/json',
+          headers: { Authorization: 'Bearer ' + token },
+          payload: JSON.stringify({
+            input: {
+              bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
+              data: [{ dataFilter: { timeRange: { from: fromStr, to: toStr }, maxCloudCoverage: 80 }, type: 'sentinel-2-l2a' }]
+            },
+            output: { width: W, height: H,
+                      responses: [{ identifier: 'default', format: { type: 'image/png' } }] },
+            evalscript: evalscript
+          }),
+          muteHttpExceptions: true
+        });
+        passes.push({
+          date:   fromStr.substring(0, 10),
+          label:  label,
+          cpiB64: resp.getResponseCode() === 200 ? Utilities.base64Encode(resp.getContent()) : null
+        });
+        cur = new Date(cur.getTime() + 7 * 86400000);
+        if (cur <= end) Utilities.sleep(250);
+      }
+      results.push({ year: yr, passes: passes });
+    }
+    return { success: true, years: results };
+  } catch(e) {
+    Logger.log('getAllCropPassRasters error: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ── Stage M: Per-date SHPI fallow pass evalscript (no month filter) ───────────────────────
+// 7-day window: takes median of bare-soil observations (matches buildFallowShpiEvalscript_).
+// Outputs: R=SHPI×254, G=0, B=0, A=bareS.length; [0,0,0,0] = no bare-soil pixels.
+function buildFallowPassEvalscript_() {
+  return '//VERSION=3\n' +
+    'function setup(){\n' +
+    '  return{input:[{bands:["B02","B03","B04","B08","B11","B12","SCL"]}],\n' +
+    '         output:{bands:4,sampleType:"UINT8"},mosaicking:"ORBIT"};\n' +
+    '}\n' +
+    'function evaluatePixel(samples){\n' +
+    '  function div(a,b){return b===0?0:a/b;}\n' +
+    '  function c01(v){return v<0?0:v>1?1:v;}\n' +
+    '  function med(a,k){\n' +
+    '    var x=a.map(function(s){return s[k];}).sort(function(a,b){return a-b;});\n' +
+    '    var m=Math.floor(x.length/2);\n' +
+    '    return x.length%2?x[m]:(x[m-1]+x[m])/2;\n' +
+    '  }\n' +
+    '  var bareS=[];\n' +
+    '  for(var i=0;i<samples.length;i++){\n' +
+    '    var s=samples[i];\n' +
+    '    if(s.SCL===3||s.SCL===8||s.SCL===9||s.SCL===10) continue;\n' +
+    '    var ndvi=div(s.B08-s.B04,s.B08+s.B04);\n' +
+    '    var ndmi=div(s.B08-s.B11,s.B08+s.B11);\n' +
+    '    var nirv=Math.max(0,ndvi)*s.B08;\n' +
+    '    if(ndvi<0.2&&ndmi<0.05&&nirv<0.05) bareS.push(s);\n' +
+    '  }\n' +
+    '  if(!bareS.length) return[0,0,0,0];\n' +
+    '  var b2=med(bareS,"B02"),b3=med(bareS,"B03"),b4=med(bareS,"B04");\n' +
+    '  var b8=med(bareS,"B08"),b11=med(bareS,"B11"),b12=med(bareS,"B12");\n' +
+    '  var sab=(b2+b3+b4)/3.0;\n' +
+    '  var claySI=div(b11-b12,b11+b12);\n' +
+    '  var ri2=div(b4-b2,b4+b2);\n' +
+    '  var smi=div(b8-b11,b8+b11);\n' +
+    '  var sabN   =c01((sab   -0.03)/0.17);\n' +
+    '  var claySIN=c01((claySI+0.10)/0.20);\n' +
+    '  var ri2N   =c01((ri2   +0.05)/0.20);\n' +
+    '  var smiN   =c01((smi   +0.20)/0.50);\n' +
+    '  var shpi=(1-sabN)*0.35+claySIN*0.30+ri2N*0.20+smiN*0.15;\n' +
+    '  return[Math.round(c01(shpi)*254),0,0,Math.min(254,bareS.length)];\n' +
+    '}';
+}
+
+// ── Stage M public: all 7-day fallow SHPI pass rasters for each retained year ────────────
+// params: { geojson, season ('kharif'|'rabi'), years: [2020, 2021, ...] }
+// Returns: { success, years: [{year, passes: [{date, label, shpiB64}]}] }
+// Fallow windows: pre-Kharif = Feb 1–May 31, pre-Rabi = Oct 1–Nov 30.
+function getAllFallowPassRasters(params) {
+  try {
+    var token  = getToken_();
+    var bbox   = getBbox_(params.geojson);
+    var season = params.season || 'kharif';
+    var years  = params.years  || [];
+    var lngSpan = bbox[2] - bbox[0];
+    var latSpan = bbox[3] - bbox[1];
+    var W, H;
+    if (lngSpan >= latSpan) {
+      W = 256; H = Math.max(1, Math.round(256 * latSpan / lngSpan));
+    } else {
+      H = 256; W = Math.max(1, Math.round(256 * lngSpan / latSpan));
+    }
+    var evalscript = buildFallowPassEvalscript_();
+    var results = [];
+    for (var yi = 0; yi < years.length; yi++) {
+      var yr  = parseInt(years[yi], 10);
+      var cur, end;
+      if (season === 'kharif') {
+        cur = new Date(Date.UTC(yr, 1,  1));   // Feb 1  (pre-Kharif fallow)
+        end = new Date(Date.UTC(yr, 4, 31));   // May 31
+      } else {
+        cur = new Date(Date.UTC(yr, 9,  1));   // Oct 1  (pre-Rabi fallow)
+        end = new Date(Date.UTC(yr, 10, 30));  // Nov 30
+      }
+      var passes = [];
+      while (cur <= end) {
+        var winEnd  = new Date(cur.getTime() + 6 * 86400000); // 7-day window
+        if (winEnd > end) winEnd = new Date(end);
+        var fromStr = cur.toISOString().substring(0, 10) + 'T00:00:00Z';
+        var toStr   = winEnd.toISOString().substring(0, 10) + 'T23:59:59Z';
+        var label   = cur.toISOString().substring(5, 10); // "MM-DD"
+        var resp = UrlFetchApp.fetch(SH_PROCESS_URL, {
+          method: 'post', contentType: 'application/json',
+          headers: { Authorization: 'Bearer ' + token },
+          payload: JSON.stringify({
+            input: {
+              bounds: { bbox: bbox, properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' } },
+              data: [{ dataFilter: { timeRange: { from: fromStr, to: toStr }, maxCloudCoverage: 80 }, type: 'sentinel-2-l2a' }]
+            },
+            output: { width: W, height: H,
+                      responses: [{ identifier: 'default', format: { type: 'image/png' } }] },
+            evalscript: evalscript
+          }),
+          muteHttpExceptions: true
+        });
+        passes.push({
+          date:    fromStr.substring(0, 10),
+          label:   label,
+          shpiB64: resp.getResponseCode() === 200 ? Utilities.base64Encode(resp.getContent()) : null
+        });
+        cur = new Date(cur.getTime() + 7 * 86400000);
+        if (cur <= end) Utilities.sleep(250);
+      }
+      results.push({ year: yr, passes: passes });
+    }
+    return { success: true, years: results };
+  } catch(e) {
+    Logger.log('getAllFallowPassRasters error: ' + e.message);
     return { success: false, error: e.message };
   }
 }
