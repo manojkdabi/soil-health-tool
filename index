@@ -228,7 +228,7 @@ canvas{display:block}
 .pass-cell:hover{border-color:#F5A623;background:#1e3d30}
 .pass-cell.pass-best{border:2px solid #F5A623;background:#1e3d1a}
 .pass-cell-label{font-size:8px;color:#9FE1CB;text-align:center;margin-top:2px;white-space:nowrap}
-.pass-cell-rho{font-size:8px;font-weight:700;text-align:center;margin-top:1px}
+.pass-cell-r2{font-size:8px;font-weight:700;text-align:center;margin-top:1px}
 </style>
 </head>
 <body>
@@ -269,7 +269,7 @@ canvas{display:block}
         <span id="libToggleIcon" style="font-size:10px">▼</span>
       </h3>
       <div id="libList">
-        <div style="overflow-x:auto"><table class="cmp-table" id="roiMergedTable"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>ρ</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBody"></tbody></table></div>
+        <div style="overflow-x:auto"><table class="cmp-table" id="roiMergedTable"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBody"></tbody></table></div>
       </div>
     </div>
 
@@ -612,8 +612,8 @@ canvas{display:block}
             <button class="chart-expand-btn" onclick="openChartFs_('stageMScatterFs')" title="Fullscreen">⛶</button>
           </div>
           <div id="stageMGridCells" style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px"></div>
-          <!-- ρ vs date summary curve -->
-          <div style="font-size:9px;color:#9FE1CB;font-weight:600;margin-bottom:2px">ρ vs calendar date</div>
+          <!-- R² vs date summary curve -->
+          <div style="font-size:9px;color:#9FE1CB;font-weight:600;margin-bottom:2px">R² vs calendar date</div>
           <div style="height:80px"><canvas id="stageMRhoCurveChart"></canvas></div>
           <div id="stageMRhoLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:2px"></div>
         </div>
@@ -1232,27 +1232,13 @@ function decodeRasterToResult_(rawData, callback) {
       }
     }
 
-    // Spearman ρ on zone means — the meaningful signal (matches scatter plot logic)
+    // OLS regression on zone means — slope β₁ and R² drive exploration chart
     var zoneMeanShpi = zoneStats.map(function(zs) { return zs.mean_shpi })
     var zoneMeanCpi  = zoneStats.map(function(zs) { return zs.mean_cpi })
-    function rankAvgVal_(arr) {
-      var sorted = arr.slice().sort(function(a, b) { return a - b })
-      return arr.map(function(v) {
-        var idx = []
-        sorted.forEach(function(s, i) { if (s === v) idx.push(i + 1) })
-        return idx.reduce(function(a, b) { return a + b }, 0) / idx.length
-      })
-    }
-    var rxz = rankAvgVal_(zoneMeanShpi), ryz = rankAvgVal_(zoneMeanCpi)
-    var nz  = rxz.length
-    var rmxz = rxz.reduce(function(a, b) { return a + b }, 0) / nz
-    var rmyz = ryz.reduce(function(a, b) { return a + b }, 0) / nz
-    var rNumZ = rxz.reduce(function(a, v, i) { return a + (v - rmxz) * (ryz[i] - rmyz) }, 0)
-    var rdxZ  = Math.sqrt(rxz.reduce(function(a, v) { return a + (v - rmxz) * (v - rmxz) }, 0))
-    var rdyZ  = Math.sqrt(ryz.reduce(function(a, v) { return a + (v - rmyz) * (v - rmyz) }, 0))
-    var rho = (rdxZ * rdyZ > 0) ? rNumZ / (rdxZ * rdyZ) : 0
-    rho = Math.round(rho * 1000) / 1000
-    var rho_r2 = Math.round(rho * rho * 1000) / 1000
+    var zonePts      = zoneMeanShpi.map(function(s, i) { return { x: s, y: zoneMeanCpi[i] } })
+    var zoneOls      = olsLine_(zonePts)
+    var zoneR2    = Math.round((zoneOls ? zoneOls.r2 : 0) * 1000) / 1000
+    var zoneSlope = zoneOls ? zoneOls.slope : 0
 
     // mono / ratio describe the ordinal zone pattern
     var mono  = zoneMeanCpi.every(function(v, i) { return i === 0 || v >= zoneMeanCpi[i - 1] })
@@ -1371,14 +1357,10 @@ function decodeRasterToResult_(rawData, callback) {
         valid_crop_pixels: cpiPixels.length
       },
       validation: {
-        spearman_r:      rho,
-        r_squared:       rho_r2,
+        r_squared:       zoneR2,
         is_monotonic:    mono,
         cpi_ratio:       ratio,
-        confirmed:       nBins === 0 ? null
-                       : nBins >= 8 ? (rho > 0.60 && mono)
-                       : nBins >= 4 ? (rho > 0.55)
-                       : (rho > 0.50),
+        confirmed:       nBins === 0 ? null : (zoneSlope > 0 && zoneR2 >= 0.10),
         n_zones:         nBins,
         data_source:     'real',
         shpi_thresholds: cutPoints
@@ -1469,16 +1451,12 @@ function renderResults(data) {
     clipEl.style.display = 'none'
   }
 
-  // Stat cards — use Spearman ρ (zone-level, consistent with scatter) with fallback for old cached results
+  // Stat cards — R² from zone OLS (exploratory; hypothesis driven by Stage M OLS)
   const statGrid = document.getElementById('statGrid')
   statGrid.innerHTML = ''
-  var isNew  = v.spearman_r !== undefined
-  var rhoVal = isNew ? v.spearman_r : v.pearson_r
-  var rhoLbl = isNew ? 'Spearman ρ (zones)' : 'Pearson r'
-  var r2Lbl  = isNew ? 'R² (zones)' : 'R²'
+  var r2Val = v.r_squared !== undefined ? v.r_squared : '—'
   const stats = [
-    { val: rhoVal,  lbl: rhoLbl },
-    { val: v.r_squared,  lbl: r2Lbl },
+    { val: r2Val,  lbl: 'R² (zone means, Phase 1)' },
     { val: v.cpi_ratio ? v.cpi_ratio + 'x' : '—', lbl: 'CPI Hi/Lo zone ratio' },
     { val: '⏳', lbl: 'Hypothesis', id: 'hypothesisStatVal' },
   ]
@@ -2237,7 +2215,7 @@ function renderLibraryPanel_() {
     var dot       = '<span class="roi-color-dot" style="background:' + dotColor + '"></span>'
     var nameCell  = dot + '<span style="cursor:pointer;color:#9FE1CB" onclick="zoomToROI_(\'' + item.id + '\')" title="Zoom to ROI">' + escHtml_(item.name) + '</span>'
 
-    var shpiCell = '—', rCell = '—', r2Cell = '—', ratioCell = '—'
+    var shpiCell = '—', r2Cell = '—', ratioCell = '—'
     if (hasResult) {
       var v  = d.validation
       var z  = d.zone_stats
@@ -2245,7 +2223,6 @@ function renderLibraryPanel_() {
       var sMin = sArr.reduce(function(m, v) { return v < m ? v : m }, Infinity)
       var sMax = sArr.reduce(function(m, v) { return v > m ? v : m }, -Infinity)
       shpiCell  = sMin.toFixed(2) + '–' + sMax.toFixed(2)
-      rCell     = (v.spearman_r !== undefined ? v.spearman_r : v.pearson_r !== undefined ? v.pearson_r : '—')
       r2Cell    = v.r_squared  !== undefined ? v.r_squared  : '—'
       ratioCell = v.cpi_ratio  !== undefined ? v.cpi_ratio + '×' : '—'
     }
@@ -2254,7 +2231,7 @@ function renderLibraryPanel_() {
       (hasResult ? '<button class="lib-btn lib-btn-cached" onclick="viewCachedResult_(\'' + item.id + '\')">📊 Results</button>' : '') +
       '<button class="lib-btn lib-btn-del" onclick="deleteROIFromLibrary_(\'' + item.id + '\')">🗑</button>'
 
-    return '<tr' + active + '><td>' + nameCell + '</td><td>' + item.areaHa + ' ha</td><td>' + date + '</td><td>' + shpiCell + '</td><td>' + rCell + '</td><td>' + r2Cell + '</td><td>' + ratioCell + '</td><td>' + actions + '</td></tr>'
+    return '<tr' + active + '><td>' + nameCell + '</td><td>' + item.areaHa + ' ha</td><td>' + date + '</td><td>' + shpiCell + '</td><td>' + r2Cell + '</td><td>' + ratioCell + '</td><td>' + actions + '</td></tr>'
   }).join('')
 
   var emptyMsg = lib.length === 0 ? '<tr><td colspan="8" style="text-align:center;color:#5a8a6a">No saved ROIs yet</td></tr>' : ''
@@ -2699,39 +2676,14 @@ function renderScatterPlot_(data) {
     'y = ' + reg.slope.toFixed(3) + 'x' + intSign + Math.abs(reg.intercept).toFixed(3) +
     '   R² = ' + reg.r2.toFixed(3) + '  n=' + n + ' zones'
 
-  // Spearman ρ across zone means
+  // OLS annotation on zone means
   ;(function() {
-    if (n < 3) {
-      document.getElementById('corrSummary').textContent = 'n < 3 zones — correlation not computed'
+    if (n < 2) {
+      document.getElementById('corrSummary').textContent = 'n < 2 zones — regression not computed'
       return
     }
-    var scatterX = bPts.map(function(p) { return p.x }), scatterY = bPts.map(function(p) { return p.y })
-    function rankAvg_(arr) {
-      var sorted = arr.slice().sort(function(a, b) { return a - b })
-      return arr.map(function(v) {
-        var idx = []
-        sorted.forEach(function(s, i) { if (s === v) idx.push(i + 1) })
-        return idx.reduce(function(a, b) { return a + b }, 0) / idx.length
-      })
-    }
-    var rx = rankAvg_(scatterX), ry = rankAvg_(scatterY)
-    var rmx = rx.reduce(function(a, b) { return a + b }, 0) / n
-    var rmy = ry.reduce(function(a, b) { return a + b }, 0) / n
-    var rNum = rx.reduce(function(a, v, i) { return a + (v - rmx) * (ry[i] - rmy) }, 0)
-    var rdx = Math.sqrt(rx.reduce(function(a, v) { return a + (v - rmx) * (v - rmx) }, 0))
-    var rdy = Math.sqrt(ry.reduce(function(a, v) { return a + (v - rmy) * (v - rmy) }, 0))
-    var rho = (rdx * rdy > 0) ? rNum / (rdx * rdy) : 0
-    var tStat = rho * Math.sqrt(n - 2) / Math.sqrt(Math.max(1e-15, 1 - rho * rho))
-    function normCdf_(x) {
-      var t2 = 1 / (1 + 0.2316419 * Math.abs(x))
-      var d = 0.3989423 * Math.exp(-x * x / 2)
-      var p = d * t2 * (0.3193815 + t2 * (-0.3565638 + t2 * (1.7814779 + t2 * (-1.8212560 + t2 * 1.3302744))))
-      return x > 0 ? 1 - p : p
-    }
-    var pVal = 2 * normCdf_(-Math.abs(tStat))
-    var pStr = pVal < 0.001 ? 'p < 0.001' : 'p = ' + pVal.toFixed(3)
     document.getElementById('corrSummary').textContent =
-      'Spearman ρ = ' + rho.toFixed(3) + ',  ' + pStr + ',  R² = ' + reg.r2.toFixed(3)
+      'OLS: y = ' + reg.slope.toFixed(3) + 'x + ' + reg.intercept.toFixed(3) + '   R² = ' + reg.r2.toFixed(3) + '  (n=' + n + ' zones, exploratory only)'
   })()
 
   var noteEl = document.getElementById('scatterOutlierNote')
@@ -2821,33 +2773,8 @@ function renderScatterPlotFs_(data) {
     ;(function() {
       var csEl = document.getElementById('corrSummary-fs')
       if (!csEl) return
-      if (n < 3) { csEl.textContent = 'n < 3 zones — correlation not computed'; return }
-      var scatterX = bPts.map(function(p) { return p.x }), scatterY = bPts.map(function(p) { return p.y })
-      function rankAvg_(arr) {
-        var sorted = arr.slice().sort(function(a, b) { return a - b })
-        return arr.map(function(v) {
-          var idx = []
-          sorted.forEach(function(s, i) { if (s === v) idx.push(i + 1) })
-          return idx.reduce(function(a, b) { return a + b }, 0) / idx.length
-        })
-      }
-      var rx = rankAvg_(scatterX), ry = rankAvg_(scatterY)
-      var rmx = rx.reduce(function(a, b) { return a + b }, 0) / n
-      var rmy = ry.reduce(function(a, b) { return a + b }, 0) / n
-      var rNum = rx.reduce(function(a, v, i) { return a + (v - rmx) * (ry[i] - rmy) }, 0)
-      var rdx = Math.sqrt(rx.reduce(function(a, v) { return a + (v - rmx) * (v - rmx) }, 0))
-      var rdy = Math.sqrt(ry.reduce(function(a, v) { return a + (v - rmy) * (v - rmy) }, 0))
-      var rho = (rdx * rdy > 0) ? rNum / (rdx * rdy) : 0
-      var tStat = rho * Math.sqrt(n - 2) / Math.sqrt(Math.max(1e-15, 1 - rho * rho))
-      function normCdf_(x) {
-        var t2 = 1 / (1 + 0.2316419 * Math.abs(x))
-        var d = 0.3989423 * Math.exp(-x * x / 2)
-        var p = d * t2 * (0.3193815 + t2 * (-0.3565638 + t2 * (1.7814779 + t2 * (-1.8212560 + t2 * 1.3302744))))
-        return x > 0 ? 1 - p : p
-      }
-      var pVal = 2 * normCdf_(-Math.abs(tStat))
-      var pStr = pVal < 0.001 ? 'p < 0.001' : 'p = ' + pVal.toFixed(3)
-      csEl.textContent = 'Spearman ρ = ' + rho.toFixed(3) + ',  ' + pStr + ',  R² = ' + reg.r2.toFixed(3)
+      if (n < 2) { csEl.textContent = 'n < 2 zones — regression not computed'; return }
+      csEl.textContent = 'OLS: y = ' + reg.slope.toFixed(3) + 'x + ' + reg.intercept.toFixed(3) + '   R² = ' + reg.r2.toFixed(3) + '  (n=' + n + ' zones, exploratory only)'
     })()
 
     var noteEl = document.getElementById('scatterOutlierNote-fs')
@@ -4081,7 +4008,7 @@ let perYearRastersCache = {}   // { 'kharif': { year: { shpi:Float32Array, cpi:F
 let stageIResult        = null // latest Stage I output (set by runStageI_)
 
 // ── Stage K globals ────────────────────────────────────────────────────────
-let stageKResult  = null  // { season, perYearAucPairs, perYearRhoAuc, pooledAucPairs, validationAuc }
+let stageKResult  = null  // { season, perYearAucPairs, perYearR2Auc, pooledAucPairs, validationAuc }
 let stageKCache   = {}    // { 'kharif': { year: Float32Array(aucArr) }, ... }
 let stageKMode    = 'cpi' // 'cpi' | 'auc' — current display mode in ③b scatter
 
@@ -4095,9 +4022,9 @@ let cropPassPixels   = {}
 let fallowPassPixels = {}
 // refShpiPassMap[season][year] = {idx, date, label, pixels} — min field-sum fallow pass (ref SHPI)
 let refShpiPassMap   = {}
-// ρ per pass for each year: stageMRhoMap[season][year] = [{date, label, rho}]
-let stageMRhoMap     = {}
-let stageMRhoCurveInst  = null  // Chart.js ρ-curve instance
+// OLS per pass for each year: stageMOlsMap[season][year] = [{date, label, r2, slope, intercept, n}]
+let stageMOlsMap     = {}
+let stageMOlsCurveInst  = null  // Chart.js R²-curve instance
 let cpiPassesChartInst  = null  // Chart.js per-pixel CPI trajectory instance
 let shpiPassesChartInst = null  // Chart.js per-pixel SHPI trajectory instance
 let stageMSeason     = 'kharif' // currently selected season in ③e
@@ -4861,36 +4788,26 @@ async function autoRunPipeline_() {
 <!-- ── Stage I: Per-year spatial filter ──────────────────────────────────── -->
 <script>
 
-// ── I-helper: Spearman ρ between two equal-length numeric arrays ─────────────
-function spearmanRhoArr_(xs, ys) {
+// ── I-helper: OLS linear regression on arrays ────────────────────────────────
+// Returns { slope, intercept, r2 } or null for n < 2.
+function olsArr_(xs, ys) {
   var n = xs.length
-  if (n < 3) return 0
-  // O(n log n) rank averaging — sort (value, originalIndex) pairs, assign average rank to ties
-  function rankAvg(arr) {
-    var indexed = new Array(n)
-    for (var ki = 0; ki < n; ki++) indexed[ki] = [arr[ki], ki]
-    indexed.sort(function(a, b) { return a[0] - b[0] })
-    var ranks = new Array(n)
-    var si = 0
-    while (si < n) {
-      var ei = si
-      while (ei < n - 1 && indexed[ei + 1][0] === indexed[ei][0]) ei++
-      var avgRank = (si + ei + 2) / 2  // midpoint of 1-based range [si+1 .. ei+1]
-      for (var ki = si; ki <= ei; ki++) ranks[indexed[ki][1]] = avgRank
-      si = ei + 1
-    }
-    return ranks
+  if (n < 2) return null
+  var xm = 0, ym = 0
+  for (var i = 0; i < n; i++) { xm += xs[i]; ym += ys[i] }
+  xm /= n; ym /= n
+  var ssx = 0, sxy = 0
+  for (var i = 0; i < n; i++) { var dx = xs[i] - xm; ssx += dx * dx; sxy += dx * (ys[i] - ym) }
+  if (ssx === 0) return null
+  var slope = sxy / ssx
+  var intercept = ym - slope * xm
+  var ssRes = 0, ssTot = 0
+  for (var j = 0; j < n; j++) {
+    var r = ys[j] - (slope * xs[j] + intercept); ssRes += r * r
+    var t = ys[j] - ym; ssTot += t * t
   }
-  var rx = rankAvg(xs), ry = rankAvg(ys)
-  var rmx = 0, rmy = 0
-  for (var mi = 0; mi < n; mi++) { rmx += rx[mi]; rmy += ry[mi] }
-  rmx /= n; rmy /= n
-  var num = 0, dx2 = 0, dy2 = 0
-  for (var mi = 0; mi < n; mi++) {
-    var drx = rx[mi] - rmx, dry = ry[mi] - rmy
-    num += drx * dry; dx2 += drx * drx; dy2 += dry * dry
-  }
-  return (dx2 * dy2 > 0) ? num / Math.sqrt(dx2 * dy2) : 0
+  var r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0
+  return { slope: Math.round(slope * 10000) / 10000, intercept: Math.round(intercept * 10000) / 10000, r2: Math.round(r2 * 10000) / 10000 }
 }
 
 // ── I-helper: Decode a per-year PNG pair from Stage I API response ────────────
@@ -4971,60 +4888,36 @@ function buildPerYearPixelPairs_(yearData, geojson, bbox) {
   return pairs
 }
 
-// ── I2: Compute per-year Spearman ρ from pixel pairs ─────────────────────────
+// ── I2: Compute per-year OLS R² from pixel pairs ─────────────────────────────
 // perYearPairs: { year: [{shpi, cpi}, ...] }
-// Returns { year: rho, ... }
-function computePerYearRho_(perYearPairs) {
-  var rhoMap = {}
+// Returns { year: r2 (number|null), ... }
+function computePerYearR2_(perYearPairs) {
+  var r2Map = {}
   Object.keys(perYearPairs).forEach(function(yr) {
     var pairs = perYearPairs[yr]
-    if (pairs.length < 3) { rhoMap[yr] = null; return }
+    if (pairs.length < 3) { r2Map[yr] = null; return }
     var xs = pairs.map(function(p) { return p.shpi })
     var ys = pairs.map(function(p) { return p.cpi })
-    rhoMap[yr] = Math.round(spearmanRhoArr_(xs, ys) * 10000) / 10000
+    var res = olsArr_(xs, ys)
+    r2Map[yr] = res ? res.r2 : null
   })
-  return rhoMap
+  return r2Map
 }
 
-// ── I3: Tukey fence on per-year Spearman ρ values ────────────────────────────
-// rhoMap: { year: rho (number|null) }
-// Returns { retained: [year, ...], rejected: [{year, rho, side, lo, hi}, ...] }
-function stageIRhoTukey_(rhoMap) {
-  var validYears = Object.keys(rhoMap).filter(function(yr) { return rhoMap[yr] !== null })
-  if (validYears.length < 4) return { retained: validYears, rejected: [] }
-  var vals = validYears.map(function(yr) { return rhoMap[yr] })
-  var sorted = vals.slice().sort(function(a, b) { return a - b })
-  function pct(arr, p) {
-    var idx = Math.ceil(p / 100 * arr.length) - 1
-    return arr[Math.max(0, Math.min(idx, arr.length - 1))]
-  }
-  var Q1 = pct(sorted, 25), Q3 = pct(sorted, 75), IQR = Q3 - Q1
-  var lo, hi
-  if (IQR === 0) {
-    var mean = vals.reduce(function(s, v) { return s + v }, 0) / vals.length
-    var std  = Math.sqrt(vals.reduce(function(s, v) { return s + (v - mean) * (v - mean) }, 0) / (vals.length - 1))
-    lo = mean - 1.5 * std; hi = mean + 1.5 * std
-  } else {
-    lo = Q1 - 1.5 * IQR; hi = Q3 + 1.5 * IQR
-  }
-  var retained = [], rejected = []
-  validYears.forEach(function(yr) {
-    var r = rhoMap[yr]
-    if (r >= lo && r <= hi) {
-      retained.push(yr)
-    } else {
-      rejected.push({ year: yr, rho: r, lo: lo, hi: hi, side: r < lo ? 'below' : 'above' })
-    }
-  })
-  return { retained: retained, rejected: rejected, lo: lo, hi: hi }
+// ── I3: All fetched years are retained — researcher controls inclusion via chips ─
+// r2Map: { year: r2 (number|null) }
+// Returns { retained: [year, ...], rejected: [] }
+function stageIRetainAll_(r2Map) {
+  var allYears = Object.keys(r2Map).filter(function(yr) { return r2Map[yr] !== null })
+  return { retained: allYears, rejected: [] }
 }
 
-// ── I5: Run F1/F2 adaptive binning + hypothesis on pooled per-year pairs ──────
+// ── I5: Run adaptive binning + OLS hypothesis on pooled per-year pairs ────────
 // pooledPairs: [{shpi, cpi}, ...] from all retained years
 // Returns validation object (same shape as decodeRasterToResult_ validation block)
 function stageIAdaptiveBins_(pooledPairs) {
   if (pooledPairs.length < 6) {
-    return { confirmed: null, n_zones: 0, spearman_r: 0, r_squared: 0, is_monotonic: false,
+    return { confirmed: null, n_zones: 0, r_squared: 0, is_monotonic: false,
              cpi_ratio: null, shpi_thresholds: [], data_source: 'stage_i' }
   }
   // F1: nBins = floor(n/3) — 3 pairs per bin is the minimum for a meaningful bin mean; capped [2,10]
@@ -5042,20 +4935,18 @@ function stageIAdaptiveBins_(pooledPairs) {
   function mean(arr, k) { return arr.length ? arr.reduce(function(s, p) { return s + p[k] }, 0) / arr.length : 0 }
   var binMeansShpi = bins.map(function(b) { return mean(b, 'shpi') })
   var binMeansCpi  = bins.map(function(b) { return mean(b, 'cpi') })
-  // Spearman ρ on bin means
-  var rho = spearmanRhoArr_(binMeansShpi, binMeansCpi)
-  rho = Math.round(rho * 1000) / 1000
+  // OLS on bin means for exploratory chart (③d ZONE MEANS)
+  var binOls = olsArr_(binMeansShpi, binMeansCpi)
+  var binR2    = binOls ? binOls.r2 : 0
+  var binSlope = binOls ? binOls.slope : 0
   var mono = binMeansCpi.every(function(v, i) { return i === 0 || v >= binMeansCpi[i - 1] })
   // CPI ratio: lowest to highest bin; guard against near-zero denominator (< 0.01 = bare soil / no crop)
   var ratio = (nBins >= 2 && binMeansCpi[0] > 0.01)
     ? Math.round(binMeansCpi[nBins - 1] / binMeansCpi[0] * 100) / 100 : null
-  // F2: relaxed confirmation thresholds — lower nBins = fewer data points = stricter rho-only test
-  var confirmed = nBins === 0 ? null
-    : nBins >= 8 ? (rho > 0.60 && mono)   // enough bins for monotone + rho test
-    : nBins >= 4 ? (rho > 0.55)            // moderate bins: rho-only
-    : (rho > 0.50)                         // sparse bins: minimal rho threshold
+  // Confirmation: positive slope AND R² ≥ 0.10 on bin means (exploratory only; hypothesis driven by Stage M OLS)
+  var confirmed = nBins === 0 ? null : (binSlope > 0 && binR2 >= 0.10)
   return {
-    confirmed: confirmed, n_zones: nBins, spearman_r: rho, r_squared: Math.round(rho * rho * 1000) / 1000,
+    confirmed: confirmed, n_zones: nBins, r_squared: binR2,
     is_monotonic: mono, cpi_ratio: ratio, shpi_thresholds: cuts, data_source: 'stage_i',
     bin_means_shpi: binMeansShpi, bin_means_cpi: binMeansCpi
   }
@@ -5123,25 +5014,25 @@ async function runStageI_(season, years) {
     }
   }
 
-  // I2: per-year Spearman ρ
-  var perYearRho = computePerYearRho_(perYearPairs)
+  // I2: per-year OLS R²
+  var perYearR2 = computePerYearR2_(perYearPairs)
 
-  // I3: Tukey fence on ρ_y
-  var tukey = stageIRhoTukey_(perYearRho)
+  // I3: all fetched years retained — researcher controls inclusion via chip row (N2)
+  var tukey = stageIRetainAll_(perYearR2)
 
-  // I4: pool surviving years
+  // I4: pool all retained years
   var pooledPairs = []
   tukey.retained.forEach(function(yr) {
     if (perYearPairs[yr]) pooledPairs = pooledPairs.concat(perYearPairs[yr])
   })
 
-  // I5: F1/F2 hypothesis on pooled pairs
+  // I5: adaptive binning on pooled pairs (OLS R²)
   var validation = stageIAdaptiveBins_(pooledPairs)
 
   stageIResult = {
     season:             season,
     perYearPairs:       perYearPairs,
-    perYearRho:         perYearRho,
+    perYearR2:          perYearR2,
     tukey:              tukey,
     pooledPairs:        pooledPairs,
     validation:         validation,
@@ -5152,10 +5043,8 @@ async function runStageI_(season, years) {
   renderStageIPanel_(stageIResult)
 
   // Log summary
-  autoLogLine_('[8/8] Stage I: retained ' + tukey.retained.join(', ') +
-    (tukey.rejected.length ? '; rejected ' + tukey.rejected.map(function(r) { return r.year + '(ρ=' + r.rho + ')' }).join(', ') : '') +
-    ' | ρ=' + validation.spearman_r + ' confirmed=' + (validation.confirmed === null ? 'n/a' : validation.confirmed),
-    tukey.rejected.length > 0)
+  autoLogLine_('[8/8] Stage I: ' + tukey.retained.length + ' years | pooled R²=' + validation.r_squared + ' (' + validation.n_zones + ' bins)',
+    false)
 }
 
 // ── Render Stage I sidebar panel ──────────────────────────────────────────────
@@ -5170,17 +5059,17 @@ function renderStageIPanel_(result) {
   if (stepEl) stepEl.style.display = ''
   setBadge_('perYearBadge', '✓')
 
-  // Banner (always shows Mean CPI result)
+  // Banner (always shows exploratory OLS result — hypothesis driven by Stage M OLS)
   var v = result.validation
   var bannerText, bannerColor
   if (v.confirmed === null) {
-    bannerText = '⚠ Stage I: Insufficient pairs — see D3'
+    bannerText = '⚠ Stage I: Insufficient pairs — see ③c Pooled Scatter'
     bannerColor = '#3e5f4a'
   } else if (v.confirmed) {
-    bannerText = '✓ Stage I confirmed — ρ=' + v.spearman_r + ' (' + v.n_zones + ' bins, pooled ' + result.pooledPairs.length + ' pairs)'
+    bannerText = '✓ Stage I exploratory — R²=' + v.r_squared + ' (' + v.n_zones + ' bins, pooled ' + result.pooledPairs.length + ' pairs)'
     bannerColor = 'rgba(27,120,55,0.35)'
   } else {
-    bannerText = '⚠ Stage I not confirmed — ρ=' + v.spearman_r + ' (' + v.n_zones + ' bins)'
+    bannerText = '⚠ Stage I exploratory — R²=' + v.r_squared + ' (' + v.n_zones + ' bins)'
     bannerColor = 'rgba(120,27,27,0.35)'
   }
   banner.textContent = bannerText
@@ -5220,25 +5109,25 @@ function renderStageIFsPanel_() {
     banner.textContent = '⚠ Stage I: Insufficient pairs — see ③c Pooled Scatter'
     banner.style.background = '#3e5f4a'
   } else if (v.confirmed) {
-    banner.textContent = '✓ Stage I confirmed — ρ=' + v.spearman_r + ' (' + v.n_zones + ' bins, ' + result.pooledPairs.length + ' pooled pairs)'
+    banner.textContent = '✓ Stage I exploratory — R²=' + v.r_squared + ' (' + v.n_zones + ' bins, ' + result.pooledPairs.length + ' pooled pairs)'
     banner.style.background = 'rgba(27,120,55,0.35)'
   } else {
-    banner.textContent = '⚠ Stage I not confirmed — ρ=' + v.spearman_r + ' (' + v.n_zones + ' bins)'
+    banner.textContent = '⚠ Stage I exploratory — R²=' + v.r_squared + ' (' + v.n_zones + ' bins)'
     banner.style.background = 'rgba(120,27,27,0.35)'
   }
 
   var allYears = Object.keys(result.perYearPairs).sort()
   allYears.forEach(function(yr, yi) {
     var pairs = result.perYearPairs[yr]
-    var rho   = result.perYearRho[yr]
-    var isRej = result.tukey.rejected.some(function(r) { return String(r.year) === String(yr) })
-    var color = isRej ? '#c0c0c0' : (YEAR_COLORS[yi % YEAR_COLORS.length])
+    var r2    = result.perYearR2[yr]
+    var isRej = false  // all years retained — researcher controls via chips
+    var color = YEAR_COLORS[yi % YEAR_COLORS.length]
 
     var wrap = document.createElement('div')
-    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#7a3030' : '#2E6B4F') + ';border-radius:6px;padding:8px;background:rgba(0,0,0,0.3);opacity:' + (isRej ? '0.75' : '1') + ';display:flex;flex-direction:column;height:260px'
+    wrap.style.cssText = 'border:1px solid #2E6B4F;border-radius:6px;padding:8px;background:rgba(0,0,0,0.3);display:flex;flex-direction:column;height:260px'
     var title = document.createElement('div')
     title.style.cssText = 'font-size:11px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:4px;flex-shrink:0'
-    title.textContent = yr + (isRej ? ' — REJECTED' : '') + (rho !== null ? '   ρ = ' + rho.toFixed(4) : '   ρ = n/a')
+    title.textContent = yr + (r2 !== null ? '   R² = ' + r2.toFixed(4) : '   R² = n/a')
     wrap.appendChild(title)
 
     var canvasWrap = document.createElement('div')
@@ -5275,18 +5164,16 @@ function renderStageIFsPanel_() {
     })
   })
 
-  // ρ table
+  // R² table
   var rows = allYears.map(function(yr) {
-    var rho = result.perYearRho[yr], isRej = result.tukey.rejected.some(function(r) { return String(r.year) === String(yr) })
-    return '<span style="margin-right:16px;color:' + (isRej ? '#e07070' : '#9FE1CB') + '">' +
-      yr + ': ρ = ' + (rho !== null ? rho.toFixed(4) : 'n/a') + (isRej ? '  ✗ rejected' : '  ✓') + '</span>'
+    var r2 = result.perYearR2[yr]
+    return '<span style="margin-right:16px;color:#9FE1CB">' +
+      yr + ': R² = ' + (r2 !== null && r2 !== undefined ? r2.toFixed(4) : 'n/a') + '  ✓</span>'
   }).join('')
-  var fenceStr = result.tukey.lo !== undefined
-    ? '   Tukey fence: [' + result.tukey.lo.toFixed(3) + ', ' + result.tukey.hi.toFixed(3) + ']' : ''
   var warnHtml = result.shpiIdenticalWarn
     ? '<br><span style="color:#F5A623;font-size:10px">' + result.shpiIdenticalWarn + '</span>' : ''
-  tbl.innerHTML = '<strong style="color:#F5A623">Per-year ρ summary</strong>  ' + rows +
-    '<br><span style="color:#6FA898;font-size:10px">Tukey 1.5×IQR on {ρ_y}' + fenceStr + ' · pooled ' + result.pooledPairs.length + ' pairs from ' + result.tukey.retained.length + ' years</span>' + warnHtml
+  tbl.innerHTML = '<strong style="color:#F5A623">Per-year R² summary</strong>  ' + rows +
+    '<br><span style="color:#6FA898;font-size:10px">Year inclusion via researcher chips · pooled ' + result.pooledPairs.length + ' pairs from ' + result.tukey.retained.length + ' years</span>' + warnHtml
 }
 
 </script>
@@ -5390,23 +5277,21 @@ function renderStageIPanelGrid_(result, mode) {
   var grid = document.getElementById('stageIYearGrid')
   var tbl  = document.getElementById('stageIRhoTable')
   if (!grid || !result) return
-  var pairs   = mode === 'auc' && stageKResult ? stageKResult.perYearAucPairs   : result.perYearPairs
-  var rhoMap  = mode === 'auc' && stageKResult ? stageKResult.perYearRhoAuc     : result.perYearRho
-  var rejected = result.tukey.rejected  // year rejection always based on Stage I
+  var pairs  = mode === 'auc' && stageKResult ? stageKResult.perYearAucPairs  : result.perYearPairs
+  var r2Map  = mode === 'auc' && stageKResult ? stageKResult.perYearR2Auc     : result.perYearR2
   var yKey = mode === 'auc' ? 'auc' : 'cpi'
   var yLabel = mode === 'auc' ? 'NDVI-AUC' : 'Mean CPI'
   grid.innerHTML = ''
   var allYears = Object.keys(pairs).sort()
   allYears.forEach(function(yr, yi) {
     var pts   = pairs[yr]
-    var rho   = rhoMap[yr]
-    var isRej = rejected.some(function(r) { return String(r.year) === String(yr) })
-    var color = isRej ? '#a0a0a0' : (YEAR_COLORS[yi % YEAR_COLORS.length])
+    var r2    = r2Map ? r2Map[yr] : null
+    var color = YEAR_COLORS[yi % YEAR_COLORS.length]
     var wrap  = document.createElement('div')
-    wrap.style.cssText = 'border:1px solid ' + (isRej ? '#7a3030' : '#2E6B4F') + ';border-radius:4px;padding:4px;background:rgba(0,0,0,0.25);opacity:' + (isRej ? '0.8' : '1')
+    wrap.style.cssText = 'border:1px solid #2E6B4F;border-radius:4px;padding:4px;background:rgba(0,0,0,0.25)'
     var label = document.createElement('div')
     label.style.cssText = 'font-size:8px;font-weight:700;color:' + color + ';text-align:center;margin-bottom:2px'
-    label.textContent = yr + (isRej ? ' ✗' : '') + (rho !== null ? '  ρ=' + (typeof rho === 'number' ? rho.toFixed(4) : rho) : '  ρ=n/a')
+    label.textContent = yr + (r2 !== null && r2 !== undefined ? '  R²=' + (typeof r2 === 'number' ? r2.toFixed(4) : r2) : '  R²=n/a')
     wrap.appendChild(label)
     var canvas = document.createElement('canvas')
     canvas.width = 120; canvas.height = 80
@@ -5437,23 +5322,18 @@ function renderStageIPanelGrid_(result, mode) {
       ctx.beginPath(); ctx.moveTo(px(ld[0].x), py(ld[0].y)); ctx.lineTo(px(ld[1].x), py(ld[1].y)); ctx.stroke()
     }
   })
-  // ρ table
+  // R² table
   var rows = allYears.map(function(yr) {
-    var rho   = rhoMap[yr]
-    var isRej = rejected.some(function(r) { return String(r.year) === String(yr) })
-    var rhoStr = rho !== null && rho !== undefined ? (typeof rho === 'number' ? rho.toFixed(4) : rho) : 'n/a'
-    var col = isRej ? '#e07070' : '#9FE1CB'
-    return '<span style="color:' + col + '">' + yr + ': ρ=' + rhoStr + (isRej ? ' ✗' : ' ✓') + '</span>'
+    var r2    = r2Map ? r2Map[yr] : null
+    var r2Str = r2 !== null && r2 !== undefined ? (typeof r2 === 'number' ? r2.toFixed(4) : r2) : 'n/a'
+    return '<span style="color:#9FE1CB">' + yr + ': R²=' + r2Str + ' ✓</span>'
   }).join('  ')
-  var fenceStr = (mode === 'cpi' && stageIResult && stageIResult.tukey.lo !== undefined)
-    ? '  fence=[' + stageIResult.tukey.lo.toFixed(3) + ', ' + stageIResult.tukey.hi.toFixed(3) + ']' : ''
   var warnHtml = (mode === 'cpi' && stageIResult && stageIResult.shpiIdenticalWarn)
     ? '<br><span style="color:#F5A623;font-size:7px">' + stageIResult.shpiIdenticalWarn + '</span>' : ''
   var extra = mode === 'auc' && stageKResult && stageKResult.validationAuc
-    ? '<br><span style="color:#F5A623;font-size:7px">AUC hypothesis: ρ=' + stageKResult.validationAuc.spearman_r + ' ' + (stageKResult.validationAuc.confirmed ? '✓ confirmed' : '✗ not confirmed') + ' (' + stageKResult.validationAuc.n_zones + ' bins)</span>'
+    ? '<br><span style="color:#F5A623;font-size:7px">AUC exploratory: R²=' + stageKResult.validationAuc.r_squared + ' (' + stageKResult.validationAuc.n_zones + ' bins)</span>'
     : ''
-  var baseLabel = mode === 'auc' ? 'Tukey 1.5×IQR on ρ_y (CPI-based rejection)' : 'Tukey 1.5×IQR on ρ_y'
-  tbl.innerHTML = rows + '<br><span style="color:#6FA898;font-size:7px">' + baseLabel + fenceStr + '</span>' + warnHtml + extra
+  tbl.innerHTML = rows + warnHtml + extra
 }
 
 // ── Stage K orchestrator ──────────────────────────────────────────────────────
@@ -5477,7 +5357,7 @@ async function runStageK_(season, years) {
   // Decode all biweekly PNGs per year and compute per-pixel AUC
   if (!stageKCache[season]) stageKCache[season] = {}
   var perYearAucPairs = {}
-  var perYearRhoAuc   = {}
+  var perYearR2Auc    = {}
 
   for (var i = 0; i < apiResult.years.length; i++) {
     var yrEntry = apiResult.years[i]
@@ -5503,27 +5383,26 @@ async function runStageK_(season, years) {
     if (pairs.length < 3) continue
     perYearAucPairs[yr] = pairs
 
-    // Per-year Spearman ρ (SHPI × AUC)
+    // Per-year OLS R² (SHPI × AUC)
     var xs = pairs.map(function(p) { return p.shpi })
     var ys = pairs.map(function(p) { return p.auc })
-    perYearRhoAuc[yr] = pairs.length >= 3 ? Math.round(spearmanRhoArr_(xs, ys) * 10000) / 10000 : null
+    var res = pairs.length >= 3 ? olsArr_(xs, ys) : null
+    perYearR2Auc[yr] = res ? res.r2 : null
   }
 
-  // Pool retained pairs and run F1/F2 adaptive binning on AUC
+  // Pool retained pairs and run adaptive binning on AUC (exploratory)
   var pooledAucPairs = []
   years.forEach(function(yr) {
     if (perYearAucPairs[yr]) pooledAucPairs = pooledAucPairs.concat(perYearAucPairs[yr])
   })
-  // Re-use stageIAdaptiveBins_ which expects {shpi, cpi} pairs.
-  // Here 'cpi' is the y-axis value — we pass AUC as the 'cpi' field to reuse
-  // the same equal-frequency binning + Spearman ρ + F2 confirmation logic unchanged.
+  // Re-use stageIAdaptiveBins_ which expects {shpi, cpi} pairs — pass AUC as the 'cpi' field
   var pairsForBins = pooledAucPairs.map(function(p) { return { shpi: p.shpi, cpi: p.auc } })
   var validationAuc = stageIAdaptiveBins_(pairsForBins)
 
   stageKResult = {
     season:          season,
     perYearAucPairs: perYearAucPairs,
-    perYearRhoAuc:   perYearRhoAuc,
+    perYearR2Auc:    perYearR2Auc,
     pooledAucPairs:  pooledAucPairs,
     validationAuc:   validationAuc
   }
@@ -5534,18 +5413,16 @@ async function runStageK_(season, years) {
   var aucBtn = document.getElementById('stageKAucBtn')
   if (aucBtn) aucBtn.style.opacity = '1'
 
-  // Update ③a badge and log comparison
-
   // Log comparison
-  var rhoComparison = Object.keys(perYearRhoAuc).map(function(yr) {
-    var aucRho = perYearRhoAuc[yr]
-    var cpiRho = stageIResult.perYearRho[yr]
-    return yr + ': ρ_CPI=' + (cpiRho !== null ? cpiRho.toFixed(3) : 'n/a') +
-                '  ρ_AUC=' + (aucRho !== null ? aucRho.toFixed(3) : 'n/a')
+  var r2Comparison = Object.keys(perYearR2Auc).map(function(yr) {
+    var aucR2 = perYearR2Auc[yr]
+    var cpiR2 = stageIResult.perYearR2[yr]
+    return yr + ': R²_CPI=' + (cpiR2 !== null ? cpiR2.toFixed(3) : 'n/a') +
+                '  R²_AUC=' + (aucR2 !== null ? aucR2.toFixed(3) : 'n/a')
   }).join(', ')
-  autoLogLine_('[9/8] Stage K: pooled ' + pooledAucPairs.length + ' AUC pairs | AUC ρ=' + validationAuc.spearman_r +
-    ' confirmed=' + (validationAuc.confirmed === null ? 'n/a' : validationAuc.confirmed))
-  if (rhoComparison) autoLogLine_('[9/8] ρ comparison: ' + rhoComparison)
+  autoLogLine_('[9/8] Stage K: pooled ' + pooledAucPairs.length + ' AUC pairs | AUC R²=' + validationAuc.r_squared +
+    ' (' + validationAuc.n_zones + ' bins)')
+  if (r2Comparison) autoLogLine_('[9/8] R² comparison: ' + r2Comparison)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -5554,8 +5431,8 @@ async function runStageK_(season, years) {
 // and renders:
 //   ③a 📅 CPI Passes — per-pixel CPI trajectory through crop season
 //   ③a 📅 SHPI Passes — per-pixel SHPI trajectory through fallow window
-//   ③e grid — Ref-SHPI × CPI scatter for every 7-day pass (coloured by ρ)
-//   ③e ρ-curve — Spearman ρ vs calendar date summary line chart
+//   ③e grid — Ref-SHPI × CPI scatter for every 7-day pass (coloured by R²)
+//   ③e R²-curve — OLS R² vs calendar date summary line chart
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ── M0: helpers ───────────────────────────────────────────────
@@ -5623,9 +5500,10 @@ function selectRefShpiPassIdx_(fallowArr) {
   return bestIdx
 }
 
-// Compute Spearman ρ between refSHPI pixels and CPI pixels from a single crop pass.
+// Compute OLS regression between refSHPI pixels and CPI pixels from a single crop pass.
 // refPixels, cpiPixels: Float32Array; -1 = no data.
-function computePassRho_(refPixels, cpiPixels) {
+// Returns { slope, intercept, r2, n } or null if insufficient data.
+function computePassOls_(refPixels, cpiPixels) {
   if (!refPixels || !cpiPixels) return null
   var len = Math.min(refPixels.length, cpiPixels.length)
   var xs = [], ys = []
@@ -5635,18 +5513,19 @@ function computePassRho_(refPixels, cpiPixels) {
     }
   }
   if (xs.length < 4) return null
-  return spearmanRhoArr_(xs, ys)
+  var res = olsArr_(xs, ys)
+  if (!res) return null
+  return { slope: res.slope, intercept: res.intercept, r2: res.r2, n: xs.length }
 }
 
-// ρ-colour: green for strong positive, grey for weak, red for negative.
-function rhoToColor_(rho) {
-  if (rho === null || isNaN(rho)) return '#444'
-  if (rho >= 0.7)  return '#2ECC71'
-  if (rho >= 0.5)  return '#82E0AA'
-  if (rho >= 0.3)  return '#A9DFBF'
-  if (rho >= 0.0)  return '#9FE1CB'
-  if (rho >= -0.3) return '#F0B27A'
-  return '#E74C3C'
+// R²-colour: green for high R², grey for weak, darker for near-zero.
+function r2ToColor_(r2) {
+  if (r2 === null || isNaN(r2)) return '#444'
+  if (r2 >= 0.50) return '#2ECC71'
+  if (r2 >= 0.30) return '#82E0AA'
+  if (r2 >= 0.15) return '#A9DFBF'
+  if (r2 >= 0.05) return '#9FE1CB'
+  return '#888'
 }
 
 // ── M1: Load all crop pass rasters (GAS call) ─────────────────
@@ -5740,7 +5619,7 @@ async function decodeStageMRasters_(season, years) {
   if (!cropPassPixels[season]) cropPassPixels[season] = {}
   if (!fallowPassPixels[season]) fallowPassPixels[season] = {}
   if (!refShpiPassMap[season]) refShpiPassMap[season] = {}
-  if (!stageMRhoMap[season]) stageMRhoMap[season] = {}
+  if (!stageMOlsMap[season]) stageMOlsMap[season] = {}
 
   for (var yi = 0; yi < years.length; yi++) {
     var yr = years[yi]
@@ -5774,14 +5653,18 @@ async function decodeStageMRasters_(season, years) {
       pixels: decodedFallow[refIdx] ? decodedFallow[refIdx].pixels : null
     }
 
-    // Compute ρ for each crop pass vs this year's ref SHPI
+    // Compute OLS for each crop pass vs this year's ref SHPI
     var refPixels = refShpiPassMap[season][yr].pixels
-    var rhoArr = []
+    var olsArr2 = []
     for (var ri = 0; ri < decodedCrop.length; ri++) {
-      var rho = computePassRho_(refPixels, decodedCrop[ri].pixels)
-      rhoArr.push({ date: decodedCrop[ri].date, label: decodedCrop[ri].label, rho: rho })
+      var passOls = computePassOls_(refPixels, decodedCrop[ri].pixels)
+      olsArr2.push({ date: decodedCrop[ri].date, label: decodedCrop[ri].label,
+        r2: passOls ? passOls.r2 : null,
+        slope: passOls ? passOls.slope : null,
+        intercept: passOls ? passOls.intercept : null,
+        n: passOls ? passOls.n : 0 })
     }
-    stageMRhoMap[season][yr] = rhoArr
+    stageMOlsMap[season][yr] = olsArr2
   }
 }
 
@@ -5825,22 +5708,22 @@ function renderPassDateGrid_() {
   if (!year || !cropPassPixels[season] || !cropPassPixels[season][year]) return
 
   var cropPasses = cropPassPixels[season][year] || []
-  var rhoArr     = (stageMRhoMap[season] || {})[year] || []
+  var olsEntries = (stageMOlsMap[season] || {})[year] || []
   var refData    = (refShpiPassMap[season] || {})[year] || {}
   var refPixels  = refData.pixels || null
 
-  // Find best-ρ pass
-  var bestRho = -Infinity, bestIdx = 0
-  rhoArr.forEach(function(r, i) { if (r.rho !== null && r.rho > bestRho) { bestRho = r.rho; bestIdx = i } })
+  // Find best-R² pass
+  var bestR2 = -Infinity, bestIdx = 0
+  olsEntries.forEach(function(r, i) { if (r.r2 !== null && r.r2 > bestR2) { bestR2 = r.r2; bestIdx = i } })
 
   var container = document.getElementById('stageMGridCells')
   if (!container) return
   container.innerHTML = ''
 
-  rhoArr.forEach(function(r, i) {
+  olsEntries.forEach(function(r, i) {
     var cell = document.createElement('div')
     cell.className = 'pass-cell' + (i === bestIdx ? ' pass-best' : '')
-    cell.title = r.date + '  ρ=' + (r.rho !== null ? r.rho.toFixed(3) : 'n/a')
+    cell.title = r.date + '  R²=' + (r.r2 !== null ? r.r2.toFixed(3) : 'n/a')
     cell.onclick = (function(idx) { return function() { onPassCellClick_(season, year, idx) } })(i)
 
     // Mini canvas
@@ -5853,28 +5736,28 @@ function renderPassDateGrid_() {
     labelDiv.textContent = r.label || r.date.substring(5)
     cell.appendChild(labelDiv)
 
-    var rhoDiv = document.createElement('div')
-    rhoDiv.className = 'pass-cell-rho'
-    rhoDiv.style.color = rhoToColor_(r.rho)
-    rhoDiv.textContent = r.rho !== null ? 'ρ=' + r.rho.toFixed(2) : 'n/a'
-    cell.appendChild(rhoDiv)
+    var r2Div = document.createElement('div')
+    r2Div.className = 'pass-cell-r2'
+    r2Div.style.color = r2ToColor_(r.r2)
+    r2Div.textContent = r.r2 !== null ? 'R²=' + r.r2.toFixed(2) : 'n/a'
+    cell.appendChild(r2Div)
 
     container.appendChild(cell)
 
     // Draw mini scatter on next frame
-    ;(function(canvas, passIdx, rhoVal) {
+    ;(function(canvas, passIdx, r2Val) {
       requestAnimationFrame(function() {
-        drawMiniScatter_(canvas, refPixels, cropPasses[passIdx] ? cropPasses[passIdx].pixels : null, rhoVal)
+        drawMiniScatter_(canvas, refPixels, cropPasses[passIdx] ? cropPasses[passIdx].pixels : null, r2Val)
       })
-    })(cnv, i, r.rho)
+    })(cnv, i, r.r2)
   })
 
-  // Render ρ-vs-date curve
-  renderStageMRhoCurve_(season, year, rhoArr, bestIdx)
+  // Render R²-vs-date curve
+  renderStageMOlsCurve_(season, year, olsEntries, bestIdx)
 }
 
 // Draw a tiny scatter on a 60×50 canvas (ref-SHPI x, CPI y)
-function drawMiniScatter_(canvas, refPix, cpiPix, rho) {
+function drawMiniScatter_(canvas, refPix, cpiPix, r2) {
   var ctx = canvas.getContext('2d')
   var W = canvas.width, H = canvas.height
   ctx.fillStyle = '#1a3d30'; ctx.fillRect(0, 0, W, H)
@@ -5892,7 +5775,7 @@ function drawMiniScatter_(canvas, refPix, cpiPix, rho) {
     ctx.fillText('no pts', W / 2, H / 2); return
   }
   var pad = 4
-  var dotColor = rhoToColor_(rho)
+  var dotColor = r2ToColor_(r2)
   ctx.fillStyle = dotColor
   pts.forEach(function(p) {
     var px = pad + p.x * (W - 2 * pad)
@@ -5901,22 +5784,22 @@ function drawMiniScatter_(canvas, refPix, cpiPix, rho) {
   })
 }
 
-// Render ρ-vs-date line chart — one line per accepted year (Gap 5 fix)
-function renderStageMRhoCurve_(season, year, rhoArr, bestIdx) {
+// Render R²-vs-date line chart — one line per accepted year
+function renderStageMOlsCurve_(season, year, olsEntries, bestIdx) {
   var canvas = document.getElementById('stageMRhoCurveChart')
   if (!canvas) return
 
-  // Collect all accepted years that have rho data for this season
+  // Collect all accepted years that have OLS data for this season
   var allYears = (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0)
     ? stageIResult.tukey.retained.map(Number).sort()
     : [year]  // fallback: only the currently selected year
-  var yearRhoMap = stageMRhoMap[season] || {}
+  var yearOlsMap = stageMOlsMap[season] || {}
 
   // Build a union date-label axis (sorted by date)
   var allDatesSet = {}
   allYears.forEach(function(yr) {
-    var ra = yearRhoMap[yr] || []
-    ra.forEach(function(r) { if (r.rho !== null) allDatesSet[r.label || r.date.substring(5)] = r.date })
+    var ra = yearOlsMap[yr] || []
+    ra.forEach(function(r) { if (r.r2 !== null) allDatesSet[r.label || r.date.substring(5)] = r.date })
   })
   var allLabels = Object.keys(allDatesSet).sort(function(a, b) {
     return allDatesSet[a] < allDatesSet[b] ? -1 : 1
@@ -5925,9 +5808,9 @@ function renderStageMRhoCurve_(season, year, rhoArr, bestIdx) {
   // Per-year datasets
   var yearColors = ['#9FE1CB','#F67019','#F53794','#4DC9F6','#ACC236','#F5A623','#00A950','#58595B']
   var datasets = allYears.map(function(yr, yi) {
-    var ra = yearRhoMap[yr] || []
+    var ra = yearOlsMap[yr] || []
     var byLabel = {}
-    ra.forEach(function(r) { if (r.rho !== null) byLabel[r.label || r.date.substring(5)] = r.rho })
+    ra.forEach(function(r) { if (r.r2 !== null) byLabel[r.label || r.date.substring(5)] = r.r2 })
     var data = allLabels.map(function(lbl) { return byLabel[lbl] !== undefined ? byLabel[lbl] : null })
     var isCurYear = (yr === year)
     return {
@@ -5943,26 +5826,26 @@ function renderStageMRhoCurve_(season, year, rhoArr, bestIdx) {
     }
   })
 
-  if (stageMRhoCurveInst) { stageMRhoCurveInst.destroy(); stageMRhoCurveInst = null }
-  stageMRhoCurveInst = new Chart(canvas, {
+  if (stageMOlsCurveInst) { stageMOlsCurveInst.destroy(); stageMOlsCurveInst = null }
+  stageMOlsCurveInst = new Chart(canvas, {
     type: 'line',
     data: { labels: allLabels, datasets: datasets },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
       plugins: {
         legend: { display: allYears.length > 1, labels: { color: '#9FE1CB', font: { size: 8 }, boxWidth: 14 } },
-        tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + '  ρ=' + (ctx.parsed.y !== null ? ctx.parsed.y.toFixed(3) : 'n/a') } } }
+        tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + '  R²=' + (ctx.parsed.y !== null ? ctx.parsed.y.toFixed(3) : 'n/a') } } }
       },
       scales: {
         x: { ticks: { color: '#9FE1CB', font: { size: 8 }, maxRotation: 45 }, grid: { color: '#1e3d30' } },
-        y: { min: -1, max: 1, ticks: { color: '#9FE1CB', font: { size: 8 } }, grid: { color: '#1e3d30' } }
+        y: { min: 0, max: 1, ticks: { color: '#9FE1CB', font: { size: 8 } }, grid: { color: '#1e3d30' } }
       }
     }
   })
   var labelEl = document.getElementById('stageMRhoLabel')
   if (labelEl) {
-    var bestR = rhoArr[bestIdx]
-    labelEl.textContent = bestR ? 'Best: ' + (bestR.label || bestR.date) + '  ρ=' + (bestR.rho !== null ? bestR.rho.toFixed(3) : 'n/a') : ''
+    var bestR = olsEntries[bestIdx]
+    labelEl.textContent = bestR ? 'Best: ' + (bestR.label || bestR.date) + '  R²=' + (bestR.r2 !== null ? bestR.r2.toFixed(3) : 'n/a') : ''
   }
 }
 
@@ -6097,7 +5980,6 @@ function updatePooledScatterForPass_(season, clickedYear, passIdx, passLabel) {
 
   // Pooled OLS with 95% CI band
   var pooledOls = computeOlsFull_(allPts.map(function(p) { return p.x }), allPts.map(function(p) { return p.y }))
-  var pooledRho = spearmanRhoArr_(allPts.map(function(p) { return p.x }), allPts.map(function(p) { return p.y }))
 
   var pooledOlsData = [], ciUpperData = [], ciLowerData = []
   if (pooledOls) {
@@ -6127,10 +6009,10 @@ function updatePooledScatterForPass_(season, clickedYear, passIdx, passLabel) {
 
   var corrEl = document.getElementById('corrSummary')
   var eqEl   = document.getElementById('scatterEq')
-  if (corrEl) corrEl.textContent = 'Pass ' + clickedLabel + ' | ρ=' + (pooledRho !== null ? pooledRho.toFixed(3) : 'n/a') + '  n=' + allPts.length + ' (' + acceptedYears.length + ' yr)'
+  if (corrEl) corrEl.textContent = 'Pass ' + clickedLabel + '  n=' + allPts.length + ' (' + acceptedYears.length + ' yr)'
   if (eqEl && pooledOls) eqEl.textContent = 'y = ' + pooledOls.slope.toFixed(3) + 'x + ' + pooledOls.intercept.toFixed(3) + '  R²=' + pooledOls.r2.toFixed(3)
 
-  renderPooledPassScatter_(datasets, pooledRho, clickedLabel)
+  renderPooledPassScatter_(datasets, pooledOls ? pooledOls.r2 : null, clickedLabel)
 }
 
 // OLS helper with standard error for CI band: returns {slope, intercept, r2, se, n, xm, ssx}
@@ -6164,7 +6046,7 @@ function computeOls_(xs, ys) {
 }
 
 // Render ③c pooled scatter (datasets pre-built by updatePooledScatterForPass_)
-function renderPooledPassScatter_(datasets, rho, passLabel) {
+function renderPooledPassScatter_(datasets, r2, passLabel) {
   var canvas = document.getElementById('shpiCpiScatter')
   if (!canvas) return
   if (scatterChart) { scatterChart.destroy(); scatterChart = null }
@@ -6190,7 +6072,7 @@ function renderPooledPassScatter_(datasets, rho, passLabel) {
   })
   var pooledStep = document.getElementById('pooledScatterStep')
   if (pooledStep) pooledStep.style.display = 'block'
-  setBadge_('pooledBadge', 'ρ=' + (rho !== null ? rho.toFixed(2) : 'n/a'))
+  setBadge_('pooledBadge', 'R²=' + (r2 !== null && r2 !== undefined ? r2.toFixed(2) : 'n/a'))
 }
 
 // ── M6: ③a CPI Passes chart — per-pixel CPI trajectory ────────
@@ -6386,9 +6268,9 @@ function revealPassExplorerStep_() {
 
 // ── N3: Per-pass OLS hypothesis verdict ──────────────────────
 // Pools (refSHPI, CPI) pairs from all accepted years for each pass index,
-// finds the pass with the highest pooled Spearman ρ, and returns the verdict.
+// finds the pass with the highest pooled OLS R², and returns the OLS verdict.
 function computeBestPassHypothesis_(season) {
-  var yearMap = stageMRhoMap[season]
+  var yearMap = stageMOlsMap[season]
   if (!yearMap) return null
   var acceptedYears = (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0)
     ? stageIResult.tukey.retained.map(Number).sort()
@@ -6403,8 +6285,8 @@ function computeBestPassHypothesis_(season) {
   })
   if (maxPasses === 0) return null
 
-  // For each pass index, pool pixel pairs across all accepted years
-  var bestRho = -Infinity, bestPassIdx = 0, bestPassLabel = '', bestPassDate = '', bestAllPts = []
+  // For each pass index, pool pixel pairs across all accepted years; find highest R²
+  var bestR2 = -Infinity, bestPassIdx = 0, bestPassLabel = '', bestPassDate = '', bestAllPts = []
   for (var pi = 0; pi < maxPasses; pi++) {
     var allPts = []
     acceptedYears.forEach(function(yr) {
@@ -6418,9 +6300,9 @@ function computeBestPassHypothesis_(season) {
       }
     })
     if (allPts.length < 3) continue
-    var rho = spearmanRhoArr_(allPts.map(function(p) { return p.x }), allPts.map(function(p) { return p.y }))
-    if (rho > bestRho) {
-      bestRho = rho
+    var ols = computeOlsFull_(allPts.map(function(p) { return p.x }), allPts.map(function(p) { return p.y }))
+    if (ols && ols.r2 > bestR2) {
+      bestR2 = ols.r2
       bestPassIdx = pi
       // Get label/date from first available year
       for (var yi = 0; yi < acceptedYears.length; yi++) {
@@ -6432,17 +6314,21 @@ function computeBestPassHypothesis_(season) {
   }
 
   if (bestAllPts.length === 0) return null
-  var ols = computeOlsFull_(bestAllPts.map(function(p) { return p.x }), bestAllPts.map(function(p) { return p.y }))
+  var bestOls = computeOlsFull_(bestAllPts.map(function(p) { return p.x }), bestAllPts.map(function(p) { return p.y }))
+  if (!bestOls) return null
+  // Verdict: positive slope AND R² ≥ 0.10 (soil explains ≥10% of CPI spatial variance)
+  var confirmed = bestOls.slope > 0 && bestOls.r2 >= 0.10
+  var marginal  = !confirmed && bestOls.slope > 0 && bestOls.r2 >= 0.05
   return {
-    confirmed: bestRho > 0.55,
-    marginal:  bestRho > 0.45 && bestRho <= 0.55,
-    rho: bestRho,
+    confirmed: confirmed,
+    marginal:  marginal,
+    r2: bestOls.r2, slope: bestOls.slope, intercept: bestOls.intercept,
     passIdx: bestPassIdx, passLabel: bestPassLabel, passDate: bestPassDate,
-    n: bestAllPts.length, ols: ols
+    n: bestAllPts.length, ols: bestOls
   }
 }
 
-// Update ④ CONCLUDE banner and hypothesis stat card using Stage M best-ρ pass verdict
+// Update ④ CONCLUDE banner and hypothesis stat card using Stage M best-R² pass verdict
 function updateConcludeFromBestPass_(season) {
   var result = computeBestPassHypothesis_(season)
   var banner = document.getElementById('banner')
@@ -6457,24 +6343,24 @@ function updateConcludeFromBestPass_(season) {
     return
   }
 
-  var rhoStr = result.rho.toFixed(3)
-  var r2Str  = result.ols ? result.ols.r2.toFixed(3) : '—'
+  var r2Str    = result.r2.toFixed(3)
+  var slopeStr = result.slope.toFixed(4)
   if (result.confirmed) {
-    banner.textContent = '✓ Hypothesis confirmed — best pass ' + result.passLabel + ', pooled ρ=' + rhoStr + ', R²=' + r2Str + ' (n=' + result.n + ')'
+    banner.textContent = '✓ Hypothesis confirmed — best pass ' + result.passLabel + ', β₁=' + slopeStr + ', R²=' + r2Str + ' (n=' + result.n + ')'
     banner.className   = 'banner banner-yes'
-    setBadge_('concludeBadge', 'ρ=' + rhoStr + ' ✓')
+    setBadge_('concludeBadge', 'R²=' + r2Str + ' ✓')
     var sv = document.getElementById('hypothesisStatVal')
     if (sv) sv.textContent = 'YES'
   } else if (result.marginal) {
-    banner.textContent = '⚠ Hypothesis marginal — best pass ' + result.passLabel + ', pooled ρ=' + rhoStr + ', R²=' + r2Str + ' (n=' + result.n + ')'
+    banner.textContent = '⚠ Hypothesis marginal — best pass ' + result.passLabel + ', β₁=' + slopeStr + ', R²=' + r2Str + ' (n=' + result.n + ')'
     banner.className   = 'banner banner-no'
-    setBadge_('concludeBadge', 'ρ=' + rhoStr + ' ~')
+    setBadge_('concludeBadge', 'R²=' + r2Str + ' ~')
     var sv = document.getElementById('hypothesisStatVal')
     if (sv) sv.textContent = 'MARG'
   } else {
-    banner.textContent = '⚠ Hypothesis not confirmed — best pass ' + result.passLabel + ', pooled ρ=' + rhoStr + ' (n=' + result.n + ')'
+    banner.textContent = '⚠ Hypothesis not confirmed — best pass ' + result.passLabel + ', β₁=' + slopeStr + ', R²=' + r2Str + ' (n=' + result.n + ')'
     banner.className   = 'banner banner-no'
-    setBadge_('concludeBadge', 'ρ=' + rhoStr + ' ✗')
+    setBadge_('concludeBadge', 'R²=' + r2Str + ' ✗')
     var sv = document.getElementById('hypothesisStatVal')
     if (sv) sv.textContent = 'NO'
   }
@@ -6604,7 +6490,7 @@ function updateConcludeFromBestPass_(season) {
     <button class="rm-ctrl-btn" onclick="closeLibTableFs_()">✕ Close</button>
   </div>
   <div style="padding:16px;overflow:auto;flex:1">
-    <table class="cmp-table" id="roiMergedTableFs"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>ρ</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBodyFs"></tbody></table>
+    <table class="cmp-table" id="roiMergedTableFs"><thead><tr><th>ROI</th><th>Area</th><th>Date</th><th>SHPI</th><th>R²</th><th>Z10/Z1</th><th>Actions</th></tr></thead><tbody id="roiMergedBodyFs"></tbody></table>
   </div>
 </div>
 <!-- Crop TS fullscreen -->
