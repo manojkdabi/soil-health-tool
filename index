@@ -238,7 +238,7 @@ canvas{display:block}
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
     <span class="ver-pill ver-pill-be">BE2.0.0</span>
-    <span class="ver-pill ver-pill-fe">FE2.9.7</span>
+    <span class="ver-pill ver-pill-fe">FE2.9.8</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -442,7 +442,6 @@ canvas{display:block}
         </div>
         <!-- Crop panel -->
         <div id="tsCropPanel">
-          <button class="btn btn-sec" id="tsFetchBtn" onclick="fetchTimeSeries_()" style="margin-bottom:6px">📡 Fetch Crop Series</button>
           <div id="tsIndexBtns" style="display:none;margin-bottom:4px;text-align:center">
             <span style="font-size:9px;color:#9FE1CB;margin-right:3px">Index:</span>
             <button class="ts-idx-btn active" onclick="setTsIndex_('cpi')" id="tsBtn_cpi">CPI</button>
@@ -460,19 +459,9 @@ canvas{display:block}
             <canvas id="tsChart"></canvas>
           </div>
           <div id="tsChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
-          <div id="tsYearWrap" style="display:none;margin-top:6px;border-top:1px solid #1e3d30;padding-top:5px">
-            <div style="font-size:8px;color:#9FE1CB;margin-bottom:3px">
-              Filter years:&nbsp;
-              <a href="#" onclick="tsSelectAllYears_();return false" style="color:#F5A623;font-size:8px">All</a>&nbsp;/&nbsp;
-              <a href="#" onclick="tsClearYears_();return false" style="color:#F5A623;font-size:8px">None</a>
-            </div>
-            <div id="tsYearChecks" style="display:flex;flex-wrap:wrap;gap:3px;font-size:8px;color:#9FE1CB;margin-bottom:5px"></div>
-            <button class="btn btn-prim" onclick="useYearsForCpi_()" style="width:100%;font-size:9px" id="tsUseCpiBtn">✅ Use selected years for CPI</button>
-          </div>
         </div>
         <!-- D1: Soil (SHPI sub-indices) panel -->
         <div id="tsSoilPanel" style="display:none">
-          <button class="btn btn-sec" id="soilFetchBtn" onclick="fetchSoilTimeSeries_()" style="margin-bottom:6px">📡 Fetch Soil Series</button>
           <div id="soilIndexBtns" style="display:none;margin-bottom:4px;text-align:center">
             <span style="font-size:9px;color:#9FE1CB;margin-right:3px">Index:</span>
             <button class="ts-idx-btn active" onclick="setSoilTsIndex_('shpi')" id="soilBtn_shpi">SHPI</button>
@@ -490,15 +479,6 @@ canvas{display:block}
             <canvas id="soilTsChart"></canvas>
           </div>
           <div id="soilChartLabel" style="font-size:8px;color:#6FA898;text-align:center;margin-top:3px"></div>
-          <div id="soilYearWrap" style="display:none;margin-top:6px;border-top:1px solid #1e3d30;padding-top:5px">
-            <div style="font-size:8px;color:#9FE1CB;margin-bottom:3px">
-              Filter years:&nbsp;
-              <a href="#" onclick="soilSelectAllYears_();return false" style="color:#F5A623;font-size:8px">All</a>&nbsp;/&nbsp;
-              <a href="#" onclick="soilClearYears_();return false" style="color:#F5A623;font-size:8px">None</a>
-            </div>
-            <div id="soilYearChecks" style="display:flex;flex-wrap:wrap;gap:3px;font-size:8px;color:#9FE1CB;margin-bottom:5px"></div>
-            <button class="btn btn-prim" onclick="useYearsForShpi_()" style="width:100%;font-size:9px" id="tsUseShpiBtn">🟤 Use selected years for SHPI</button>
-          </div>
         </div>
         <!-- Stage M: CPI Passes panel — per-pixel CPI trajectory all 7-day passes -->
         <div id="tsCpiPassesPanel" style="display:none">
@@ -3415,13 +3395,11 @@ function fetchTimeSeries_() {
   const yearEnd   = parseInt(document.getElementById('yearEnd').value, 10)
   if (isNaN(yearStart) || isNaN(yearEnd)) { alert('Set a valid year range first.'); return }
   const btn = document.getElementById('tsFetchBtn')
-  btn.disabled    = true
-  btn.textContent = '⏳ Fetching...'
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Fetching...' }
   document.getElementById('tsChartLabel').textContent = ''
   google.script.run
     .withSuccessHandler(async function(data) {
-      btn.disabled    = false
-      btn.textContent = '📡 Fetch Time Series'
+      if (btn) { btn.disabled = false; btn.textContent = '📡 Fetch Time Series' }
       if (!data.success) {
         document.getElementById('tsChartLabel').textContent = '⚠ ' + data.error
         return
@@ -3447,8 +3425,7 @@ function fetchTimeSeries_() {
       renderRatioChart_()  // update ratio tab if soil data already fetched
     })
     .withFailureHandler(function(err) {
-      btn.disabled    = false
-      btn.textContent = '📡 Fetch Time Series'
+      if (btn) { btn.disabled = false; btn.textContent = '📡 Fetch Time Series' }
       document.getElementById('tsChartLabel').textContent = '⚠ ' + err.message
     })
     .getTimeSeries({ geojson: roi, yearStart, yearEnd })
@@ -4129,13 +4106,11 @@ function fetchSoilTimeSeries_() {
   const yearEnd   = parseInt(document.getElementById('yearEnd').value, 10)
   if (isNaN(yearStart) || isNaN(yearEnd)) { alert('Set a valid year range first.'); return }
   const btn = document.getElementById('soilFetchBtn')
-  btn.disabled    = true
-  btn.textContent = '⏳ Fetching...'
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Fetching...' }
   document.getElementById('soilChartLabel').textContent = ''
   google.script.run
     .withSuccessHandler(async function(data) {
-      btn.disabled    = false
-      btn.textContent = '📡 Fetch Soil Series'
+      if (btn) { btn.disabled = false; btn.textContent = '📡 Fetch Soil Series' }
       if (!data.success) {
         document.getElementById('soilChartLabel').textContent = '⚠ ' + data.error
         return
@@ -4159,8 +4134,7 @@ function fetchSoilTimeSeries_() {
       renderRatioChart_()  // update ratio tab now that both crop+soil data are available
     })
     .withFailureHandler(function(err) {
-      btn.disabled    = false
-      btn.textContent = '📡 Fetch Soil Series'
+      if (btn) { btn.disabled = false; btn.textContent = '📡 Fetch Soil Series' }
       document.getElementById('soilChartLabel').textContent = '⚠ ' + err.message
     })
     .getSoilTimeSeries({ geojson: roi, yearStart, yearEnd })
