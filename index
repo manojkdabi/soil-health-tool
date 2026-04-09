@@ -238,7 +238,7 @@ canvas{display:block}
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
     <span class="ver-pill ver-pill-be">BE2.0.0</span>
-    <span class="ver-pill ver-pill-fe">FE2.6.0</span>
+    <span class="ver-pill ver-pill-fe">FE2.9.4</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -3164,6 +3164,19 @@ function _getChartInstance(id) {
 
 function openChartFs_(id) {
   var src = _getChartInstance(id)
+  // ratioChart (and pass charts) may be null before Stage M loads — still open the overlay
+  // so the researcher sees the "load Pass-Date Explorer" prompt at full-screen size.
+  if (!src && id === 'ratioChart') {
+    var ratioFsOverlay = document.getElementById('chartFs-ratioChart')
+    if (!ratioFsOverlay) return
+    var mainStatus = document.getElementById('ratioChartStatus')
+    var fsStatus   = document.getElementById('ratioChart-fs-status')
+    if (mainStatus && fsStatus) fsStatus.textContent = mainStatus.textContent
+    var fsCanvas = document.getElementById('ratioChart-fs')
+    if (fsCanvas) fsCanvas.style.display = 'none'
+    ratioFsOverlay.classList.add('open')
+    return
+  }
   if (!src) return
   var overlay = document.getElementById('chartFs-' + id)
   if (!overlay) return
@@ -3184,6 +3197,13 @@ function openChartFs_(id) {
   }
   // Destroy previous FS instance for this chart
   if (chartFsInstances[id]) { chartFsInstances[id].destroy(); chartFsInstances[id] = null }
+  // For ratioChart: restore canvas visibility and clear no-data status if previously hidden
+  if (id === 'ratioChart') {
+    var fsCanvas2 = document.getElementById('ratioChart-fs')
+    if (fsCanvas2) fsCanvas2.style.display = 'block'
+    var fsStatus2 = document.getElementById('ratioChart-fs-status')
+    if (fsStatus2) fsStatus2.textContent = ''
+  }
   // Show overlay first so the canvas has a valid size when Chart.js measures it
   overlay.classList.add('open')
   var canvas = document.getElementById(id + '-fs')
@@ -6838,6 +6858,7 @@ function updateConcludeFromBestPass_(season) {
     <span class="chart-fs-title">📊 CPI/(CPI+SHPI) ratio over passes</span>
     <button class="rm-ctrl-btn" onclick="closeChartFs_('ratioChart')">✕ Close</button>
   </div>
+  <p id="ratioChart-fs-status" style="text-align:center;color:#6FA898;font-size:13px;margin:auto;padding:60px 20px 0"></p>
   <div class="chart-fs-body"><canvas id="ratioChart-fs"></canvas></div>
 </div>
 </body>
