@@ -2182,7 +2182,7 @@ function saveResultsCache_(cache) {
       if (keys.length > 0) {
         var evicted = keys[0]
         delete cache[evicted]
-        try { localStorage.setItem('shpResultsCache', JSON.stringify(cache)) } catch (e2) { /* give up silently */ }
+        try { localStorage.setItem('shpResultsCache', JSON.stringify(cache)) } catch (e2) { console.warn('shpResultsCache: eviction did not free enough space — cache not persisted.') }
         console.warn('shpResultsCache: evicted oldest ROI "' + evicted + '" to free localStorage space.')
       }
     }
@@ -4486,9 +4486,9 @@ function renderRatioChart_() {
             color: '#9FE1CB', font: { size: 7 },
             callback: function(v) { var idx = MONTH_DOYS.indexOf(v); return idx >= 0 ? MONTH_LABELS[idx] : '' },
             includeBounds: false,
-            afterBuildTicks: function(axis) { axis.ticks = MONTH_DOYS.map(function(v) { return { value: v } }) },
             maxRotation: 0
           },
+          afterBuildTicks: function(axis) { axis.ticks = MONTH_DOYS.map(function(v) { return { value: v } }) },
           grid: { color: 'rgba(255,255,255,0.07)' }
         },
         y: {
