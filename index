@@ -3608,7 +3608,7 @@ function fetchFallowShpi_(season, onReady) {
     return
   }
   if (tsYearsForShpi.length === 0) {
-    alert('Fetch Soil Series, select good bare-soil years, then click "🟤 Use selected years for SHPI" first.')
+    alert('Run the auto-fetch pipeline (② FETCH) first to load soil series and lock SHPI years.')
     return
   }
   var yearStart = tsYearsForShpi[0]
