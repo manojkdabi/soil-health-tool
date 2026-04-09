@@ -238,7 +238,7 @@ canvas{display:block}
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <h1>Soil Health Stratification Tool</h1>
     <span class="ver-pill ver-pill-be">BE2.0.0</span>
-    <span class="ver-pill ver-pill-fe">FE2.9.6</span>
+    <span class="ver-pill ver-pill-fe">FE2.9.7</span>
   </div>
   <p>Treeconomy · Phase 1 POC · Sentinel-2 SR</p>
 </div>
@@ -1537,6 +1537,22 @@ function renderResults(data) {
   setBadge_('pooledBadge', '✓')
   setBadge_('zonesBadge', '✓')
   setBadge_('concludeBadge', '⏳')
+  // Pre-populate ③e year selector from already-known years so the dropdown is
+  // not blank when the section is first revealed (rasters load later).
+  ;(function() {
+    var preYears = []
+    if (stageIResult && stageIResult.tukey && stageIResult.tukey.retained.length > 0) {
+      preYears = stageIResult.tukey.retained.map(Number).sort(function(a,b){return a-b})
+    } else if (tsData && tsData.length > 0) {
+      var ySet = {}
+      tsData.forEach(function(d) { if (d.date) ySet[d.date.substring(0, 4)] = 1 })
+      preYears = Object.keys(ySet).map(Number).sort(function(a,b){return a-b})
+    }
+    if (preYears.length > 0 && typeof populateStageMYearSel_ === 'function') {
+      var seasonVal = activePipelineSeason || 'kharif'
+      populateStageMYearSel_(seasonVal, preYears)
+    }
+  })()
 
   // Zone map — rendered after sections are visible so the container has layout
   setTimeout(function() { renderResultsMap_(data) }, 50)
